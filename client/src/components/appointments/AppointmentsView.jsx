@@ -15,15 +15,25 @@ import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../profile/ProfileImagePreview";
 import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
+import ConfirmDialog from "../ConfirmDialog";
+import {
+  ArrowUpDown,
+  CalendarDays,
+  Clock3,
+  MapPin,
+  Monitor,
+} from "lucide-react";
 const HISTORY_ITEMS_PER_PAGE = 6;
 export default function AppointmentsPage({ filter }) {
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [items, setItems] = useState(null);
+  const [studentViews, setStudentViews] = useState(null);
   const [error, setError] = useState("");
   const [appointmentTab, setAppointmentTab] = useState("Upcoming");
   const [historyTab, setHistoryTab] = useState("All");
+  const [historySort, setHistorySort] = useState("newest");
   const [historyPage, setHistoryPage] = useState(1);
   const [appointmentsPage, setAppointmentsPage] = useState(1);
   const [details, setDetails] = useState(null);
@@ -40,10 +50,19 @@ export default function AppointmentsPage({ filter }) {
   const [availabilityCapacity, setAvailabilityCapacity] = useState([]);
   const [approvalWarning, setApprovalWarning] = useState(null);
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectNote, setRejectNote] = useState("");
   const load = () =>
     api("/appointments/mine")
       .then((d) => {
         setItems(Array.isArray(d?.appointments) ? d.appointments : []);
+        setStudentViews(
+          d?.studentViews &&
+            Array.isArray(d.studentViews.current) &&
+            Array.isArray(d.studentViews.history)
+            ? d.studentViews
+            : null,
+        );
         setAvailabilityCapacity(
           Array.isArray(d?.availabilityCapacity) ? d.availabilityCapacity : [],
         );
@@ -224,24 +243,24 @@ export default function AppointmentsPage({ filter }) {
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
   let shown = items;
-  if (user.role === "student" && !filter)
-    shown = items.filter((x) =>
-      ["Pending", "Approved", "Needs Reschedule", "Rescheduled"].includes(
-        x.status,
-      ),
-    );
+  if (user.role === "student" && !filter) shown = studentViews?.current || [];
   if (filter === "requests")
     shown = items.filter((x) => x.status === "Pending");
   if (filter === "history") {
-    const historical =
-      user.role === "student"
-        ? ["Completed", "Rejected", "Cancelled", "No Show"]
-        : ["Completed", "Rejected", "Cancelled", "No Show"];
-    shown = items.filter((x) =>
+    const historical = ["Completed", "Rejected", "Cancelled", "No Show"];
+    const historyItems =
+      user.role === "student" ? studentViews?.history || [] : items;
+    shown = historyItems.filter((x) =>
       historyTab === "All"
-        ? historical.includes(x.status)
+        ? user.role === "student" || historical.includes(x.status)
         : x.status === historyTab,
     );
+    if (user.role === "student") {
+      shown = [...shown].sort((left, right) => {
+        const difference = new Date(left.startAt) - new Date(right.startAt);
+        return historySort === "oldest" ? difference : -difference;
+      });
+    }
   }
   if (user.role === "faculty" && !filter) {
     const now = new Date();
@@ -265,14 +284,18 @@ export default function AppointmentsPage({ filter }) {
   }
   const renderStudentAppointmentActions = (appointment, mobile = false) => (
     <div
-      className={`min-w-0 gap-2 ${mobile ? "mt-4 flex flex-col min-[600px]:flex-row min-[600px]:flex-wrap" : "table-action-group flex-nowrap whitespace-nowrap"}`}
+      className={`min-w-0 gap-2 ${
+        mobile
+          ? "flex w-full flex-col items-stretch sm:flex-row sm:flex-wrap"
+          : "table-action-group flex-wrap justify-center whitespace-nowrap"
+      }`}
     >
       <button
         type="button"
         onClick={() => setDetails(appointment)}
         className={
           mobile
-            ? "btn-action h-10 w-full min-[600px]:h-9 min-[600px]:w-auto min-[600px]:flex-1"
+            ? "btn-table-primary h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
             : "btn-action-sm"
         }
       >
@@ -282,7 +305,9 @@ export default function AppointmentsPage({ filter }) {
         <button
           type="button"
           onClick={() => chooseNewSchedule(appointment)}
-          className={`btn-table-primary ${mobile ? "h-10 w-full min-[600px]:h-[30px] min-[600px]:w-auto" : ""}`}
+          className={`btn-table-primary ${
+            mobile ? "h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1" : ""
+          }`}
         >
           Choose New Schedule
         </button>
@@ -294,7 +319,7 @@ export default function AppointmentsPage({ filter }) {
             onClick={() => setCancelTarget(appointment)}
             className={
               mobile
-                ? "btn-danger-action h-10 w-full min-[600px]:h-9 min-[600px]:w-auto"
+                ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
                 : "btn-danger-action-sm"
             }
           >
@@ -316,7 +341,7 @@ export default function AppointmentsPage({ filter }) {
             }}
             className={
               mobile
-                ? "btn-action h-10 w-full min-[600px]:h-9 min-[600px]:w-auto"
+                ? "btn-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
                 : "btn-action-sm"
             }
           >
@@ -329,47 +354,132 @@ export default function AppointmentsPage({ filter }) {
     </div>
   );
   return (
-    <div className="w-full min-w-0 max-w-full space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-maroon-900">
-          {filter === "requests"
-            ? "Appointment Requests"
-            : filter === "history"
-              ? "Consultation History"
-              : "My Appointments"}
-        </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          {filter === "history"
-            ? "Review your completed, rejected, and cancelled consultation records."
-            : user.role === "student" && !filter
-              ? "View and manage your current consultation appointments."
+    <div
+      className={`w-full min-w-0 max-w-full space-y-6 ${user.role === "student" && filter === "history" ? "student-history" : ""}`}
+    >
+      <ConfirmDialog
+        open={Boolean(rejectTarget)}
+        title="Reject Appointment Request"
+        message="Are you sure you want to reject this appointment request?"
+        supportingText="You may include an optional reason for the Student."
+        confirmLabel="Reject"
+        loadingLabel="Rejecting..."
+        loading={Boolean(rejectTarget && updatingIds.has(rejectTarget._id))}
+        inputLabel="Rejection reason (optional)"
+        inputValue={rejectNote}
+        onInputChange={setRejectNote}
+        inputPlaceholder="Enter an optional reason"
+        onCancel={() => {
+          if (rejectTarget && updatingIds.has(rejectTarget._id)) return;
+          setRejectTarget(null);
+          setRejectNote("");
+        }}
+        onConfirm={async () => {
+          if (!rejectTarget || updatingIds.has(rejectTarget._id)) return;
+          const rejected = await update(rejectTarget._id, "Rejected", {
+            note: rejectNote.trim(),
+          });
+          if (rejected) {
+            setRejectTarget(null);
+            setRejectNote("");
+          }
+        }}
+      />
+      {user.role === "student" && !filter ? (
+        <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
+          <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 md:block" />
+          <div className="relative flex min-w-0 items-center justify-between gap-5">
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
+                Consultation Management
+              </p>
+              <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">
+                My Appointments
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-[15px]">
+                View and manage your current consultation appointments.
+              </p>
+            </div>
+            <span className="hidden h-12 w-12 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 md:grid">
+              <CalendarDays size={23} aria-hidden="true" />
+            </span>
+          </div>
+        </section>
+      ) : user.role === "student" && filter === "history" ? (
+        <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm">
+          <div className="pointer-events-none absolute -right-6 -top-8 hidden h-24 w-24 rounded-full border border-gold-300/30 md:block" />
+          <div className="relative flex min-w-0 items-center gap-3.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-gold-300 bg-maroon-50 text-maroon-800">
+              <CalendarDays size={19} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
+                Consultation Records
+              </p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-maroon-900 sm:text-[26px]">
+                Consultation History
+              </h1>
+              <p className="mt-1.5 text-sm leading-5 text-slate-600 sm:text-[15px]">
+                Review your completed, rejected, and cancelled consultation
+                records.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : user.role === "faculty" && !filter ? (
+        <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
+          <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 md:block" />
+          <div className="relative flex min-w-0 items-center justify-between gap-5">
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
+                Faculty Workspace
+              </p>
+              <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">
+                My Appointments
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-[15px]">
+                Manage and track your consultation appointments.
+              </p>
+            </div>
+            <span className="hidden h-12 w-12 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 md:grid">
+              <CalendarDays size={23} aria-hidden="true" />
+            </span>
+          </div>
+        </section>
+      ) : (
+        <div>
+          <h1 className="text-2xl font-bold text-maroon-900">
+            {filter === "requests"
+              ? "Appointment Requests"
+              : filter === "history"
+                ? "Consultation History"
+                : "My Appointments"}
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            {filter === "history"
+              ? "Review your completed, rejected, and cancelled consultation records."
               : "Live appointment data from SOCConsult."}
-        </p>
-      </div>
-      {user.role === "faculty" && !filter && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {[
-            "Today",
-            "Upcoming",
-            "Awaiting Update",
-            "Completed",
-            "Cancelled",
-          ].map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => setAppointmentTab(name)}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${appointmentTab === name ? "bg-maroon-800 text-white" : "border border-slate-200 bg-white"}`}
-            >
-              {name}
-            </button>
-          ))}
+          </p>
         </div>
       )}
       {user.role === "student" && filter === "history" && (
-        <div className="flex flex-wrap gap-2">
-          {["All", "Completed", "No Show", "Rejected", "Cancelled"].map(
-            (name) => (
+        <div className="student-history-toolbar flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div
+            className="student-history-filters grid min-w-0 grid-cols-2 gap-2 min-[480px]:grid-cols-3"
+            role="group"
+            aria-label="Filter consultation history"
+          >
+            {[
+              "All",
+              "Pending",
+              "Approved",
+              "Needs Reschedule",
+              "Rescheduled",
+              "Completed",
+              "No Show",
+              "Rejected",
+              "Cancelled",
+            ].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -377,12 +487,32 @@ export default function AppointmentsPage({ filter }) {
                   setHistoryTab(name);
                   setHistoryPage(1);
                 }}
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${historyTab === name ? "bg-maroon-800 text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+                aria-pressed={historyTab === name}
+                className={`min-h-9 min-w-0 rounded-lg px-2.5 py-2 text-xs font-bold leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 ${
+                  historyTab === name
+                    ? "bg-maroon-50 text-maroon-900 shadow-[inset_0_-2px_0_#7f1d33]"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-maroon-800"
+                }`}
               >
                 {name}
               </button>
-            ),
-          )}
+            ))}
+          </div>
+          <label className="student-history-sort flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+            <ArrowUpDown size={15} aria-hidden="true" />
+            <span>Sort by</span>
+            <select
+              value={historySort}
+              onChange={(event) => {
+                setHistorySort(event.target.value);
+                setHistoryPage(1);
+              }}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+            >
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+          </label>
         </div>
       )}
       {user.role === "faculty" &&
@@ -806,15 +936,30 @@ export default function AppointmentsPage({ filter }) {
         </div>
       )}
       {user.role === "student" && !filter ? (
-        <ConsultationHistoryTable
+        <StudentCurrentAppointments
           appointments={shown}
           currentPage={appointmentsPage}
           onPageChange={setAppointmentsPage}
-          onView={setDetails}
-          role={user.role}
-          emptyTitle="No current appointments"
-          itemLabel="appointments"
           renderActions={renderStudentAppointmentActions}
+        />
+      ) : user.role === "faculty" && !filter ? (
+        <FacultyCurrentAppointments
+          appointments={shown}
+          activeFilter={appointmentTab}
+          onFilterChange={setAppointmentTab}
+          onView={setDetails}
+          updatingIds={updatingIds}
+          onApprove={approve}
+          onReject={(appointment) => {
+            setRejectTarget(appointment);
+            setRejectNote("");
+          }}
+          onBeginReschedule={beginReschedule}
+          onComplete={(appointment) => update(appointment._id, "Completed")}
+          onReviewReschedule={(appointment, decision) =>
+            setReviewTarget({ appointment, decision })
+          }
+          onViewDocument={openSupportingDocument}
         />
       ) : filter === "history" ? (
         <ConsultationHistoryTable
@@ -828,6 +973,39 @@ export default function AppointmentsPage({ filter }) {
               ? "No consultation records found."
               : `No ${historyTab.toLowerCase()} consultation records found.`
           }
+          showTime
+          renderActions={
+            user.role === "student"
+              ? (appointment, mobile = false) => (
+                  <div
+                    className={
+                      mobile
+                        ? "mt-4 flex min-w-0 flex-col gap-2"
+                        : "student-history-table-actions flex min-w-0 flex-nowrap items-center gap-2 whitespace-nowrap"
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDetails(appointment)}
+                      className={
+                        mobile ? "btn-action h-10 w-full" : "btn-action-sm"
+                      }
+                    >
+                      View Details
+                    </button>
+                    {appointment.status === "Needs Reschedule" && (
+                      <button
+                        type="button"
+                        onClick={() => chooseNewSchedule(appointment)}
+                        className={`btn-table-primary ${mobile ? "h-10 w-full" : ""}`}
+                      >
+                        Choose New Schedule
+                      </button>
+                    )}
+                  </div>
+                )
+              : undefined
+          }
         />
       ) : shown.length === 0 ? (
         <EmptyState title="No current appointments" />
@@ -838,7 +1016,13 @@ export default function AppointmentsPage({ filter }) {
               key={x._id}
               className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border bg-white p-4 sm:p-5"
             >
-              <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+              <div
+                className={`flex min-w-0 flex-col gap-4 ${
+                  user.role === "faculty" && filter !== "requests"
+                    ? "xl:flex-row xl:items-center xl:justify-between xl:gap-5"
+                    : "lg:flex-row lg:items-start lg:justify-between lg:gap-6"
+                }`}
+              >
                 <div className="min-w-0 flex-1">
                   {filter === "requests" && (
                     <>
@@ -882,7 +1066,7 @@ export default function AppointmentsPage({ filter }) {
                       </dl>
                     </>
                   )}
-                  {filter !== "requests" && (
+                  {filter !== "requests" && user.role !== "faculty" && (
                     <>
                       <div className="flex flex-wrap items-center gap-3">
                         <h2 className="min-w-0 break-words font-bold">
@@ -997,7 +1181,13 @@ export default function AppointmentsPage({ filter }) {
                   )}
                 </div>
                 <div
-                  className={`flex w-full min-w-0 flex-wrap gap-2 ${filter === "requests" ? "lg:w-52 lg:shrink-0 lg:flex-col" : "lg:w-auto lg:shrink-0"}`}
+                  className={`flex w-full min-w-0 flex-wrap gap-2 ${
+                    filter === "requests"
+                      ? "lg:w-52 lg:shrink-0 lg:flex-col"
+                      : user.role === "faculty"
+                        ? "border-t border-slate-200 pt-3 xl:w-[22rem] xl:shrink-0 xl:justify-end xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
+                        : "lg:w-auto lg:shrink-0"
+                  }`}
                 >
                   <button
                     type="button"
@@ -1017,12 +1207,10 @@ export default function AppointmentsPage({ filter }) {
                       </button>
                       <button
                         disabled={updatingIds.has(x._id)}
-                        onClick={() =>
-                          update(x._id, "Rejected", {
-                            note:
-                              window.prompt("Optional rejection reason:") || "",
-                          })
-                        }
+                        onClick={() => {
+                          setRejectTarget(x);
+                          setRejectNote("");
+                        }}
                         className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
                       >
                         Reject
@@ -1042,7 +1230,7 @@ export default function AppointmentsPage({ filter }) {
                         <button
                           disabled={updatingIds.has(x._id)}
                           onClick={() => update(x._id, "Completed")}
-                          className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+                          className="rounded-lg bg-maroon-800 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60"
                         >
                           {updatingIds.has(x._id)
                             ? "Completing..."
@@ -1152,6 +1340,374 @@ export default function AppointmentsPage({ filter }) {
   );
 }
 
+const FACULTY_APPOINTMENT_FILTERS = [
+  "Today",
+  "Upcoming",
+  "Awaiting Update",
+  "Completed",
+  "Cancelled",
+];
+const FACULTY_APPOINTMENTS_PAGE_SIZE = 3;
+
+function FacultyCurrentAppointments({
+  appointments,
+  activeFilter,
+  onFilterChange,
+  onView,
+  updatingIds,
+  onApprove,
+  onReject,
+  onBeginReschedule,
+  onComplete,
+  onReviewReschedule,
+  onViewDocument,
+}) {
+  const [sortOrder, setSortOrder] = useState("newest");
+  const [currentPage, setCurrentPage] = useState(1);
+  const sorted = [...appointments].sort((left, right) => {
+    const difference = new Date(left.startAt) - new Date(right.startAt);
+    return sortOrder === "oldest" ? difference : -difference;
+  });
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sorted.length / FACULTY_APPOINTMENTS_PAGE_SIZE),
+  );
+  const safePage = Math.min(currentPage, totalPages);
+  const pageAppointments = sorted.slice(
+    (safePage - 1) * FACULTY_APPOINTMENTS_PAGE_SIZE,
+    safePage * FACULTY_APPOINTMENTS_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const changeFilter = (filter) => {
+    onFilterChange(filter);
+    setCurrentPage(1);
+  };
+
+  return (
+    <section className="min-w-0 space-y-4 pb-16 md:pb-0">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div
+          className="hidden min-w-0 flex-wrap gap-2 sm:flex"
+          role="group"
+          aria-label="Filter faculty appointments"
+        >
+          {FACULTY_APPOINTMENT_FILTERS.map((filter) => (
+            <FacultyFilterButton
+              key={filter}
+              filter={filter}
+              active={activeFilter === filter}
+              onClick={() => changeFilter(filter)}
+            />
+          ))}
+        </div>
+
+        <div
+          className="hidden min-w-0 grid-cols-[.75fr_1fr_1.45fr_1fr_.7fr] gap-1 min-[480px]:grid sm:hidden"
+          role="group"
+          aria-label="Filter faculty appointments"
+        >
+          {FACULTY_APPOINTMENT_FILTERS.slice(0, 4).map((filter) => (
+            <FacultyFilterButton
+              key={filter}
+              filter={filter}
+              active={activeFilter === filter}
+              onClick={() => changeFilter(filter)}
+              mobile
+            />
+          ))}
+          <details className="group relative min-w-0">
+            <summary
+              className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[560px]:text-xs [&::-webkit-details-marker]:hidden ${
+                activeFilter === "Cancelled"
+                  ? "border-maroon-800 bg-maroon-800 text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              More
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => changeFilter("Cancelled")}
+                aria-pressed={activeFilter === "Cancelled"}
+                className={`w-full rounded-md px-3 py-2 text-left text-xs font-semibold ${
+                  activeFilter === "Cancelled"
+                    ? "bg-maroon-800 text-white"
+                    : "text-slate-700 hover:bg-maroon-50"
+                }`}
+              >
+                Cancelled
+              </button>
+            </div>
+          </details>
+        </div>
+
+        <div
+          className="grid min-w-0 grid-cols-4 gap-1 min-[480px]:hidden"
+          role="group"
+          aria-label="Filter faculty appointments"
+        >
+          {FACULTY_APPOINTMENT_FILTERS.slice(0, 3).map((filter) => (
+            <FacultyFilterButton
+              key={filter}
+              filter={filter}
+              active={activeFilter === filter}
+              onClick={() => changeFilter(filter)}
+              mobile
+            />
+          ))}
+          <details className="group relative min-w-0">
+            <summary
+              className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs [&::-webkit-details-marker]:hidden ${
+                ["Completed", "Cancelled"].includes(activeFilter)
+                  ? "border-maroon-800 bg-maroon-800 text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              More
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+              {FACULTY_APPOINTMENT_FILTERS.slice(3).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => changeFilter(filter)}
+                  className={`w-full rounded-md px-3 py-2 text-left text-xs font-semibold ${
+                    activeFilter === filter
+                      ? "bg-maroon-800 text-white"
+                      : "text-slate-700 hover:bg-maroon-50"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+          <ArrowUpDown size={15} aria-hidden="true" />
+          <span>Sort by</span>
+          <select
+            value={sortOrder}
+            onChange={(event) => {
+              setSortOrder(event.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+          >
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+          </select>
+        </label>
+      </div>
+
+      {sorted.length === 0 ? (
+        <EmptyState title={`No ${activeFilter.toLowerCase()} appointments found.`} />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="divide-y divide-slate-200">
+            {pageAppointments.map((appointment) => (
+              <FacultyAppointmentRow
+                key={appointment._id}
+                appointment={appointment}
+                renderActions={(mobile) => (
+                  <FacultyAppointmentActions
+                    appointment={appointment}
+                    mobile={mobile}
+                    onView={onView}
+                    updatingIds={updatingIds}
+                    onApprove={onApprove}
+                    onReject={onReject}
+                    onBeginReschedule={onBeginReschedule}
+                    onComplete={onComplete}
+                    onReviewReschedule={onReviewReschedule}
+                    onViewDocument={onViewDocument}
+                  />
+                )}
+              />
+            ))}
+          </div>
+          <div className="sm:[&>div]:pr-16 md:[&>div]:pr-20">
+            <Pagination
+              currentPage={safePage}
+              totalItems={sorted.length}
+              itemsPerPage={FACULTY_APPOINTMENTS_PAGE_SIZE}
+              itemLabel="appointments"
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FacultyFilterButton({ filter, active, onClick, mobile = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`min-h-9 rounded-lg font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 ${
+        mobile ? "min-w-0 px-1 py-2 text-[10px] min-[380px]:text-xs" : "px-3 py-2 text-xs sm:text-sm"
+      } ${
+        active
+          ? "border border-maroon-800 bg-maroon-800 text-white shadow-sm"
+          : "border border-slate-200 bg-white text-slate-700 hover:border-maroon-200 hover:bg-maroon-50"
+      }`}
+    >
+      {filter}
+    </button>
+  );
+}
+
+function FacultyAppointmentRow({ appointment, renderActions }) {
+  const start = new Date(appointment.startAt);
+  const isFaceToFace = appointment.consultationMode === "Face-to-Face";
+  const ModeIcon = isFaceToFace ? MapPin : Monitor;
+  const destination = isFaceToFace
+    ? appointment.location || "Location to be confirmed"
+    : appointment.meetingPlatform || "Meeting platform to be confirmed";
+
+  return (
+    <article className="grid min-w-0 grid-cols-[3.75rem_minmax(0,1fr)] bg-white md:grid-cols-[4.25rem_minmax(0,1fr)_minmax(12rem,.75fr)_auto] min-[1200px]:grid-cols-[4.5rem_minmax(0,1.05fr)_minmax(13rem,.8fr)_minmax(7rem,.4fr)_minmax(12rem,.7fr)]">
+      <div className="flex items-start justify-center p-3 md:items-center md:p-4">
+        <div className="grid h-16 w-14 shrink-0 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center min-[1200px]:h-[4.25rem] min-[1200px]:w-16">
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-maroon-700">
+            {start.toLocaleDateString(undefined, { month: "short" })}
+          </span>
+          <span className="text-2xl font-extrabold leading-6 text-maroon-900">
+            {start.toLocaleDateString(undefined, { day: "numeric" })}
+          </span>
+          <span className="text-[9px] font-semibold text-slate-500">
+            {start.toLocaleDateString(undefined, { year: "numeric" })}
+          </span>
+        </div>
+      </div>
+
+      <div className="min-w-0 p-3 pl-0 md:flex md:items-center md:p-4 md:pl-0 min-[1200px]:pl-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-2 md:block">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <ProfileImagePreview
+                user={appointment.student}
+                className="h-8 w-8 shrink-0 rounded-full bg-maroon-800 text-xs font-bold text-white"
+                buttonClassName="shrink-0 rounded-full"
+              />
+              <div className="min-w-0">
+                <h2 className="break-words text-sm font-bold leading-5 text-slate-900 sm:text-base">
+                  {appointment.subject || "Consultation"}
+                </h2>
+                <p className="mt-1 break-words text-xs text-slate-600 sm:text-sm">
+                  <span className="font-semibold">Student:</span>{" "}
+                  {formatPersonName(appointment.student?.name) || "Not provided"}
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 md:hidden">
+              <StatusBadge status={appointment.status} compact />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="col-span-2 min-w-0 border-t border-slate-200 bg-slate-50/60 px-3 py-3 text-sm text-slate-600 md:col-span-1 md:flex md:flex-col md:justify-center md:border-l md:border-t-0 md:bg-white md:px-4">
+        <p className="flex min-w-0 items-start gap-2">
+          <Clock3 size={15} className="mt-0.5 shrink-0 text-maroon-700" aria-hidden="true" />
+          <span className="break-words font-semibold">
+            {formatClock(appointment.startAt)} {" – "}{formatClock(appointment.endAt)}
+          </span>
+        </p>
+        <p className="mt-2 flex min-w-0 items-start gap-2">
+          <ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" aria-hidden="true" />
+          <span className="break-words">
+            {appointment.consultationMode || "Mode not provided"} · {destination}
+          </span>
+        </p>
+      </div>
+
+      <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
+        <StatusBadge status={appointment.status} compact />
+      </div>
+
+      <div className="col-span-2 border-t border-slate-200 p-3 md:col-span-4 md:px-4 min-[1200px]:col-span-1 min-[1200px]:flex min-[1200px]:items-center min-[1200px]:justify-center min-[1200px]:border-l min-[1200px]:border-t-0">
+        <div className="min-[1200px]:hidden">{renderActions(true)}</div>
+        <div className="hidden min-[1200px]:block">{renderActions(false)}</div>
+      </div>
+    </article>
+  );
+}
+
+function FacultyAppointmentActions({
+  appointment,
+  mobile,
+  onView,
+  updatingIds,
+  onApprove,
+  onReject,
+  onBeginReschedule,
+  onComplete,
+  onReviewReschedule,
+  onViewDocument,
+}) {
+  const buttonLayout = mobile
+    ? "flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap"
+    : "flex min-w-0 flex-wrap items-center justify-center gap-2";
+  const mobileButton = mobile ? "h-10 w-full sm:w-auto sm:flex-1" : "h-8";
+  return (
+    <div className={buttonLayout}>
+      <button type="button" onClick={() => onView(appointment)} className={`btn-action ${mobileButton}`}>
+        View Details
+      </button>
+      {appointment.status === "Pending" && (
+        <>
+          <button disabled={updatingIds.has(appointment._id)} onClick={() => onApprove(appointment)} className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}>
+            Approve
+          </button>
+          <button disabled={updatingIds.has(appointment._id)} onClick={() => onReject(appointment)} className={`rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}>
+            Reject
+          </button>
+          <button onClick={() => onBeginReschedule(appointment)} className={`btn-action ${mobileButton}`}>
+            Reschedule
+          </button>
+        </>
+      )}
+      {!appointment.rescheduleRequested && ["Approved", "Rescheduled"].includes(appointment.status) && (
+        <>
+          <button disabled={updatingIds.has(appointment._id)} onClick={() => onComplete(appointment)} className={`rounded-lg bg-maroon-800 px-4 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60 ${mobileButton}`}>
+            {updatingIds.has(appointment._id) ? "Completing..." : "Complete"}
+          </button>
+          {new Date(appointment.endAt) < new Date() && (
+            <button type="button" onClick={() => onBeginReschedule(appointment)} className={`btn-action ${mobileButton}`}>
+              Reschedule
+            </button>
+          )}
+        </>
+      )}
+      {appointment.rescheduleRequestStatus === "Pending" && (
+        <>
+          <button type="button" onClick={() => onReviewReschedule(appointment, "Approved")} className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white ${mobileButton}`}>
+            Approve Reschedule
+          </button>
+          <button type="button" onClick={() => onReviewReschedule(appointment, "Rejected")} className={`btn-danger-action ${mobileButton}`}>
+            Reject Reschedule
+          </button>
+        </>
+      )}
+      {appointment.supportingDocument?.name && (
+        <button type="button" onClick={() => onViewDocument(appointment)} className={`btn-action ${mobileButton}`}>
+          View Document
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Capacity({ label, value, wide = false }) {
   return (
     <div className={`min-w-0 ${wide ? "sm:col-span-2" : ""}`}>
@@ -1168,6 +1724,320 @@ const formatClock = (value) =>
     hour: "numeric",
     minute: "2-digit",
   });
+
+const CURRENT_APPOINTMENT_FILTERS = [
+  "All",
+  "Upcoming",
+  "Pending",
+  "Approved",
+  "Rescheduled",
+  "Needs Reschedule",
+];
+const CURRENT_APPOINTMENTS_PAGE_SIZE = 3;
+const PRIMARY_MOBILE_APPOINTMENT_FILTERS = [
+  "All",
+  "Upcoming",
+  "Pending",
+  "Approved",
+];
+const SECONDARY_MOBILE_APPOINTMENT_FILTERS = [
+  "Rescheduled",
+  "Needs Reschedule",
+];
+
+function StudentCurrentAppointments({
+  appointments,
+  currentPage,
+  onPageChange,
+  renderActions,
+}) {
+  const [activeFilter, setActiveFilter] = useState("All");
+  const [sortOrder, setSortOrder] = useState("newest");
+  const now = new Date();
+  const filtered = appointments.filter((appointment) => {
+    if (activeFilter === "All") return true;
+    if (activeFilter === "Upcoming") return new Date(appointment.startAt) > now;
+    return appointment.status === activeFilter;
+  });
+  const sorted = [...filtered].sort((left, right) => {
+    const difference = new Date(left.startAt) - new Date(right.startAt);
+    return sortOrder === "oldest" ? difference : -difference;
+  });
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sorted.length / CURRENT_APPOINTMENTS_PAGE_SIZE),
+  );
+  const safePage = Math.min(currentPage, totalPages);
+  const pageAppointments = sorted.slice(
+    (safePage - 1) * CURRENT_APPOINTMENTS_PAGE_SIZE,
+    safePage * CURRENT_APPOINTMENTS_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) onPageChange(totalPages);
+  }, [currentPage, onPageChange, totalPages]);
+
+  const changeFilter = (filter) => {
+    setActiveFilter(filter);
+    onPageChange(1);
+  };
+
+  return (
+    <section className="min-w-0 space-y-4 pb-16 md:pb-0">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div
+          className="hidden min-w-0 flex-wrap gap-x-1 gap-y-2 sm:flex"
+          role="group"
+          aria-label="Filter current appointments"
+        >
+          {CURRENT_APPOINTMENT_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => changeFilter(filter)}
+              aria-pressed={activeFilter === filter}
+              className={`min-h-9 rounded-lg px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 sm:text-sm ${
+                activeFilter === filter
+                  ? "bg-maroon-800 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-700 hover:border-maroon-200 hover:bg-maroon-50"
+              }`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+        <div
+          className="hidden min-w-0 grid-cols-5 gap-1 min-[480px]:grid sm:hidden"
+          role="group"
+          aria-label="Filter current appointments"
+        >
+          {PRIMARY_MOBILE_APPOINTMENT_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => changeFilter(filter)}
+              aria-pressed={activeFilter === filter}
+              className={`min-h-9 min-w-0 rounded-lg px-1 py-2 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs ${
+                activeFilter === filter
+                  ? "bg-maroon-800 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              {filter}
+            </button>
+          ))}
+          <details className="group relative min-w-0">
+            <summary
+              className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs [&::-webkit-details-marker]:hidden ${
+                SECONDARY_MOBILE_APPOINTMENT_FILTERS.includes(activeFilter)
+                  ? "border-maroon-800 bg-maroon-800 text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              More
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+              {SECONDARY_MOBILE_APPOINTMENT_FILTERS.map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => changeFilter(filter)}
+                  aria-pressed={activeFilter === filter}
+                  className={`w-full rounded-md px-3 py-2 text-left text-xs font-semibold ${
+                    activeFilter === filter
+                      ? "bg-maroon-800 text-white"
+                      : "text-slate-700 hover:bg-maroon-50"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+        <div
+          className="grid min-w-0 grid-cols-4 gap-1 min-[480px]:hidden"
+          role="group"
+          aria-label="Filter current appointments"
+        >
+          {PRIMARY_MOBILE_APPOINTMENT_FILTERS.slice(0, 3).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => changeFilter(filter)}
+              aria-pressed={activeFilter === filter}
+              className={`min-h-9 min-w-0 rounded-lg px-1 py-2 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs ${
+                activeFilter === filter
+                  ? "bg-maroon-800 text-white"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              {filter}
+            </button>
+          ))}
+          <details className="group relative min-w-0">
+            <summary
+              className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs [&::-webkit-details-marker]:hidden ${
+                ["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].includes(
+                  activeFilter,
+                )
+                  ? "border-maroon-800 bg-maroon-800 text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              More
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+              {["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].map(
+                (filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => changeFilter(filter)}
+                    aria-pressed={activeFilter === filter}
+                    className={`w-full rounded-md px-3 py-2 text-left text-xs font-semibold ${
+                      activeFilter === filter
+                        ? "bg-maroon-800 text-white"
+                        : "text-slate-700 hover:bg-maroon-50"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ),
+              )}
+            </div>
+          </details>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+          <ArrowUpDown size={15} aria-hidden="true" />
+          <span>Sort by</span>
+          <select
+            value={sortOrder}
+            onChange={(event) => {
+              setSortOrder(event.target.value);
+              onPageChange(1);
+            }}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+          >
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+          </select>
+        </label>
+      </div>
+
+      {sorted.length === 0 ? (
+        <EmptyState
+          title={
+            activeFilter === "All"
+              ? "No current appointments"
+              : `No ${activeFilter.toLowerCase()} appointments found.`
+          }
+          text={
+            activeFilter === "All"
+              ? "Your active consultation appointments will appear here."
+              : "Choose another filter to review your current appointments."
+          }
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="divide-y divide-slate-200">
+            {pageAppointments.map((appointment) => (
+              <StudentAppointmentCard
+                key={appointment._id}
+                appointment={appointment}
+                renderActions={renderActions}
+              />
+            ))}
+          </div>
+          <div className="sm:[&>div]:pr-16 md:[&>div]:pr-20">
+            <Pagination
+              currentPage={safePage}
+              totalItems={sorted.length}
+              onPageChange={onPageChange}
+              itemsPerPage={CURRENT_APPOINTMENTS_PAGE_SIZE}
+              itemLabel="appointments"
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StudentAppointmentCard({ appointment, renderActions }) {
+  const isFaceToFace = appointment.consultationMode === "Face-to-Face";
+  const ModeIcon = isFaceToFace ? MapPin : Monitor;
+  const consultationPlace = isFaceToFace
+    ? appointment.location || "Location to be confirmed"
+    : appointment.meetingPlatform || "Meeting platform to be confirmed";
+  const status = getAppointmentDisplayStatus(appointment);
+
+  return (
+    <article className="grid min-w-0 bg-white md:grid-cols-[minmax(0,1fr)_minmax(13rem,.8fr)_auto] min-[1200px]:grid-cols-[minmax(0,1.1fr)_minmax(14rem,.85fr)_minmax(8rem,.4fr)_minmax(13rem,.7fr)]">
+      <div className="min-w-0 p-3 sm:p-4 md:flex md:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <ProfileImagePreview
+            user={appointment.faculty}
+            className="h-9 w-9 shrink-0 rounded-full bg-maroon-800 text-xs font-bold text-white sm:h-10 sm:w-10"
+            buttonClassName="shrink-0 rounded-full"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-start justify-between gap-2 md:block">
+              <div className="min-w-0">
+                <h2 className="break-words text-sm font-bold leading-5 text-slate-900 sm:text-base">
+                  {appointment.subject || "Consultation"}
+                </h2>
+                <p className="mt-1 break-words text-xs text-slate-600 sm:text-sm">
+                  <span className="font-semibold">Faculty:</span>{" "}
+                  {formatPersonName(appointment.faculty?.name) || "Not provided"}
+                </p>
+              </div>
+              <span className="shrink-0 md:hidden">
+                <StatusBadge status={status} compact />
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <dl className="min-w-0 border-t border-slate-200 bg-slate-50/60 px-3 py-3 text-sm md:flex md:flex-col md:justify-center md:border-l md:border-t-0 md:bg-white md:px-4">
+        <div className="min-w-0">
+          <dt className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <Clock3 size={13} aria-hidden="true" /> Time
+          </dt>
+          <dd className="mt-1 break-words font-semibold text-slate-700">
+            {formatClock(appointment.startAt)} –{" "}
+            {formatClock(appointment.endAt)}
+          </dd>
+        </div>
+        <div className="mt-2 min-w-0">
+          <dt className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <ModeIcon size={13} aria-hidden="true" /> Mode
+          </dt>
+          <dd className="mt-1 break-words font-semibold text-slate-700">
+            {appointment.consultationMode || "Not provided"} ·{" "}
+            {consultationPlace}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
+        <div className="flex justify-center">
+          <StatusBadge status={status} compact />
+        </div>
+      </div>
+
+      <div className="min-w-0 border-t border-slate-200 p-3 md:col-span-3 md:px-4 min-[1200px]:col-span-1 min-[1200px]:flex min-[1200px]:items-center min-[1200px]:justify-center min-[1200px]:border-l min-[1200px]:border-t-0">
+        <div className="min-w-0 min-[1200px]:hidden">
+          {renderActions(appointment, true)}
+        </div>
+        <div className="hidden min-w-0 min-[1200px]:block">
+          {renderActions(appointment)}
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function ModalDetail({ label, value, wide = false }) {
   return (
@@ -1191,6 +2061,7 @@ function ConsultationHistoryTable({
   emptyTitle,
   itemLabel = "consultation records",
   renderActions,
+  showTime = false,
 }) {
   const totalPages = Math.max(
     1,
@@ -1200,10 +2071,6 @@ function ConsultationHistoryTable({
   const pageAppointments = appointments.slice(
     (safePage - 1) * HISTORY_ITEMS_PER_PAGE,
     safePage * HISTORY_ITEMS_PER_PAGE,
-  );
-  const emptyRows = Math.max(
-    0,
-    HISTORY_ITEMS_PER_PAGE - pageAppointments.length,
   );
   const personLabel = role === "faculty" ? "Student" : "Faculty";
   const personFor = (appointment) =>
@@ -1228,27 +2095,35 @@ function ConsultationHistoryTable({
 
   return (
     <>
-      <div className="responsive-table-shell hidden xl:block">
-        <table className="responsive-table text-xs 2xl:text-[13px]">
+      <div
+        className={
+          role === "student"
+            ? "consultation-history-table responsive-table-shell"
+            : "responsive-table-shell hidden min-[1440px]:block"
+        }
+      >
+        <table
+          className={`responsive-table text-xs 2xl:text-[13px] ${role === "student" ? "student-consultation-history-table" : ""}`}
+        >
           <thead className="h-11 bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
             <tr>
               <th
-                className={`${renderActions ? "w-[10%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[11%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Date
               </th>
               <th
-                className={`${renderActions ? "w-[13%]" : "w-[17%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[14%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Subject / Topic
               </th>
               <th
-                className={`${renderActions ? "w-[12%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[11%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 {personLabel}
               </th>
               <th
-                className={`${renderActions ? "w-[8%]" : "w-[12%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[12%]" : "w-[12%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Mode
               </th>
@@ -1258,12 +2133,12 @@ function ConsultationHistoryTable({
                 Duration
               </th>
               <th
-                className={`${renderActions ? "w-[18%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[19%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Status
               </th>
               <th
-                className={`${renderActions ? "w-[31%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
+                className={`${renderActions ? "w-[25%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Action
               </th>
@@ -1271,8 +2146,11 @@ function ConsultationHistoryTable({
           </thead>
           <tbody className="divide-y divide-slate-200">
             {appointments.length === 0 ? (
-              <tr className="h-[336px] bg-white">
-                <td colSpan={7} className="text-center text-sm text-slate-500">
+              <tr className="bg-white">
+                <td
+                  colSpan={7}
+                  className="px-4 py-10 text-center text-sm text-slate-500"
+                >
                   {emptyTitle}
                 </td>
               </tr>
@@ -1280,33 +2158,54 @@ function ConsultationHistoryTable({
               pageAppointments.map((appointment) => (
                 <tr
                   key={appointment._id}
-                  className="h-16 align-middle hover:bg-slate-50"
+                  className="align-middle hover:bg-slate-50"
                 >
                   <td className="px-2.5 py-2 whitespace-nowrap text-slate-600 2xl:px-3">
                     {date(appointment.startAt)}
+                    {showTime && (
+                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                        {formatClock(appointment.startAt)} –{" "}
+                        {formatClock(appointment.endAt)}
+                      </span>
+                    )}
                   </td>
                   <td className="min-w-0 px-2.5 py-2 2xl:px-3">
                     <p
-                      className="truncate font-semibold text-slate-900"
+                      className="min-w-0 break-words text-center font-medium leading-5 text-slate-900"
                       title={appointment.subject}
                     >
                       {appointment.subject || "Consultation"}
                     </p>
                   </td>
-                  <td
-                    className="truncate px-2.5 py-2 text-slate-700 2xl:px-3"
-                    title={formatPersonName(personFor(appointment)?.name)}
-                  >
+                  <td className="min-w-0 break-words px-2.5 py-2 leading-5 text-slate-700 2xl:px-3">
                     {formatPersonName(personFor(appointment)?.name) ||
                       "Not provided"}
                   </td>
-                  <td className="px-2.5 py-2 whitespace-nowrap text-slate-600 2xl:px-3">
-                    {appointment.consultationMode || "Not provided"}
+                  <td className="px-2.5 py-2 text-slate-600 2xl:px-3">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {role === "student" &&
+                        (appointment.consultationMode === "Face-to-Face" ? (
+                          <MapPin
+                            size={14}
+                            className="shrink-0 text-maroon-700"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Monitor
+                            size={14}
+                            className="shrink-0 text-maroon-700"
+                            aria-hidden="true"
+                          />
+                        ))}
+                      <span className="min-w-0 whitespace-nowrap">
+                        {appointment.consultationMode || "Not provided"}
+                      </span>
+                    </span>
                   </td>
                   <td className="px-2.5 py-2 whitespace-nowrap text-slate-600 2xl:px-3">
                     {duration(appointment)}
                   </td>
-                  <td className="px-2 py-2 2xl:px-3">
+                  <td className="whitespace-nowrap px-2 py-2 2xl:px-3">
                     <div className="flex items-center justify-center">
                       <StatusBadge
                         status={
@@ -1318,7 +2217,7 @@ function ConsultationHistoryTable({
                       />
                     </div>
                   </td>
-                  <td className="px-2 py-2 2xl:px-3">
+                  <td className="whitespace-nowrap px-2 py-2 2xl:px-3">
                     {renderActions ? (
                       renderActions(appointment)
                     ) : (
@@ -1334,21 +2233,13 @@ function ConsultationHistoryTable({
                 </tr>
               ))
             )}
-            {appointments.length > 0 &&
-              Array.from({ length: emptyRows }, (_, index) => (
-                <tr
-                  key={`empty-consultation-row-${index}`}
-                  aria-hidden="true"
-                  className="h-16 bg-white"
-                >
-                  <td colSpan={7} />
-                </tr>
-              ))}
           </tbody>
         </table>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4 xl:hidden">
+      <div
+        className={`min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4 ${role === "student" ? "consultation-history-cards" : "grid min-[1440px]:hidden"}`}
+      >
         {appointments.length === 0 ? (
           <EmptyState title={emptyTitle} />
         ) : (
@@ -1357,30 +2248,63 @@ function ConsultationHistoryTable({
               key={appointment._id}
               className="w-full min-w-0 max-w-none rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
             >
-              <div className="flex flex-col items-start gap-2 min-[480px]:flex-row min-[480px]:justify-between min-[480px]:gap-3">
+              <div className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-3">
+                <div className="grid h-16 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wide text-maroon-700">
+                    {new Date(appointment.startAt).toLocaleDateString(
+                      undefined,
+                      { month: "short" },
+                    )}
+                  </span>
+                  <span className="text-xl font-extrabold leading-5 text-maroon-900">
+                    {new Date(appointment.startAt).toLocaleDateString(
+                      undefined,
+                      { day: "numeric" },
+                    )}
+                  </span>
+                  <span className="text-[9px] font-semibold text-slate-500">
+                    {new Date(appointment.startAt).toLocaleDateString(
+                      undefined,
+                      { year: "numeric" },
+                    )}
+                  </span>
+                </div>
                 <div className="min-w-0">
-                  <p className="break-words font-bold text-slate-900">
-                    {appointment.subject || "Consultation"}
+                  <div className="flex min-w-0 flex-col items-start gap-2 min-[480px]:flex-row min-[480px]:justify-between">
+                    <p className="min-w-0 break-words font-bold text-slate-900">
+                      {appointment.subject || "Consultation"}
+                    </p>
+                    <StatusBadge
+                      status={
+                        role === "student"
+                          ? getAppointmentDisplayStatus(appointment)
+                          : appointment.status
+                      }
+                    />
+                  </div>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {personLabel}
                   </p>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 break-words text-sm text-slate-700">
                     {formatPersonName(personFor(appointment)?.name) ||
                       `${personLabel} not provided`}
                   </p>
                 </div>
-                <StatusBadge
-                  status={
-                    role === "student"
-                      ? getAppointmentDisplayStatus(appointment)
-                      : appointment.status
-                  }
-                />
               </div>
               <dl className="mt-4 grid grid-cols-1 gap-3 text-sm min-[380px]:grid-cols-2">
                 <div>
                   <dt className="text-xs font-semibold uppercase text-slate-500">
                     Date
                   </dt>
-                  <dd className="mt-1">{date(appointment.startAt)}</dd>
+                  <dd className="mt-1">
+                    {date(appointment.startAt)}
+                    {showTime && (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {formatClock(appointment.startAt)} –{" "}
+                        {formatClock(appointment.endAt)}
+                      </span>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs font-semibold uppercase text-slate-500">
@@ -1413,7 +2337,13 @@ function ConsultationHistoryTable({
         )}
       </div>
       {appointments.length > 0 && (
-        <div className="overflow-hidden rounded-b-2xl border border-t-0 border-slate-200">
+        <div
+          className={`overflow-hidden rounded-xl border border-slate-200 ${
+            role === "student"
+              ? "consultation-history-pagination"
+              : "min-[1440px]:rounded-t-none min-[1440px]:border-t-0"
+          }`}
+        >
           <Pagination
             currentPage={safePage}
             totalItems={appointments.length}

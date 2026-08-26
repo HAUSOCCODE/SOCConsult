@@ -6,6 +6,7 @@ import Task from "../models/Task.js";
 import Availability from "../models/Availability.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
+import { getDateRangeFilter } from "../services/aiReportingService.js";
 const router = Router();
 router.use(authenticate);
 router.get("/admin", authorize("admin"), async (_req, res) => {
@@ -70,6 +71,7 @@ router.get("/admin", authorize("admin"), async (_req, res) => {
 });
 router.get("/student", authorize("student"), async (req, res) => {
   const now = new Date();
+  const weekRange = getDateRangeFilter("this_week", now);
   const [
     upcoming,
     pending,
@@ -78,13 +80,18 @@ router.get("/student", authorize("student"), async (req, res) => {
     unread,
     recentNotifications,
     recentAppointments,
+    weeklyStatusCounts,
   ] = await Promise.all([
     Appointment.countDocuments({
       student: req.user.id,
       status: { $in: ["Approved", "Rescheduled"] },
-      startAt: { $gte: now },
+      endAt: { $gt: now },
     }),
-    Appointment.countDocuments({ student: req.user.id, status: "Pending" }),
+    Appointment.countDocuments({
+      student: req.user.id,
+      status: "Pending",
+      endAt: { $gt: now },
+    }),
     Appointment.countDocuments({ student: req.user.id, status: "Completed" }),
     Task.countDocuments({ student: req.user.id, status: "Pending" }),
     Notification.countDocuments({ recipient: req.user.id, isRead: false }),
@@ -95,7 +102,23 @@ router.get("/student", authorize("student"), async (req, res) => {
       .populate("faculty", "name")
       .sort({ createdAt: -1 })
       .limit(5),
+    Appointment.aggregate([
+      {
+        $match: {
+          student: req.user._id,
+          ...weekRange,
+          status: { $in: ["Completed", "Pending", "Cancelled", "No Show"] },
+        },
+      },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]),
   ]);
+  const weeklyOverview = Object.fromEntries(
+    ["Completed", "Pending", "Cancelled", "No Show"].map((status) => [
+      status,
+      weeklyStatusCounts.find((item) => item._id === status)?.count || 0,
+    ]),
+  );
   res.json({
     stats: {
       upcomingAppointments: upcoming,
@@ -106,6 +129,7 @@ router.get("/student", authorize("student"), async (req, res) => {
     },
     recentNotifications,
     recentAppointments,
+    weeklyOverview,
   });
 });
 router.get("/faculty", authorize("faculty"), async (req, res) => {

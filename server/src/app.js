@@ -10,6 +10,8 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
+import studentRoutes from "./routes/studentRoutes.js";
+import facultyRoutes from "./routes/facultyRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -28,6 +30,8 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/student", studentRoutes);
+app.use("/api/faculty", facultyRoutes);
 app.use(notFound);
 app.use(errorHandler);
 export default app;

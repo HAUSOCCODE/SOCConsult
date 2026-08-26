@@ -7,6 +7,16 @@ import {
   StatusBadge,
 } from "../../components/UI";
 import { useToast } from "../../context/ToastContext";
+import ConfirmDialog from "../../components/ConfirmDialog";
+import {
+  Clock3,
+  MapPin,
+  Monitor,
+  Pencil,
+  Power,
+  Trash2,
+  UsersRound,
+} from "lucide-react";
 
 const emptyForm = {
   date: "",
@@ -43,6 +53,21 @@ const localParts = (value) => {
 const toTimestamp = (date, time) =>
   new Date(`${date}T${time}:00`).toISOString();
 
+const formatLocation = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "Location not provided";
+  const normalized = text.replace(/\s+-\s+/g, " – ");
+  if (normalized !== normalized.toUpperCase()) return normalized;
+  return normalized
+    .split(/(\s+|–)/)
+    .map((part) => {
+      if (!/[A-Z]/.test(part) || part === "–") return part;
+      if (part.length <= 3) return part;
+      return `${part.charAt(0)}${part.slice(1).toLowerCase()}`;
+    })
+    .join("");
+};
+
 export default function ManageAvailability() {
   const toast = useToast();
   const showRequestError = (error, fallback) => {
@@ -57,6 +82,10 @@ export default function ManageAvailability() {
   const [formError, setFormError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [toggling, setToggling] = useState(false);
 
   const load = async () => {
     try {
@@ -182,7 +211,9 @@ export default function ManageAvailability() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const toggle = async (item) => {
+  const updateActiveState = async (item) => {
+    if (!item || toggling) return;
+    setToggling(true);
     try {
       const data = await api(`/availability/${item._id}`, {
         method: "PUT",
@@ -190,19 +221,35 @@ export default function ManageAvailability() {
       });
       toast.success(data.message);
       await load();
+      setDeactivateTarget(null);
     } catch (requestError) {
       showRequestError(requestError, "Unable to update availability.");
+    } finally {
+      setToggling(false);
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Remove this consultation availability?")) return;
+  const toggle = (item) => {
+    if (item.isActive) setDeactivateTarget(item);
+    else void updateActiveState(item);
+  };
+
+  const remove = async () => {
+    if (!removeTarget || removing) return;
+    setRemoving(true);
     try {
-      const data = await api(`/availability/${id}`, { method: "DELETE" });
-      toast.success(data.message);
+      const data = await api(`/availability/${removeTarget._id}`, {
+        method: "DELETE",
+      });
+      setRemoveTarget(null);
+      toast.success(
+        data.message || "Consultation availability removed successfully.",
+      );
       await load();
     } catch (requestError) {
       showRequestError(requestError, "Unable to remove availability.");
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -211,6 +258,29 @@ export default function ManageAvailability() {
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-6">
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        title="Remove Consultation Availability"
+        message="Are you sure you want to remove this consultation availability?"
+        supportingText="Students will no longer be able to book this availability."
+        confirmLabel="Remove"
+        loadingLabel="Removing..."
+        loading={removing}
+        onConfirm={remove}
+        onCancel={() => !removing && setRemoveTarget(null)}
+      />
+      <ConfirmDialog
+        open={Boolean(deactivateTarget)}
+        title="Deactivate Consultation Availability"
+        message="Are you sure you want to deactivate this consultation availability?"
+        supportingText="Students will no longer be able to book this availability while it is inactive."
+        confirmLabel="Deactivate"
+        loadingLabel="Deactivating..."
+        variant="default"
+        loading={toggling}
+        onConfirm={() => updateActiveState(deactivateTarget)}
+        onCancel={() => !toggling && setDeactivateTarget(null)}
+      />
       <section className="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 xl:p-6">
         <h1 className="text-xl font-bold text-maroon-900">
           Manage Consultation Availability
@@ -380,21 +450,25 @@ export default function ManageAvailability() {
       </section>
 
       <section>
-        <h2 className="mb-4 text-xl font-bold">Published Schedules</h2>
+        <h2 className="mb-4 text-xl font-bold text-slate-900">
+          Published Schedules
+        </h2>
         {availability.length === 0 ? (
           <EmptyState
-            title="No availability published"
-            text="Add your first consultation availability using the form above."
+            title="No consultation schedules published yet."
+            text="Create an availability schedule above to make consultation times available to Students."
           />
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
             {availability.map((item) => (
               <ScheduleCard
                 key={item._id}
                 item={item}
                 onEdit={edit}
                 onToggle={toggle}
-                onRemove={remove}
+                onRemove={(id) =>
+                  setRemoveTarget(availability.find((item) => item._id === id))
+                }
               />
             ))}
           </div>
@@ -418,41 +492,58 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
     : item.isActive
       ? "Active"
       : "Inactive";
+  const online = item.mode === "Online";
+  const detail = online
+    ? item.meetingPlatform || "Meeting platform not provided"
+    : formatLocation(item.location);
+  const ModeIcon = online ? Monitor : UsersRound;
   return (
-    <article className="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <p className="font-bold text-maroon-900">
-        {new Date(item.startAt).toLocaleDateString(undefined, dateOptions)}
-      </p>
-      <p className="mt-1 text-sm font-semibold text-slate-700">
-        Available Time:{" "}
-        {new Date(item.startAt).toLocaleTimeString([], timeOptions)} –{" "}
-        {new Date(item.endAt).toLocaleTimeString([], timeOptions)}
-      </p>
-      <p className="mt-3 text-sm text-slate-600">{item.mode || "Online"}</p>
-      <p className="mt-1 break-words text-sm text-slate-500">
-        {item.mode === "Online"
-          ? item.meetingPlatform || "Meeting platform not provided"
-          : item.location || "Location not provided"}
-      </p>
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs font-bold text-slate-500">Status:</span>
-        <StatusBadge status={statusLabel} />
+    <article className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors duration-150 hover:border-maroon-200">
+      <div className="p-4 sm:p-5">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <h3 className="min-w-0 break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
+            {new Date(item.startAt).toLocaleDateString(undefined, dateOptions)}
+          </h3>
+          <StatusBadge status={statusLabel} compact />
+        </div>
+
+        <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-[1.1fr_.85fr_1.5fr]">
+          <ScheduleDetail icon={Clock3} label="Time">
+            {new Date(item.startAt).toLocaleTimeString([], timeOptions)} –{" "}
+            {new Date(item.endAt).toLocaleTimeString([], timeOptions)}
+          </ScheduleDetail>
+          <ScheduleDetail icon={ModeIcon} label="Mode">
+            {item.mode || "Online"}
+          </ScheduleDetail>
+          <ScheduleDetail
+            icon={online ? Monitor : MapPin}
+            label={online ? "Platform" : "Location"}
+            className="sm:col-span-2 2xl:col-span-1"
+          >
+            {detail}
+          </ScheduleDetail>
+        </dl>
       </div>
-      <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+
+      <div
+        className="flex min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-3"
+      >
         {!expired && (
           <>
             <button
               type="button"
               onClick={() => onEdit(item)}
-              className="btn-action-sm"
+              className="btn-action-sm h-9 w-auto gap-1.5 px-3"
             >
+              <Pencil size={14} aria-hidden="true" />
               Edit
             </button>
             <button
               type="button"
               onClick={() => onToggle(item)}
-              className="btn-action-sm"
+              className={`inline-flex h-9 w-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-semibold transition-colors duration-150 focus-visible:ring-2 ${item.isActive ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-200" : "border-maroon-200 bg-white text-maroon-800 hover:bg-maroon-50 focus-visible:ring-maroon-100"}`}
             >
+              <Power size={14} aria-hidden="true" />
               {item.isActive ? "Deactivate" : "Activate"}
             </button>
           </>
@@ -460,12 +551,33 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
         <button
           type="button"
           onClick={() => onRemove(item._id)}
-          className="btn-danger-action-sm"
+          className="btn-danger-action-sm h-9 w-auto gap-1.5 px-3"
         >
+          <Trash2 size={14} aria-hidden="true" />
           Remove
         </button>
       </div>
     </article>
+  );
+}
+
+function ScheduleDetail({ icon: Icon, label, className = "", children }) {
+  return (
+    <div
+      className={`flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 ${className}`}
+    >
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-maroon-700 shadow-sm">
+        <Icon size={15} aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {label}
+        </dt>
+        <dd className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-700">
+          {children}
+        </dd>
+      </div>
+    </div>
   );
 }
 

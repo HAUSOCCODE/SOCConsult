@@ -9,21 +9,25 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 
-const SUGGESTIONS = [
+const ADMIN_SUGGESTIONS = [
   "How many students are registered?",
   "How many faculty are registered?",
   "Summarize this month's consultations.",
   "Show appointment status counts.",
 ];
 
-const WELCOME = {
-  role: "assistant",
-  content:
-    "Ask questions about SOCConsult users, faculty, appointments, consultations, and administrative statistics.",
-  welcome: true,
-};
-
-export default function SOCConsultAIAssistant() {
+export default function SOCConsultAIAssistant({
+  endpoint = "/admin/ai/chat",
+  title = "SOCConsult AI Assistant",
+  subtitle = "Administrative Reporting Assistant",
+  welcome = "Ask questions about SOCConsult users, faculty, appointments, consultations, and administrative statistics.",
+  suggestions = ADMIN_SUGGESTIONS,
+  placeholder = "Ask about SOCConsult statistics...",
+  disclaimer = "Read-only administrative reporting from current SOCConsult data.",
+  loadingLabel = "Analyzing SOCConsult data...",
+  launcherMonogram = "A",
+}) {
+  const WELCOME = { role: "assistant", content: welcome, welcome: true };
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([WELCOME]);
   const [draft, setDraft] = useState("");
@@ -97,7 +101,7 @@ export default function SOCConsultAIAssistant() {
     submittingRef.current = true;
     setLoading(true);
     try {
-      const data = await api("/admin/ai/chat", {
+      const data = await api(endpoint, {
         method: "POST",
         body: JSON.stringify({ message: content, history }),
       });
@@ -137,14 +141,14 @@ export default function SOCConsultAIAssistant() {
       {open && (
         <section
           role="dialog"
-          aria-label="SOCConsult AI Assistant"
+          aria-label={title}
           className="fixed inset-0 z-[100] flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-white md:inset-auto md:bottom-[calc(6rem+env(safe-area-inset-bottom))] md:right-6 md:h-[min(560px,calc(100dvh-7.5rem))] md:w-[380px] md:rounded-2xl md:border md:border-gold-300 md:shadow-2xl"
         >
           <header className="flex shrink-0 items-center gap-2 border-b border-maroon-700 bg-maroon-800 px-3 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] text-white md:gap-3 md:px-4 md:py-3">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close SOCConsult AI Assistant"
+              aria-label={`Close ${title}`}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-gold-100 transition hover:bg-maroon-700 hover:text-white focus-visible:ring-2 focus-visible:ring-gold-300 md:hidden"
             >
               <ArrowLeft size={21} />
@@ -154,10 +158,10 @@ export default function SOCConsultAIAssistant() {
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-sm font-bold">
-                SOCConsult AI Assistant
+                {title}
               </h2>
               <p className="truncate text-[11px] font-medium text-gold-100">
-                Administrative Reporting Assistant
+                {subtitle}
               </p>
             </div>
             <button
@@ -172,7 +176,7 @@ export default function SOCConsultAIAssistant() {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close SOCConsult AI Assistant"
+              aria-label={`Close ${title}`}
               className="hidden h-9 w-9 shrink-0 place-items-center rounded-lg text-gold-100 transition hover:bg-maroon-700 hover:text-white focus-visible:ring-2 focus-visible:ring-gold-300 md:grid"
             >
               <X size={19} />
@@ -197,14 +201,14 @@ export default function SOCConsultAIAssistant() {
                   {item.welcome && (
                     <div className="mb-2 flex items-center gap-2 font-bold text-maroon-900">
                       <Sparkles size={16} className="text-gold-600" />
-                      SOCConsult AI Assistant
+                      {title}
                     </div>
                   )}
                   {item.content}
                 </div>
                 {item.welcome && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {SUGGESTIONS.map((suggestion) => (
+                    {suggestions.map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
@@ -222,7 +226,7 @@ export default function SOCConsultAIAssistant() {
             {loading && (
               <div className="mr-auto flex max-w-[88%] items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-600 shadow-sm">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-gold-500" />
-                Analyzing SOCConsult data...
+                {loadingLabel}
               </div>
             )}
             <div ref={endRef} />
@@ -240,8 +244,8 @@ export default function SOCConsultAIAssistant() {
                 disabled={loading || cooldown > 0}
                 rows={2}
                 maxLength={2000}
-                placeholder="Ask about SOCConsult statistics..."
-                aria-label="Ask about SOCConsult statistics"
+                placeholder={placeholder}
+                aria-label={placeholder}
                 className="min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm leading-5 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 disabled:bg-slate-100"
               />
               <button
@@ -261,7 +265,7 @@ export default function SOCConsultAIAssistant() {
               </p>
             )}
             <p className="mt-2 text-center text-[10px] leading-4 text-slate-500">
-              Read-only administrative reporting from current SOCConsult data.
+              {disclaimer}
             </p>
           </div>
         </section>
@@ -269,29 +273,45 @@ export default function SOCConsultAIAssistant() {
 
       <div className={`group relative ${open ? "hidden md:block" : "block"}`}>
         <span className="pointer-events-none absolute bottom-full right-0 mb-2 hidden whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:block">
-          SOCConsult AI Assistant
+          {title}
         </span>
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Open SOCConsult AI Assistant"
+          aria-label={`Open ${title}`}
+          title={title}
           aria-expanded={open}
           className="grid h-10 w-9 place-items-center rounded-l-xl border border-r-0 border-gold-400/90 bg-maroon-800 text-white shadow-[-3px_3px_10px_rgba(45,15,20,0.2)] transition hover:w-10 hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2 md:hidden"
         >
-          <Bot size={18} aria-hidden="true" />
+          <span
+            aria-hidden="true"
+            className="text-base font-bold leading-none"
+          >
+            {launcherMonogram}
+          </span>
         </button>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-label={
             open
-              ? "Close SOCConsult AI Assistant"
-              : "Open SOCConsult AI Assistant"
+              ? `Close ${title}`
+              : `Open ${title}`
           }
+          title={title}
           aria-expanded={open}
           className="hidden h-14 w-14 place-items-center rounded-full border-2 border-gold-400 bg-maroon-800 text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-maroon-900 hover:shadow-xl focus-visible:ring-4 focus-visible:ring-gold-200 md:grid"
         >
-          {open ? <X size={22} /> : <Bot size={24} />}
+          {open ? (
+            <X size={22} aria-hidden="true" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="text-base font-bold leading-none"
+            >
+              {launcherMonogram}
+            </span>
+          )}
         </button>
       </div>
     </div>

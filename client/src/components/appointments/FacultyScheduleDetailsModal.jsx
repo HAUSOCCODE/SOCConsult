@@ -5,6 +5,7 @@ import { EmptyState, StatusBadge } from "../UI";
 import FacultyAppointmentDetailsModal from "./FacultyAppointmentDetailsModal";
 import ProfileImagePreview from "../profile/ProfileImagePreview";
 import { formatPersonName } from "../../utils/formatPersonName";
+import ConfirmDialog from "../ConfirmDialog";
 
 const date = (value) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -32,11 +33,18 @@ export default function FacultyScheduleDetailsModal({
   const [appointmentDetails, setAppointmentDetails] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectNote, setRejectNote] = useState("");
 
   useEffect(() => {
     const previous = document.body.style.overflow;
     const closeOnEscape = (event) => {
-      if (event.key === "Escape" && !appointmentDetails && !rescheduleTarget)
+      if (
+        event.key === "Escape" &&
+        !appointmentDetails &&
+        !rescheduleTarget &&
+        !rejectTarget
+      )
         onClose();
     };
     document.body.style.overflow = "hidden";
@@ -45,7 +53,7 @@ export default function FacultyScheduleDetailsModal({
       document.body.style.overflow = previous;
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [appointmentDetails, onClose, rescheduleTarget]);
+  }, [appointmentDetails, onClose, rejectTarget, rescheduleTarget]);
 
   const schedule = details?.schedule;
   const pending = details?.pendingRequests || [];
@@ -63,6 +71,35 @@ export default function FacultyScheduleDetailsModal({
         onMouseDown={(event) => event.stopPropagation()}
         className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
+        <ConfirmDialog
+          open={Boolean(rejectTarget)}
+          title="Reject Appointment Request"
+          message="Are you sure you want to reject this appointment request?"
+          supportingText="You may include an optional reason for the Student."
+          confirmLabel="Reject"
+          loadingLabel="Rejecting..."
+          loading={submitting}
+          inputLabel="Rejection reason (optional)"
+          inputValue={rejectNote}
+          onInputChange={setRejectNote}
+          inputPlaceholder="Enter an optional reason"
+          onCancel={() => {
+            if (submitting) return;
+            setRejectTarget(null);
+            setRejectNote("");
+          }}
+          onConfirm={async () => {
+            if (!rejectTarget || submitting) return;
+            setSubmitting(true);
+            try {
+              await onReject(rejectTarget, rejectNote.trim());
+              setRejectTarget(null);
+              setRejectNote("");
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        />
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <div>
             <h2
@@ -200,13 +237,9 @@ export default function FacultyScheduleDetailsModal({
                           <button
                             type="button"
                             disabled={submitting}
-                            onClick={async () => {
-                              const note =
-                                window.prompt("Optional rejection reason:") ||
-                                "";
-                              setSubmitting(true);
-                              await onReject(appointment, note);
-                              setSubmitting(false);
+                            onClick={() => {
+                              setRejectTarget(appointment);
+                              setRejectNote("");
                             }}
                             className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
                           >

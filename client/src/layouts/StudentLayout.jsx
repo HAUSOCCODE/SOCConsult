@@ -7,6 +7,7 @@ import {
   UserRound,
 } from "lucide-react";
 import RoleLayout from "../components/RoleLayout";
+import SOCConsultStudentAIAssistant from "../components/student/SOCConsultStudentAIAssistant";
 const navigation = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/student/dashboard" },
   { icon: CalendarDays, label: "Book Consultation", path: "/student/book" },
@@ -21,5 +22,5 @@ const navigation = [
   { icon: LockKeyhole, label: "Security Settings", path: "/student/security" },
 ];
 export default function StudentLayout() {
-  return <RoleLayout role="student" navigation={navigation} />;
+  return <><RoleLayout role="student" navigation={navigation} /><SOCConsultStudentAIAssistant /></>;
 }

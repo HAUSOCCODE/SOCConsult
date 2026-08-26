@@ -111,7 +111,6 @@ export default function UserManagement({ initialTab = "All Users" }) {
     (validPage - 1) * USERS_PER_PAGE,
     validPage * USERS_PER_PAGE,
   );
-  const blankRows = USERS_PER_PAGE - pageUsers.length;
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -232,7 +231,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
                 {pageUsers.map((user) => (
                   <tr
                     key={user._id}
-                    className="h-[60px] border-t border-slate-200 align-middle transition-colors hover:bg-slate-50"
+                    className="border-t border-slate-200 align-middle transition-colors hover:bg-slate-50"
                   >
                     <td className="min-w-0 px-2.5 py-2 2xl:px-3">
                       <p
@@ -277,15 +276,6 @@ export default function UserManagement({ initialTab = "All Users" }) {
                         compact
                       />
                     </td>
-                  </tr>
-                ))}
-                {Array.from({ length: blankRows }, (_, index) => (
-                  <tr
-                    key={`placeholder-${index}`}
-                    aria-hidden="true"
-                    className="h-[60px] border-t border-slate-200 bg-white"
-                  >
-                    <td colSpan={7} />
                   </tr>
                 ))}
               </tbody>

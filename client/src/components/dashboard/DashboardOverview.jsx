@@ -77,9 +77,6 @@ export default function DashboardOverview({
         summaryPage * summaryPageSize,
       )
     : recent;
-  const summaryBlankRows = summaryPageSize
-    ? Math.max(0, summaryPageSize - summaryItems.length)
-    : 0;
   return (
     <div className="w-full min-w-0 space-y-7">
       <section className="w-full min-w-0 rounded-2xl bg-[#72182A] p-5 text-white shadow-sm sm:p-8">
@@ -176,13 +173,6 @@ export default function DashboardOverview({
                   }
                 />
               </div>
-            ))}
-            {Array.from({ length: summaryBlankRows }, (_, index) => (
-              <div
-                key={`summary-placeholder-${index}`}
-                aria-hidden="true"
-                className="min-h-16 rounded-xl border border-slate-200 bg-white"
-              />
             ))}
             {summaryPageSize && recent.length > summaryPageSize && (
               <div className="overflow-hidden rounded-xl border border-slate-200">

@@ -298,10 +298,16 @@ export default function SOCConsultPublicAIGuide() {
           type="button"
           onClick={toggle}
           aria-label="Open SOCConsult AI Guide"
+          title="SOCConsult AI Guide"
           aria-expanded={open}
-          className="grid h-10 w-9 shrink-0 place-items-center rounded-l-xl border border-r-0 border-gold-400/90 bg-maroon-800 text-white shadow-[-3px_3px_10px_rgba(45,15,20,0.2)] transition hover:w-10 hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2 md:hidden"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-gold-400/90 bg-maroon-800 text-white shadow-md transition-colors duration-150 hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2 md:hidden"
         >
-          <Sparkles size={17} aria-hidden="true" />
+          <span
+            aria-hidden="true"
+            className="text-sm font-bold tracking-wide"
+          >
+            SC
+          </span>
         </button>
         <button
           type="button"
@@ -309,10 +315,20 @@ export default function SOCConsultPublicAIGuide() {
           aria-label={
             open ? "Close SOCConsult AI Guide" : "Open SOCConsult AI Guide"
           }
+          title="SOCConsult AI Guide"
           aria-expanded={open}
-          className="hidden h-14 w-14 shrink-0 place-items-center rounded-full border-2 border-gold-400 bg-maroon-800 text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-maroon-900 hover:shadow-xl focus-visible:ring-4 focus-visible:ring-gold-200 md:grid"
+          className="hidden h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-gold-400 bg-maroon-800 text-white shadow-md transition-colors duration-150 hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2 md:grid"
         >
-          {open ? <X size={22} /> : <Sparkles size={23} />}
+          {open ? (
+            <X size={20} aria-hidden="true" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="text-sm font-bold tracking-wide"
+            >
+              SC
+            </span>
+          )}
         </button>
       </div>
     </div>

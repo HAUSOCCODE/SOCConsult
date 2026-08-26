@@ -1,4 +1,13 @@
-import { CheckCircle2, FileText, Search, Trash2, X } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  FileText,
+  Info,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
@@ -269,41 +278,87 @@ export default function BookPage() {
       )
     : 0;
   return (
-    <div className="space-y-7">
-      <div>
-        <h1 className="text-2xl font-bold text-maroon-900">
-          {reschedule ? "Choose a New Schedule" : "Book Consultation"}
-        </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          {reschedule
-            ? "Select a new schedule for your existing consultation."
-            : "Select a faculty member to view their consultation availability."}
-        </p>
-        {reschedule && (
-          <button
-            type="button"
-            onClick={() => navigate("/student/appointments")}
-            className="mt-3 text-sm font-bold text-maroon-800 hover:underline"
-          >
-            Back to My Appointments
-          </button>
-        )}
-      </div>
-      <label className="relative block w-full min-w-0 max-w-xl">
-        <Search className="absolute left-4 top-3.5 text-slate-400" size={19} />
+    <div className="w-full min-w-0 max-w-full space-y-5 sm:space-y-6">
+      <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
+        <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 lg:block" />
+        <div className="relative flex min-w-0 items-center justify-between gap-6">
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
+              Student Consultation
+            </p>
+            <h1 className="mt-1.5 break-words text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">
+              {reschedule ? "Choose a New Schedule" : "Book a Consultation"}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
+              {reschedule
+                ? "Select a new schedule for your existing consultation."
+                : "Find and connect with a Faculty Member for guidance and support."}
+            </p>
+            {reschedule && (
+              <button
+                type="button"
+                onClick={() => navigate("/student/appointments")}
+                className="mt-3 text-sm font-bold text-maroon-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300"
+              >
+                Back to My Appointments
+              </button>
+            )}
+          </div>
+          <span className="hidden h-14 w-14 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 lg:grid">
+            <CalendarDays size={26} aria-hidden="true" />
+          </span>
+        </div>
+      </section>
+
+      <label className="relative block w-full min-w-0 max-w-full">
+        <span className="sr-only">
+          Search faculty name, position, or specialization
+        </span>
+        <Search
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+          size={19}
+          aria-hidden="true"
+        />
         <input
-          className="field pl-11"
+          className="field h-12 pl-11"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search faculty name, position, or specialization"
+          placeholder="Search faculty name, position, or specialization..."
         />
       </label>
+
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Available Faculty
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Select a Faculty Member to review published schedules.
+          </p>
+        </div>
+        {faculty !== null && (
+          <p className="text-xs font-semibold text-slate-500">
+            {visibleFaculty.length} {visibleFaculty.length === 1 ? "Faculty Member" : "Faculty Members"}
+          </p>
+        )}
+      </div>
       {faculty === null ? (
-        <p className="py-12 text-center font-semibold text-maroon-800">
+        <p className="rounded-2xl border border-slate-200 bg-white py-12 text-center font-semibold text-maroon-800 shadow-sm">
           Loading faculty members...
         </p>
       ) : visibleFaculty.length === 0 ? (
-        <EmptyState title="No approved faculty members are currently available." />
+        <EmptyState
+          title={
+            search.trim()
+              ? "No Faculty Members found"
+              : "No approved Faculty Members are currently available."
+          }
+          text={
+            search.trim()
+              ? "Try another Faculty name, position, or specialization."
+              : "Approved Faculty Members will appear here when available."
+          }
+        />
       ) : (
         <div className="space-y-3">
           {visibleFaculty.map((member) => (
@@ -319,61 +374,82 @@ export default function BookPage() {
                   void viewAvailability(member);
                 }
               }}
-              className={`w-full min-w-0 cursor-pointer rounded-2xl border p-4 shadow-sm transition hover:border-maroon-300 hover:bg-maroon-50/30 focus:outline-none focus:ring-2 focus:ring-maroon-400 sm:flex sm:items-center sm:gap-4 ${selected?._id === member._id ? "border-maroon-500 bg-maroon-50/60" : "border-slate-200 bg-white"}`}
+              className={`w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border shadow-sm transition-colors duration-150 hover:border-maroon-300 focus:outline-none focus:ring-2 focus:ring-maroon-400 ${selected?._id === member._id ? "border-maroon-500 bg-maroon-50/60" : "border-slate-200 bg-white"}`}
             >
-              <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
-                <span
-                  className="shrink-0"
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                >
-                  <ProfileImagePreview
-                    user={member}
-                    className="h-12 w-12 rounded-full bg-maroon-800 text-lg font-bold text-white sm:h-14 sm:w-14"
-                    buttonClassName="rounded-full"
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="break-words font-bold text-slate-900">
-                      {formatPersonName(member.name)}
-                    </h2>
-                    {selected?._id === member._id && (
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-maroon-800">
-                        <CheckCircle2 size={15} /> Selected
-                      </span>
+              <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_13.5rem] md:items-stretch">
+                <div className="flex min-w-0 items-start gap-3 p-4 sm:gap-4 sm:p-5">
+                  <span
+                    className="shrink-0"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <ProfileImagePreview
+                      user={member}
+                      className="h-14 w-14 rounded-full bg-maroon-800 text-lg font-bold text-white sm:h-16 sm:w-16"
+                      buttonClassName="rounded-full"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 break-words text-base font-bold text-slate-900 sm:text-lg">
+                        {formatPersonName(member.name)}
+                      </h3>
+                      {selected?._id === member._id && (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-maroon-800">
+                          <CheckCircle2 size={14} aria-hidden="true" /> Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 break-words text-sm font-medium text-slate-600">
+                      {member.position || "Position not provided"}
+                    </p>
+                    {member.specialization && (
+                      <div className="mt-3 min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Specialization
+                        </p>
+                        <span className="mt-1.5 inline-flex max-w-full whitespace-normal break-words rounded-lg border border-maroon-100 bg-maroon-50 px-2.5 py-1 text-xs font-semibold leading-4 text-maroon-800">
+                          {member.specialization}
+                        </span>
+                      </div>
                     )}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    {member.position || "Position not provided"}
-                  </p>
-                  {member.specialization && (
-                    <p className="mt-1 break-words text-sm text-slate-600">
-                      {member.specialization}
-                    </p>
-                  )}
                 </div>
-              </div>
-              <div className="mt-3 flex min-w-0 items-center justify-between gap-3 sm:mt-0 sm:shrink-0 sm:justify-end">
-                <p className="text-sm font-semibold text-maroon-800">
-                  {member.availableScheduleCount || 0} available{" "}
-                  {(member.availableScheduleCount || 0) === 1
-                    ? "schedule"
-                    : "schedules"}
-                </p>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void viewAvailability(member);
-                  }}
-                  className="btn-secondary shrink-0 py-2"
-                >
-                  View Schedule
-                </button>
+                <div className="flex min-w-0 flex-col justify-center border-t border-slate-200 bg-slate-50/70 p-4 md:border-l md:border-t-0 md:p-5">
+                  <p className="text-center text-2xl font-extrabold leading-none text-maroon-900">
+                    {member.availableScheduleCount || 0}
+                  </p>
+                  <p className="mt-1 text-center text-xs font-semibold text-slate-600">
+                    available{" "}
+                    {(member.availableScheduleCount || 0) === 1
+                      ? "schedule"
+                      : "schedules"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void viewAvailability(member);
+                    }}
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-maroon-800 px-3 text-sm font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2"
+                  >
+                    View Schedule
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             </article>
           ))}
+          <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+            <Info
+              size={16}
+              className="mt-0.5 shrink-0 text-maroon-700"
+              aria-hidden="true"
+            />
+            <p className="min-w-0 break-words">
+              Can&apos;t find the right Faculty Member? Try adjusting your search.
+            </p>
+          </div>
         </div>
       )}
       {selected &&

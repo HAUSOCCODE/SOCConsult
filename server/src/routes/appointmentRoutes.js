@@ -7,6 +7,7 @@ import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import SupportingDocument from "../models/SupportingDocument.js";
 import { authenticate, authorize } from "../middleware/auth.js";
+import { classifyStudentAppointments } from "../services/appointmentClassificationService.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
 import { logActivity, notify } from "../services/activityService.js";
 import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
@@ -144,8 +145,13 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
     }
     return appointment;
   });
+  const studentViews =
+    req.user.role === "student"
+      ? classifyStudentAppointments(safeAppointments, new Date())
+      : null;
   res.json({
     appointments: safeAppointments,
+    ...(studentViews && { studentViews }),
     ...(req.user.role === "faculty" && {
       availabilityCapacity: await capacitySummary(req.user.id),
     }),

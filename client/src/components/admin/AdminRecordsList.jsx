@@ -62,7 +62,6 @@ export default function AdminRecordsList({ title }) {
     (validPage - 1) * APPOINTMENTS_PER_PAGE,
     validPage * APPOINTMENTS_PER_PAGE,
   );
-  const blankRows = APPOINTMENTS_PER_PAGE - pageAppointments.length;
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -187,7 +186,7 @@ export default function AdminRecordsList({ title }) {
                 {pageAppointments.map((appointment) => (
                   <tr
                     key={appointment._id}
-                    className="h-16 border-t border-slate-200 bg-white align-middle transition-colors hover:bg-slate-50"
+                    className="border-t border-slate-200 bg-white align-middle transition-colors hover:bg-slate-50"
                   >
                     <td className="px-2.5 py-2 text-[11px] whitespace-nowrap 2xl:px-3 2xl:text-xs">
                       {dateLabel(appointment.startAt)}
@@ -244,15 +243,6 @@ export default function AdminRecordsList({ title }) {
                         View
                       </button>
                     </td>
-                  </tr>
-                ))}
-                {Array.from({ length: blankRows }, (_, index) => (
-                  <tr
-                    key={`placeholder-${index}`}
-                    aria-hidden="true"
-                    className="h-16 border-t border-slate-200 bg-white"
-                  >
-                    <td colSpan={9} />
                   </tr>
                 ))}
               </tbody>

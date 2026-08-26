@@ -3,6 +3,11 @@ import { api } from "../../api/apiClient";
 import { EmptyState } from "../../components/UI";
 import FacultyScheduleDetailsModal from "../../components/appointments/FacultyScheduleDetailsModal";
 import { useToast } from "../../context/ToastContext";
+import {
+  CalendarDays,
+  ChevronRight,
+  Clock3,
+} from "lucide-react";
 
 const date = (value) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -204,29 +209,34 @@ export default function AppointmentRequests() {
           text="Upcoming schedules created in Manage Availability will appear here."
         />
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
           {schedules.map((schedule) => (
             <article
               key={schedule._id}
-              role="button"
-              tabIndex={0}
-              aria-label={`View requests for ${date(schedule.startAt)}`}
               onClick={() => openSchedule(schedule)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  openSchedule(schedule);
-                }
-              }}
-              className="flex w-full min-w-0 cursor-pointer flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-maroon-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-maroon-400"
+              className="w-full min-w-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-colors duration-150 hover:border-maroon-300"
             >
-              <p className="font-bold text-maroon-900">
-                {date(schedule.startAt)}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-700">
+              <header className="flex min-w-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-maroon-50 text-maroon-800">
+                    <CalendarDays size={16} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
+                      {date(schedule.startAt)}
+                    </h2>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">
+                      Published consultation schedule
+                    </p>
+                  </div>
+                </div>
+              <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                <Clock3 size={15} className="text-maroon-700" aria-hidden="true" />
                 {time(schedule.startAt)} – {time(schedule.endAt)}
               </p>
-              <dl className="mt-5 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center text-sm">
+              </header>
+              <div className="space-y-4 p-4 sm:p-5">
+              <dl className="grid min-w-0 grid-cols-3 gap-2.5">
                 <Count
                   label="Pending"
                   value={schedule.pendingCount || 0}
@@ -243,36 +253,39 @@ export default function AppointmentRequests() {
                   color="text-red-700"
                 />
               </dl>
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 2xl:grid-cols-4">
                 <Metric
                   label="Capacity"
                   value={`${schedule.capacityMinutes || 0} min`}
                 />
                 <Metric
-                  label="Pending Estimated"
+                  label="Pending Time"
                   value={`${schedule.pendingEstimatedMinutes || 0} min`}
                 />
                 <Metric
-                  label="Approved Estimated"
+                  label="Approved Time"
                   value={`${schedule.approvedEstimatedMinutes || 0} min`}
                 />
                 <Metric
-                  label="Total Estimated"
+                  label="Total Time"
                   value={`${schedule.totalEstimatedMinutes || 0} min`}
                 />
               </dl>
-              <div className="mt-auto flex justify-center pt-5">
+              </div>
+              <footer className="flex w-full items-center justify-center border-t border-slate-200 bg-slate-50/70 p-3">
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     openSchedule(schedule);
                   }}
-                  className="inline-flex h-10 w-full items-center justify-center whitespace-nowrap rounded-xl bg-maroon-800 px-5 text-sm font-semibold text-white transition hover:bg-maroon-700 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-auto sm:min-w-[8.5rem]"
+                  aria-label={`View appointment requests for ${date(schedule.startAt)}`}
+                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-maroon-800 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-maroon-900 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-auto"
                 >
                   View Requests
+                  <ChevronRight size={16} aria-hidden="true" />
                 </button>
-              </div>
+              </footer>
             </article>
           ))}
         </div>
@@ -297,21 +310,29 @@ export default function AppointmentRequests() {
   );
 }
 
-function Metric({ label, value, wide = false }) {
+function Metric({ label, value }) {
   return (
-    <div className={wide ? "col-span-2" : ""}>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="min-w-0 bg-slate-50 px-3 py-2.5">
+      <dt
+        className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500"
+        title={label}
+      >
         {label}
       </dt>
-      <dd className="mt-1 font-bold text-slate-900">{value}</dd>
+      <dd className="mt-1 text-sm font-bold text-slate-900">{value}</dd>
     </div>
   );
 }
 
 function Count({ label, value, color }) {
   return (
-    <div className="min-w-0">
-      <dt className="break-words text-[0.68rem] font-bold uppercase tracking-wide text-slate-500">
+    <div
+      className={`min-w-0 rounded-xl border px-2.5 py-2.5 sm:px-3 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
+    >
+      <dt
+        className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-600"
+        title={label}
+      >
         {label}
       </dt>
       <dd className={`mt-1 text-xl font-extrabold ${color}`}>{value}</dd>

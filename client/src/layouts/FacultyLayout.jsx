@@ -9,6 +9,7 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import RoleLayout from "../components/RoleLayout";
+import SOCConsultFacultyAIAssistant from "../components/faculty/SOCConsultFacultyAIAssistant";
 const navigation = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/faculty/dashboard" },
   {
@@ -32,5 +33,5 @@ const navigation = [
   { icon: LockKeyhole, label: "Security Settings", path: "/faculty/security" },
 ];
 export default function FacultyLayout() {
-  return <RoleLayout role="faculty" navigation={navigation} />;
+  return <><RoleLayout role="faculty" navigation={navigation} /><SOCConsultFacultyAIAssistant /></>;
 }
