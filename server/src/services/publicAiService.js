@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { getGroqModel } from "./groqModel.js";
 
 export const PUBLIC_GUIDE_SYSTEM_PROMPT = `You are SOCConsult AI Guide, the public website assistant for SOCConsult, a web-based Faculty-Student Consultation and Appointment Scheduling System for the School of Computing of Holy Angel University.
 
@@ -50,7 +51,7 @@ export async function answerPublicQuestion({ message, history = [] }) {
     maxRetries: 1,
   });
   const completion = await groq.chat.completions.create({
-    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    model: getGroqModel(),
     messages: [
       { role: "system", content: PUBLIC_GUIDE_SYSTEM_PROMPT },
       ...history,

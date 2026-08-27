@@ -1,5 +1,6 @@
 import Groq from "groq-sdk";
 import { facultyAiTools, studentAiTools } from "./roleAiDataService.js";
+import { getGroqModel } from "./groqModel.js";
 
 const tool = (name, description) => ({ type: "function", function: { name, description, parameters: { type: "object", properties: {}, additionalProperties: false } } });
 const DEFINITIONS = {
@@ -31,12 +32,13 @@ const STUDENT_GUIDANCE = [
   [/book|choose.*faculty|faculty schedule/i, "1. Open Book Consultation.\n2. Choose an approved Faculty Member and click View Schedule.\n3. Select an available schedule.\n4. Enter the requested consultation details, including Subject / Topic, Estimated Consultation Time, and Reason for Consultation.\n5. Add supporting documents if needed.\n6. Review the information and click Submit Consultation Request.\n7. Monitor the request in My Appointments."],
   [/upload|supporting document/i, "1. Open Book Consultation and select a Faculty Member's available schedule.\n2. In the Book Consultation form, use the supporting-documents field to add the permitted files.\n3. Finish the required consultation details.\n4. Click Submit Consultation Request. Supporting documents can also be reviewed from appointment details after submission."],
   [/cancel/i, "I can't change appointments. To cancel an eligible appointment: 1. Open My Appointments.\n2. Open the appointment details.\n3. Select Cancel Appointment.\n4. Confirm the cancellation."],
-  [/reschedul/i, "I can't change appointments. To select a new schedule when an appointment is marked Needs Reschedule: 1. Open My Appointments.\n2. Open the affected appointment and choose the reschedule action.\n3. Select a new available Faculty schedule.\n4. Review it and click Submit New Schedule. For an approved consultation, use Request Reschedule when that action is available."],
   [/(what does|what (do|is)|where.*status).*(pending|approved|needs reschedule|status)|(pending|approved|needs reschedule).*(mean|status)/i, "Open My Appointments to view each request status. Pending means the Faculty Member has not decided yet. Approved means the consultation is accepted for its scheduled time. Needs Reschedule means you must choose a new available schedule. Rescheduled means the replacement schedule has been accepted."],
+  [/reschedul/i, "I can't change appointments. To select a new schedule when an appointment is marked Needs Reschedule: 1. Open My Appointments.\n2. Open the affected appointment and choose the reschedule action.\n3. Select a new available Faculty schedule.\n4. Review it and click Submit New Schedule. For an approved consultation, use Request Reschedule when that action is available."],
   [/(where|how).*(consultation history|past consultation)/i, "1. Open Consultation History from the Student navigation.\n2. Review your past consultation records.\n3. Open a record's details when more information is available."],
   [/(what (is|are)|how.*(view|complete)).*action item/i, "Action Items are Faculty-assigned follow-up tasks. Your current assigned items appear on the Student Dashboard. Completing one changes data, so I can summarize your items but cannot mark one complete for you."],
   [/profile/i, "1. Open Profile.\n2. Update the fields supported by the profile form.\n3. Save your changes."],
   [/password|security/i, "1. Open Security Settings.\n2. Enter your current password and the requested new-password details.\n3. Submit the password change."],
+  [/\bwho is\b|\bidentify (this|that|a) person\b/i, "I can help with your SOCConsult account and consultation information, but I don't have enough authorized information to identify that person. I won't guess or expose another user's private information."],
 ];
 const FACULTY_GUIDANCE = [
   [/(how|where).*(add|manage|publish|create).*(availability|schedule)|(how|where).*(availability)/i, "1. Open Manage Availability.\n2. Enter the Availability Date, Start Time, and End Time.\n3. Choose Face-to-Face or Online.\n4. For Face-to-Face, enter a Location; for Online, choose a Meeting Platform and optionally add a valid Meeting Link.\n5. Click Add Availability.\n6. Review it under Published Schedules, where eligible entries can be edited, activated, deactivated, or removed."],
@@ -70,7 +72,7 @@ export async function answerRoleQuestion({ role, userId, message, history = [], 
   const messages = [{ role: "system", content: prompt }, ...history.slice(-6), { role: "user", content: message }];
   const callsSeen = new Set();
   for (let iteration = 0; iteration < 4; iteration += 1) {
-    const completion = await groq.chat.completions.create({ model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile", messages, ...(iteration === 0 ? { tools: DEFINITIONS[role], tool_choice: "required" } : { tool_choice: "none" }), temperature: 0, max_tokens: iteration === 0 ? 300 : 650 });
+    const completion = await groq.chat.completions.create({ model: getGroqModel(), messages, ...(iteration === 0 ? { tools: DEFINITIONS[role], tool_choice: "required" } : { tool_choice: "none" }), temperature: 0, max_tokens: iteration === 0 ? 300 : 650 });
     const response = completion.choices?.[0]?.message;
     if (!response) throw Object.assign(new Error("AI_EMPTY_RESPONSE"), { code: "AI_EMPTY_RESPONSE" });
     messages.push(response);

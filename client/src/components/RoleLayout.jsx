@@ -65,6 +65,11 @@ export default function RoleLayout({ role, navigation }) {
   });
   const [unread, setUnread] = useState(0);
   const location = useLocation();
+  const compactStudentHeader =
+    role === "student" &&
+    ["/student/profile", "/student/notifications", "/student/history"].includes(
+      location.pathname,
+    );
   const navigate = useNavigate();
   const currentPage =
     navigation.find(({ path }) => location.pathname === path)?.label ||
@@ -234,29 +239,33 @@ export default function RoleLayout({ role, navigation }) {
       <div
         className={`box-border w-full min-w-0 max-w-full flex-1 transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-20" : "lg:pl-72"}`}
       >
-        <header className="sticky top-0 z-30 flex min-h-20 items-center gap-3 border-b border-slate-200 bg-white px-3 py-3 shadow-sm min-[360px]:px-4 sm:px-5 md:px-6 xl:px-7">
+        <header
+          className={`sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white shadow-sm md:min-h-20 md:px-6 md:py-3 xl:px-7 ${compactStudentHeader ? "min-h-16 px-4 py-2" : "min-h-20 px-3 py-3 min-[360px]:px-4 sm:px-5"}`}
+        >
           <button
             onClick={() => setOpen(true)}
             aria-label="Open navigation"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-maroon-800 shadow-sm lg:hidden"
+            className={`grid shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-maroon-800 shadow-sm lg:hidden ${compactStudentHeader ? "h-10 w-10" : "h-11 w-11"}`}
           >
             <Menu />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-extrabold tracking-tight text-maroon-900 sm:hidden">
+            <p className={`truncate text-sm font-extrabold tracking-tight text-maroon-900 ${compactStudentHeader ? "md:hidden" : "sm:hidden"}`}>
               SOCConsult
             </p>
             <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.14em] text-gold-600 sm:text-xs sm:tracking-[0.18em]">
               {role} workspace
             </p>
-            <h1 className="mt-0.5 whitespace-normal text-sm font-bold leading-5 text-slate-900 sm:text-base">
+            <h1
+              className={`mt-0.5 whitespace-normal text-sm font-bold leading-5 text-slate-900 sm:text-base ${compactStudentHeader ? "hidden md:block" : ""}`}
+            >
               {currentPage}
             </h1>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <NavLink
               to={`/${role}/notifications`}
-              className="relative grid h-11 w-11 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-maroon-200 hover:bg-maroon-50 hover:text-maroon-800"
+              className={`relative grid place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-maroon-200 hover:bg-maroon-50 hover:text-maroon-800 ${compactStudentHeader ? "h-10 w-10 md:h-11 md:w-11" : "h-11 w-11"}`}
             >
               <Bell size={19} />
               {unread > 0 && (
@@ -265,11 +274,11 @@ export default function RoleLayout({ role, navigation }) {
             </NavLink>
             <ProfileImagePreview
               user={user}
-              className="h-11 w-11 rounded-xl bg-maroon-800 font-bold text-white shadow-md ring-2 ring-maroon-100"
+              className={`${compactStudentHeader ? "h-10 w-10 md:h-11 md:w-11" : "h-11 w-11"} rounded-xl bg-maroon-800 font-bold text-white shadow-md ring-2 ring-maroon-100`}
             />
           </div>
         </header>
-        <main className="box-border mx-auto w-full min-w-0 max-w-[1600px] p-3 min-[360px]:p-4 sm:p-5 md:p-6 xl:p-8">
+        <main className={`box-border mx-auto w-full min-w-0 max-w-[1600px] ${compactStudentHeader ? "p-4 md:p-6 xl:p-8" : "p-3 min-[360px]:p-4 sm:p-5 md:p-6 xl:p-8"}`}>
           <div className="w-full min-w-0 max-w-full">
             <PageErrorBoundary key={location.pathname}>
               <Outlet />

@@ -189,6 +189,15 @@ body,
   width: 0;
   height: 0;
 }
+@media (max-width: 767px) {
+  html,
+  body {
+    scrollbar-width: none;
+  }
+  body::-webkit-scrollbar {
+    display: none;
+  }
+}
 .student-notifications {
   container-type: inline-size;
 }

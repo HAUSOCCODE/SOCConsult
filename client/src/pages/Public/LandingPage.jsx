@@ -7,14 +7,19 @@ import {
   Clock3,
   ExternalLink,
   FileText,
+  Globe2,
   Instagram,
   LockKeyhole,
+  ShieldCheck,
   Users,
+  Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import hauSocLogo from "../../assets/hau_soc_original_logo.png";
 import { Footer, Navbar } from "../../components/public/PublicLayout";
 import SOCConsultPublicAIGuide from "../../components/public/SOCConsultPublicAIGuide";
 import { api } from "../../api/apiClient";
+
 const features = [
   [
     CalendarDays,
@@ -24,12 +29,12 @@ const features = [
   [
     Clock3,
     "Faculty Availability",
-    "View current faculty consultation availability.",
+    "View current faculty consultation availability in real time.",
   ],
   [
     CheckCircle2,
     "Appointment Monitoring",
-    "Track every request, approval, and update.",
+    "Track every request, approval, and schedule update.",
   ],
   [
     LockKeyhole,
@@ -44,8 +49,13 @@ const features = [
   [
     FileText,
     "Consultation Records",
-    "Maintain accessible academic support records.",
+    "Maintain accessible academic support and consultation records.",
   ],
+];
+const benefits = [
+  [ShieldCheck, "Secure HAU Access"],
+  [Zap, "Real-time Updates"],
+  [Globe2, "Accessible Anywhere"],
 ];
 const socialPages = [
   {
@@ -66,8 +76,7 @@ const socialPages = [
     href: "https://www.facebook.com/haucictofficial",
   },
 ];
-const socialButtonClass =
-  "btn-secondary min-h-[42px] w-auto shrink-0 gap-1.5 whitespace-nowrap !px-2 !py-2 !text-sm !font-semibold min-[360px]:!px-4";
+
 export default function LandingPage() {
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -82,107 +91,106 @@ export default function LandingPage() {
         }),
       );
   }, []);
+  const statItems = [
+    [Users, stats?.activeRequests, "Active Requests", "Pending faculty action"],
+    [
+      CheckCircle2,
+      stats?.completedConsultations,
+      "Completed",
+      "Consultations finished",
+    ],
+    [
+      CalendarDays,
+      stats?.facultyCount,
+      "Participating Faculty",
+      "Available in the system",
+    ],
+    [ShieldCheck, "Secure", "HAU Access", "Protected institutional workspace"],
+  ];
   return (
-    <>
+    <div className="min-w-0 bg-white text-slate-800">
       <Navbar />
       <main>
         <section
           id="home"
-          className="relative overflow-hidden bg-[#F7F8FA] py-16 sm:py-20 lg:py-28"
+          className="relative overflow-hidden border-b border-slate-100 bg-[#fbfaf9] py-10 sm:py-14 lg:py-16"
         >
-          <div className="container-page grid items-center gap-12 lg:grid-cols-[1.1fr_.9fr]">
-            <div className="relative">
-              <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-gold-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[.1em] text-maroon-800 shadow-sm sm:px-4 sm:tracking-[.14em]">
-                <span className="h-2 w-2 rounded-full bg-gold-500" />
-                Holy Angel University · School of Computing
+          <div className="pointer-events-none absolute -right-20 top-24 hidden h-72 w-72 rounded-full border border-gold-200/60 lg:block" />
+          <div className="pointer-events-none absolute right-[8%] top-1/2 hidden h-28 w-28 bg-[radial-gradient(#d3a62c_1px,transparent_1px)] [background-size:12px_12px] opacity-25 lg:block" />
+          <div className="container-page relative grid min-w-0 items-center gap-10 lg:grid-cols-[minmax(0,1.18fr)_minmax(22rem,.82fr)] lg:gap-14">
+            <div className="min-w-0">
+              <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-gold-300 bg-white/90 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-maroon-800 shadow-sm sm:px-4 sm:text-xs sm:tracking-[0.16em]">
+                <ShieldCheck size={13} className="shrink-0 text-gold-600" />
+                <span className="min-w-0 break-words">
+                  Holy Angel University · School of Computing
+                </span>
               </span>
-              <h1 className="mt-7 font-display text-4xl font-bold leading-none tracking-tight text-maroon-900 sm:text-6xl lg:text-7xl">
-                SOC<span className="text-gold-500">Consult</span>
+              <h1 className="mt-6 max-w-3xl break-words font-display text-[clamp(2rem,9vw,2.75rem)] font-bold leading-[0.98] tracking-[-0.035em] text-maroon-900 lg:text-[clamp(3rem,4vw,3.75rem)]">
+                Smarter consultations.
+                <span className="mt-1 block text-gold-500">
+                  Stronger connections.
+                </span>
               </h1>
-              <p className="mt-5 break-words text-lg font-semibold text-slate-700 sm:text-2xl">
-                Faculty-Student Consultation and Appointment Scheduling System
+              <p className="mt-5 max-w-xl break-words text-lg font-bold leading-6 text-slate-800 sm:text-xl sm:leading-7">
+                Faculty–Student Consultation and
+                <span className="block">Appointment Scheduling System</span>
               </p>
-              <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
                 A centralized platform for consultation schedules, appointments,
-                records, and notifications.
+                records, and notifications — all in one secure workspace.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link to="/get-started" className="btn-primary gap-2">
-                  Get Started <ArrowRight size={18} />
+              <div className="mt-6 grid w-full gap-3 min-[420px]:flex min-[420px]:w-auto min-[420px]:flex-wrap">
+                <Link
+                  to="/get-started"
+                  className="btn-primary h-11 w-full gap-2 min-[420px]:w-auto"
+                >
+                  Get Started <ArrowRight size={17} />
                 </Link>
-                <a href="#about" className="btn-secondary">
+                <a
+                  href="#about"
+                  className="btn-secondary h-11 w-full min-[420px]:w-auto"
+                >
                   Learn More
                 </a>
               </div>
+              <div className="mt-6 flex min-w-0 flex-wrap gap-2.5">
+                {benefits.map(([Icon, label]) => (
+                  <span
+                    key={label}
+                    className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-sm"
+                  >
+                    <Icon size={14} className="shrink-0 text-maroon-700" />
+                    <span className="break-words">{label}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-maroon-700 bg-maroon-900 p-6 text-white shadow-glow sm:p-8">
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-widest text-gold-400">
-                    Live consultation overview
-                  </p>
-                  <h2 className="mt-2 text-2xl font-bold">
-                    Academic support,
-                    <br />
-                    right on schedule.
-                  </h2>
-                </div>
-                <CalendarDays className="text-gold-400" size={38} />
-              </div>
-              <div className="relative mt-8 rounded-2xl border border-maroon-600 bg-maroon-800 p-5">
-                <p className="text-xs font-medium text-slate-100">
-                  Next available consultation schedule
-                </p>
-                <p className="mt-2 font-semibold">
-                  {stats
-                    ? stats.nextAvailableSlot
-                      ? `${stats.nextAvailableSlot.day} · ${stats.nextAvailableSlot.time}`
-                      : "No schedule currently published"
-                    : "Loading current availability..."}
-                </p>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <Stat
-                  icon={Users}
-                  value={stats?.activeRequests}
-                  label="Active requests"
-                />
-                <Stat
-                  icon={CheckCircle2}
-                  value={stats?.completedConsultations}
-                  label="Completed"
-                  gold
-                />
-              </div>
-              <p className="mt-3 text-xs text-slate-200">
-                {stats
-                  ? `${stats.facultyCount} participating faculty member${stats.facultyCount === 1 ? "" : "s"}`
-                  : "Loading faculty..."}
-              </p>
-            </div>
+            <LiveOverview stats={stats} />
           </div>
         </section>
-        <section id="features" className="py-16 sm:py-20">
+
+        <section id="features" className="py-14 sm:py-16 lg:py-20">
           <div className="container-page">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold uppercase tracking-widest text-gold-500">
-                Built for campus life
-              </p>
-              <h2 className="mt-3 font-display text-3xl font-bold text-maroon-900 sm:text-4xl">
-                One place for every consultation
-              </h2>
-            </div>
-            <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map(([Icon, title, text]) => (
+            <SectionHeading
+              eyebrow="Built for campus life"
+              title="One place for every consultation"
+              centered
+            />
+            <div className="mt-9 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {features.map(([Icon, title, text], index) => (
                 <article
                   key={title}
-                  className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-maroon-200 hover:shadow-card"
+                  className="group flex min-h-full min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-maroon-200 hover:shadow-card sm:p-6"
                 >
-                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-maroon-50 text-maroon-800 transition group-hover:bg-maroon-800 group-hover:text-gold-300">
-                    <Icon size={23} />
+                  <span
+                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-white shadow-sm ${index % 2 === 0 ? "bg-maroon-800" : "bg-gold-500 text-maroon-950"}`}
+                  >
+                    <Icon size={19} aria-hidden="true" />
                   </span>
-                  <h3 className="mt-5 font-bold">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <h3 className="mt-4 break-words text-base font-bold text-slate-900">
+                    {title}
+                  </h3>
+                  <p className="mt-2 break-words text-sm leading-6 text-slate-600">
                     {text}
                   </p>
                 </article>
@@ -190,97 +198,79 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
-        <section id="about" className="bg-[#F7F8FA] py-20">
-          <div className="container-page grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-            <div>
-              <p className="flex items-center gap-3 text-sm font-bold uppercase tracking-[0.2em] text-gold-600">
-                <span className="h-0.5 w-8 bg-gold-500" aria-hidden="true" />
-                About SOCConsult
-              </p>
-              <h2 className="mt-5 max-w-xl break-words font-display text-3xl font-bold leading-tight tracking-tight text-maroon-900 md:text-5xl lg:text-6xl">
-                Better access to meaningful academic support.
-              </h2>
-            </div>
-            <p className="max-w-2xl text-base leading-relaxed text-slate-700 md:text-lg md:leading-8">
-              SOCConsult serves the School of Computing of Holy Angel University
-              by bringing consultation scheduling, faculty availability,
-              appointment monitoring, notifications, consultation records, and
-              follow-up activities into one secure workspace.
-            </p>
+
+        <section className="bg-maroon-900 py-8 text-white sm:py-10">
+          <div className="container-page grid min-w-0 grid-cols-2 gap-y-7 sm:gap-y-8 lg:grid-cols-4 lg:gap-y-0">
+            {statItems.map(([Icon, value, label, supporting], index) => (
+              <div
+                key={label}
+                className={`min-w-0 px-3 text-center sm:px-6 ${index % 2 === 1 ? "border-l border-maroon-600" : ""} lg:border-l lg:first:border-l-0`}
+              >
+                <Icon size={25} className="mx-auto text-gold-400" />
+                <p className="mt-2 break-words text-2xl font-extrabold sm:text-3xl">
+                  {value ?? "—"}
+                </p>
+                <p className="mt-1 break-words text-xs font-bold sm:text-sm">
+                  {label}
+                </p>
+                <p className="mt-1 hidden break-words text-xs text-maroon-100 sm:block">
+                  {supporting}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
+
+        <section id="about" className="bg-[#fbfaf9] py-14 sm:py-16 lg:py-20">
+          <div className="container-page grid min-w-0 items-center gap-8 md:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] md:gap-10 lg:gap-14">
+            <div className="relative order-2 min-w-0 overflow-hidden rounded-2xl border border-gold-200 bg-[linear-gradient(135deg,#6e1423,#8a2436)] p-6 shadow-card md:order-1 sm:p-8">
+              <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full border border-gold-300/30" />
+              <div className="relative flex aspect-[16/10] items-center justify-center rounded-xl border border-white/15 bg-white/95 p-6 sm:p-8">
+                <img
+                  src={hauSocLogo}
+                  alt="Holy Angel University School of Computing emblem"
+                  className="h-full max-h-56 w-full object-contain"
+                />
+              </div>
+              <p className="relative mt-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-gold-200">
+                Holy Angel University · School of Computing
+              </p>
+            </div>
+            <div className="order-1 min-w-0 md:order-2">
+              <SectionHeading
+                eyebrow="About SOCConsult"
+                title="Better access to meaningful academic support."
+              />
+              <span className="mt-4 block h-0.5 w-10 bg-gold-500" />
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-700 sm:text-base sm:leading-8">
+                SOCConsult serves the School of Computing of Holy Angel
+                University by bringing consultation scheduling, faculty
+                availability, appointment monitoring, notifications,
+                consultation records, and follow-up activities into one secure
+                workspace.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section
-          className="bg-white py-16 sm:py-20"
+          className="py-14 sm:py-16 lg:py-20"
           aria-labelledby="social-heading"
         >
           <div className="container-page">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold uppercase tracking-widest text-gold-600">
-                Official school pages
-              </p>
-              <h2
-                id="social-heading"
-                className="mt-3 break-words font-display text-3xl font-bold text-maroon-900 sm:text-4xl"
-              >
-                Connect with the School of Computing
-              </h2>
-              <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">
-                Stay connected with the official School of Computing and Student
-                Council pages.
-              </p>
-            </div>
-
-            <div className="mx-auto mt-10 grid w-full max-w-5xl grid-cols-1 items-stretch gap-5 md:grid-cols-2 md:gap-6">
+            <SectionHeading
+              eyebrow="Official school pages"
+              title="Connect with the School of Computing"
+              centered
+              id="social-heading"
+            />
+            <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-6 text-slate-600 sm:text-base">
+              Stay connected with the official School of Computing and Student
+              Council pages.
+            </p>
+            <div className="mx-auto mt-8 grid w-full max-w-5xl min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
               {socialPages.map((page) => (
-                <article
-                  key={page.href}
-                  className="flex h-full min-w-0 max-w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-maroon-200 hover:shadow-card sm:p-6"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-5 min-[380px]:flex-row min-[380px]:items-start">
-                    <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5">
-                      <img
-                        src={page.image}
-                        alt={page.alt}
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="break-words text-lg font-bold leading-6 text-maroon-900 md:min-h-[4.5rem] lg:min-h-12">
-                        {page.title}
-                      </h3>
-                      <p className="mt-2 break-words text-sm leading-6 text-slate-600">
-                        {page.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className={`mt-auto pt-6 ${page.instagramHref ? "flex flex-row flex-nowrap items-center gap-2.5" : ""}`}
-                  >
-                    <a
-                      href={page.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={socialButtonClass}
-                      aria-label={`Visit ${page.title} on Facebook (opens in a new tab)`}
-                    >
-                      {page.instagramHref ? "Facebook" : "Visit Facebook Page"}
-                      <ExternalLink size={16} aria-hidden="true" />
-                    </a>
-                    {page.instagramHref && (
-                      <a
-                        href={page.instagramHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={socialButtonClass}
-                        aria-label={`Visit ${page.title} on Instagram (opens in a new tab)`}
-                      >
-                        <Instagram size={16} aria-hidden="true" />
-                        Instagram
-                        <ExternalLink size={16} aria-hidden="true" />
-                      </a>
-                    )}
-                  </div>
-                </article>
+                <SocialCard key={page.href} page={page} />
               ))}
             </div>
           </div>
@@ -288,17 +278,133 @@ export default function LandingPage() {
       </main>
       <Footer />
       <SOCConsultPublicAIGuide />
-    </>
+    </div>
   );
 }
-function Stat({ icon: Icon, value, label, gold }) {
+
+function LiveOverview({ stats }) {
+  const nextSlot = stats
+    ? stats.nextAvailableSlot
+      ? `${stats.nextAvailableSlot.day} · ${stats.nextAvailableSlot.time}`
+      : "No schedule currently published"
+    : "Loading current availability...";
+  return (
+    <aside className="relative mx-auto w-full max-w-lg min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-card sm:p-6 lg:max-w-none">
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <h2 className="min-w-0 break-words text-sm font-extrabold text-slate-900">
+          Live Consultation Overview
+        </h2>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-maroon-800 text-gold-300 shadow-sm">
+          <CalendarDays size={21} aria-hidden="true" />
+        </span>
+      </div>
+      <div className="mt-4 rounded-xl border border-maroon-100 bg-maroon-50/70 p-4">
+        <p className="text-xs font-medium text-slate-600">
+          Next available consultation
+        </p>
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-3">
+          <p className="min-w-0 break-words text-sm font-bold text-slate-900">
+            {nextSlot}
+          </p>
+          <CalendarDays size={20} className="shrink-0 text-gold-500" />
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <OverviewStat
+          icon={Users}
+          value={stats?.activeRequests}
+          label="Active Requests"
+        />
+        <OverviewStat
+          icon={CheckCircle2}
+          value={stats?.completedConsultations}
+          label="Completed"
+          gold
+        />
+      </div>
+      <p className="mt-4 flex min-w-0 items-center gap-2 break-words text-xs text-slate-600">
+        <Users size={15} className="shrink-0 text-maroon-700" />
+        {stats
+          ? `${stats.facultyCount} participating faculty member${stats.facultyCount === 1 ? "" : "s"}`
+          : "Loading faculty..."}
+      </p>
+    </aside>
+  );
+}
+function OverviewStat({ icon: Icon, value, label, gold = false }) {
   return (
     <div
-      className={`rounded-2xl border p-4 ${gold ? "border-gold-400 bg-gold-400 text-maroon-900" : "border-maroon-600 bg-maroon-800 text-white"}`}
+      className={`min-w-0 rounded-xl border p-4 ${gold ? "border-gold-200 bg-gold-100/80" : "border-slate-200 bg-slate-50"}`}
     >
-      <Icon size={20} />
-      <p className="mt-3 text-2xl font-bold">{value ?? "—"}</p>
-      <p className="text-xs">{label}</p>
+      <Icon size={19} className={gold ? "text-gold-700" : "text-maroon-700"} />
+      <p className="mt-3 break-words text-2xl font-extrabold text-maroon-900">
+        {value ?? "—"}
+      </p>
+      <p className="break-words text-[11px] text-slate-600">{label}</p>
     </div>
+  );
+}
+function SectionHeading({ eyebrow, title, centered = false, id }) {
+  return (
+    <div
+      className={`min-w-0 ${centered ? "mx-auto max-w-3xl text-center" : ""}`}
+    >
+      <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-gold-600">
+        {eyebrow}
+      </p>
+      <h2
+        id={id}
+        className="mt-2 break-words font-display text-3xl font-bold leading-tight tracking-tight text-maroon-900 sm:text-4xl"
+      >
+        {title}
+      </h2>
+    </div>
+  );
+}
+function SocialCard({ page }) {
+  return (
+    <article className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:border-maroon-200 hover:shadow-card sm:p-5">
+      <div className="flex min-w-0 items-start gap-4">
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 sm:h-20 sm:w-20">
+          <img
+            src={page.image}
+            alt={page.alt}
+            className="h-full w-full object-contain"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words text-base font-bold leading-5 text-maroon-900">
+            {page.title}
+          </h3>
+          <p className="mt-2 break-words text-sm leading-5 text-slate-600">
+            {page.description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 flex min-w-0 flex-wrap gap-2 sm:pl-24">
+        <a
+          href={page.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-secondary min-h-9 min-w-0 gap-1.5 whitespace-nowrap !px-3 !py-2 !text-xs"
+          aria-label={`Visit ${page.title} on Facebook (opens in a new tab)`}
+        >
+          {page.instagramHref ? "Facebook" : "Visit Facebook Page"}
+          <ExternalLink size={14} aria-hidden="true" />
+        </a>
+        {page.instagramHref && (
+          <a
+            href={page.instagramHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary min-h-9 min-w-0 gap-1.5 whitespace-nowrap !px-3 !py-2 !text-xs"
+            aria-label={`Visit ${page.title} on Instagram (opens in a new tab)`}
+          >
+            <Instagram size={14} aria-hidden="true" /> Instagram
+            <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        )}
+      </div>
+    </article>
   );
 }

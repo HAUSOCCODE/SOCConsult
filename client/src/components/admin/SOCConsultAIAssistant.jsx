@@ -16,6 +16,18 @@ const ADMIN_SUGGESTIONS = [
   "Show appointment status counts.",
 ];
 
+const aiErrorMessage = (error) => {
+  if (error?.status === 401)
+    return "Your session has expired. Please sign in again.";
+  if (error?.status === 403)
+    return "This AI assistant is not available for your current account.";
+  if (error?.status === 429)
+    return "The AI assistant is receiving too many requests. Please try again shortly.";
+  if (error?.status >= 500 || !error?.status)
+    return "SOCConsult AI Assistant is temporarily unavailable. Please try again.";
+  return error?.message || "I couldn't complete that request. Please try again.";
+};
+
 export default function SOCConsultAIAssistant({
   endpoint = "/admin/ai/chat",
   title = "SOCConsult AI Assistant",
@@ -116,10 +128,7 @@ export default function SOCConsultAIAssistant({
         ...current,
         {
           role: "assistant",
-          content: `${
-            error.message ||
-            "SOCConsult AI Assistant is temporarily unavailable. Please try again."
-          }${retryAfter > 0 ? ` Please wait ${retryAfter} seconds before trying again.` : ""}`,
+          content: `${aiErrorMessage(error)}${retryAfter > 0 ? ` Please wait ${retryAfter} seconds before trying again.` : ""}`,
           error: true,
         },
       ]);

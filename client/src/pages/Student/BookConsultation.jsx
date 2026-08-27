@@ -1,6 +1,5 @@
 import {
   CalendarDays,
-  CheckCircle2,
   ChevronRight,
   FileText,
   Info,
@@ -278,18 +277,19 @@ export default function BookPage() {
       )
     : 0;
   return (
-    <div className="w-full min-w-0 max-w-full space-y-5 sm:space-y-6">
-      <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
-        <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 lg:block" />
-        <div className="relative flex min-w-0 items-center justify-between gap-6">
+    <div className="w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
+      <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm sm:p-5">
+        <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full border border-gold-300/40" />
+        <div className="pointer-events-none absolute bottom-3 right-16 hidden h-12 w-20 bg-[radial-gradient(#d3a62c_1px,transparent_1px)] [background-size:9px_9px] opacity-25 sm:block" />
+        <div className="relative flex min-w-0 items-center justify-between gap-4 sm:gap-6">
           <div className="min-w-0">
             <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
               Student Consultation
             </p>
-            <h1 className="mt-1.5 break-words text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">
+            <h1 className="mt-1.5 break-words text-xl font-bold tracking-tight text-maroon-900 sm:text-[26px]">
               {reschedule ? "Choose a New Schedule" : "Book a Consultation"}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
+            <p className="mt-2 max-w-2xl text-sm leading-5 text-slate-600 sm:text-[15px] sm:leading-6">
               {reschedule
                 ? "Select a new schedule for your existing consultation."
                 : "Find and connect with a Faculty Member for guidance and support."}
@@ -304,8 +304,8 @@ export default function BookPage() {
               </button>
             )}
           </div>
-          <span className="hidden h-14 w-14 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 lg:grid">
-            <CalendarDays size={26} aria-hidden="true" />
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 sm:h-14 sm:w-14">
+            <CalendarDays size={23} aria-hidden="true" />
           </span>
         </div>
       </section>
@@ -320,15 +320,15 @@ export default function BookPage() {
           aria-hidden="true"
         />
         <input
-          className="field h-12 pl-11"
+          className="field h-11 py-2 pl-11 sm:h-12"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search faculty name, position, or specialization..."
         />
       </label>
 
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
-        <div>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+        <div className="min-w-0">
           <h2 className="text-lg font-bold text-slate-900">
             Available Faculty
           </h2>
@@ -337,7 +337,7 @@ export default function BookPage() {
           </p>
         </div>
         {faculty !== null && (
-          <p className="text-xs font-semibold text-slate-500">
+          <p className="max-w-28 break-words text-right text-xs font-semibold leading-4 text-slate-500 sm:max-w-none">
             {visibleFaculty.length} {visibleFaculty.length === 1 ? "Faculty Member" : "Faculty Members"}
           </p>
         )}
@@ -374,10 +374,10 @@ export default function BookPage() {
                   void viewAvailability(member);
                 }
               }}
-              className={`w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border shadow-sm transition-colors duration-150 hover:border-maroon-300 focus:outline-none focus:ring-2 focus:ring-maroon-400 ${selected?._id === member._id ? "border-maroon-500 bg-maroon-50/60" : "border-slate-200 bg-white"}`}
+              className={`min-h-[104px] w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border shadow-sm transition-colors duration-150 hover:border-maroon-300 focus:outline-none focus:ring-2 focus:ring-maroon-400 md:min-h-[112px] ${selected?._id === member._id ? "border-maroon-400 bg-maroon-50/40" : "border-slate-200 bg-white"}`}
             >
-              <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_13.5rem] md:items-stretch">
-                <div className="flex min-w-0 items-start gap-3 p-4 sm:gap-4 sm:p-5">
+              <div className="grid min-h-[inherit] min-w-0 grid-cols-[minmax(0,1fr)_6.5rem] items-stretch min-[360px]:grid-cols-[minmax(0,1fr)_7.5rem] md:grid-cols-[minmax(0,1fr)_12rem]">
+                <div className="flex min-w-0 items-center gap-2.5 p-3 sm:gap-3 sm:p-4 md:gap-4 md:px-5">
                   <span
                     className="shrink-0"
                     onClick={(event) => event.stopPropagation()}
@@ -385,41 +385,31 @@ export default function BookPage() {
                   >
                     <ProfileImagePreview
                       user={member}
-                      className="h-14 w-14 rounded-full bg-maroon-800 text-lg font-bold text-white sm:h-16 sm:w-16"
+                      className="h-11 w-11 rounded-full bg-maroon-800 text-base font-bold text-white min-[360px]:h-12 min-[360px]:w-12 md:h-16 md:w-16 md:text-lg"
                       buttonClassName="rounded-full"
                     />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h3 className="min-w-0 break-words text-base font-bold text-slate-900 sm:text-lg">
+                    <div className="min-w-0">
+                      <h3 className="min-w-0 break-words text-sm font-bold leading-5 text-slate-900 sm:text-base md:text-lg">
                         {formatPersonName(member.name)}
                       </h3>
-                      {selected?._id === member._id && (
-                        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-maroon-800">
-                          <CheckCircle2 size={14} aria-hidden="true" /> Selected
-                        </span>
-                      )}
                     </div>
-                    <p className="mt-0.5 break-words text-sm font-medium text-slate-600">
+                    <p className="mt-0.5 break-words text-xs font-medium leading-4 text-slate-600 sm:text-sm">
                       {member.position || "Position not provided"}
                     </p>
-                    {member.specialization && (
-                      <div className="mt-3 min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                          Specialization
-                        </p>
-                        <span className="mt-1.5 inline-flex max-w-full whitespace-normal break-words rounded-lg border border-maroon-100 bg-maroon-50 px-2.5 py-1 text-xs font-semibold leading-4 text-maroon-800">
-                          {member.specialization}
-                        </span>
-                      </div>
+                    {selected?._id === member._id && (
+                      <span className="mt-2 inline-flex w-auto shrink-0 rounded-md bg-maroon-100 px-2 py-1 text-[10px] font-bold leading-none text-maroon-800 sm:text-xs">
+                        Selected
+                      </span>
                     )}
                   </div>
                 </div>
-                <div className="flex min-w-0 flex-col justify-center border-t border-slate-200 bg-slate-50/70 p-4 md:border-l md:border-t-0 md:p-5">
-                  <p className="text-center text-2xl font-extrabold leading-none text-maroon-900">
+                <div className="flex min-w-0 flex-col justify-center border-l border-slate-200 p-2.5 min-[360px]:p-3 md:px-5 md:py-4">
+                  <p className="text-center text-xl font-extrabold leading-none text-maroon-900 md:text-2xl">
                     {member.availableScheduleCount || 0}
                   </p>
-                  <p className="mt-1 text-center text-xs font-semibold text-slate-600">
+                  <p className="mt-1 break-words text-center text-[10px] font-medium leading-3.5 text-slate-600 sm:text-xs sm:leading-4">
                     available{" "}
                     {(member.availableScheduleCount || 0) === 1
                       ? "schedule"
@@ -431,7 +421,7 @@ export default function BookPage() {
                       event.stopPropagation();
                       void viewAvailability(member);
                     }}
-                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-maroon-800 px-3 text-sm font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2"
+                    className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-md bg-maroon-800 px-1.5 text-[10px] font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2 min-[360px]:gap-1 min-[360px]:px-2 min-[360px]:text-xs md:mt-3 md:gap-1.5 md:px-3 md:text-sm"
                   >
                     View Schedule
                     <ChevronRight size={16} aria-hidden="true" />
@@ -440,7 +430,7 @@ export default function BookPage() {
               </div>
             </article>
           ))}
-          <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+          <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600 shadow-sm">
             <Info
               size={16}
               className="mt-0.5 shrink-0 text-maroon-700"
@@ -506,7 +496,7 @@ export default function BookPage() {
                 </p>
                 {(selected.specialization ||
                   selected.office ||
-                  selected.consultationModes?.length) && (
+                  selected.consultationModes?.length > 0) && (
                   <dl className="mb-6 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
                     {selected.specialization && (
                       <div>

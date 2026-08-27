@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { getGroqModel } from "./groqModel.js";
 import { reportingTools } from "./aiReportingService.js";
 
 const SYSTEM_PROMPT = `You are SOCConsult AI Assistant for authenticated School of Computing administrators at Holy Angel University. Provide concise, factual, read-only reports about SOCConsult users, registrations, faculty, appointments, and consultations.
@@ -172,7 +173,7 @@ export async function answerAdminQuestion({
       timeout: 25000,
       maxRetries: 0,
     });
-  const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  const model = getGroqModel();
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...history.slice(-6),

@@ -24,7 +24,14 @@ export const chatWithRoleAi = (role) => async (req, res) => {
     return res.json({ success: true, answer, generatedAt: new Date().toISOString() });
   } catch (error) {
     const result = classifyAdminAiError(error);
-    console.warn(`[${role === "student" ? "Student" : "Faculty"} AI] ${result.code}`);
+    console.warn(
+      `[${role === "student" ? "Student" : "Faculty"} AI] ${result.code}`,
+      {
+        upstreamStatus: error?.status || null,
+        upstreamCode: error?.error?.code || error?.code || null,
+        upstreamType: error?.error?.type || error?.name || null,
+      },
+    );
     if (result.retryAfter) res.set("Retry-After", String(result.retryAfter));
     return res.status(result.status).json({ message: result.message, ...(result.retryAfter ? { retryAfter: result.retryAfter } : {}) });
   }

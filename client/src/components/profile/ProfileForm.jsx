@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import {
+  Badge,
+  CalendarDays,
+  Eye,
+  EyeOff,
+  GraduationCap,
+  Mail,
+  Phone,
+  UserRound,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
@@ -67,7 +76,7 @@ export default function ProfilePage() {
     }
   };
   return (
-    <div className="space-y-6">
+    <div className={`space-y-4 sm:space-y-6 ${user.role === "student" ? "pb-16 md:pb-0" : ""}`}>
       <div>
         <p className="eyebrow">Account</p>
         <h1 className="page-title mt-1">My Profile</h1>
@@ -75,17 +84,17 @@ export default function ProfilePage() {
           Manage your SOCConsult account information.
         </p>
       </div>
-      <form onSubmit={save} className="panel">
-        <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+      <form onSubmit={save} className="panel rounded-xl p-4 sm:rounded-2xl sm:p-6">
+        <div className="mb-6 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
           <ProfilePictureEditor />
-          <div className="min-w-0">
+          <div className={`min-w-0 ${user.role === "student" ? "hidden md:block" : ""}`}>
             <h2 className="font-bold">{formatPersonName(user.name)}</h2>
             <p className="[overflow-wrap:anywhere] text-sm text-slate-500">
               {user.email || user.username}
             </p>
           </div>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className={`grid gap-4 ${user.role === "student" ? "md:grid-cols-2 md:gap-5" : "sm:grid-cols-2 sm:gap-5"}`}>
           {[
             ["name", "Full Name"],
             ["program", "Program"],
@@ -100,16 +109,49 @@ export default function ProfilePage() {
                 ? ["program", "yearLevel"].includes(key)
                 : ["office", "specialization"].includes(key);
             })
-            .map(([key, label]) => (
-              <label key={key} className="text-sm font-semibold">
-                {label}
-                <input
-                  className="field mt-2"
-                  value={form[key]}
-                  onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                />
+            .map(([key, label]) => {
+              const StudentIcon = {
+                name: UserRound,
+                program: GraduationCap,
+                yearLevel: CalendarDays,
+                contactNumber: Phone,
+              }[key];
+              return (
+              <label key={key} className="min-w-0 text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  {user.role === "student" && StudentIcon && (
+                    <StudentIcon size={16} className="text-slate-500 md:hidden" aria-hidden="true" />
+                  )}
+                  <span>{label}</span>
+                </span>
+                {user.role === "student" && key === "program" ? (
+                  <>
+                    <textarea
+                      rows={2}
+                      className="field mt-2 min-h-11 resize-none py-2.5 md:hidden"
+                      value={form[key]}
+                      onChange={(e) =>
+                        setForm({ ...form, [key]: e.target.value })
+                      }
+                    />
+                    <input
+                      className="field mt-2 hidden min-h-11 py-2.5 md:block"
+                      value={form[key]}
+                      onChange={(e) =>
+                        setForm({ ...form, [key]: e.target.value })
+                      }
+                    />
+                  </>
+                ) : (
+                  <input
+                    className="field mt-2 min-h-11 py-2.5"
+                    value={form[key]}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                  />
+                )}
               </label>
-            ))}
+              );
+            })}
           {user.role === "faculty" && (
             <label className="text-sm font-semibold">
               Position / Designation
@@ -177,24 +219,32 @@ export default function ProfilePage() {
               )}
             </label>
           )}
-          <label className="text-sm font-semibold">
-            Official HAU Email
+          <label className="min-w-0 text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              {user.role === "student" && <Mail size={16} className="text-slate-500 md:hidden" aria-hidden="true" />}
+              <span>Official HAU Email</span>
+            </span>
             <input
-              className="field mt-2 bg-slate-100"
+              className="field mt-2 min-h-11 py-2.5 bg-slate-100"
               value={user.email || ""}
               disabled
             />
           </label>
-          <label className="text-sm font-semibold">
-            {user.role === "student" ? "Student ID" : "Employee ID"}
+          <label className="min-w-0 text-sm font-semibold">
+            <span className="flex items-center gap-2">
+              {user.role === "student" && <Badge size={16} className="text-slate-500 md:hidden" aria-hidden="true" />}
+              <span>{user.role === "student" ? "Student ID" : "Employee ID"}</span>
+            </span>
             <input
-              className="field mt-2 bg-slate-100"
+              className="field mt-2 min-h-11 py-2.5 bg-slate-100"
               value={user.studentId || user.employeeId || ""}
               disabled
             />
           </label>
         </div>
-        <button className="btn-primary mt-6">Save Profile</button>
+        <button className={`btn-primary mt-6 ${user.role === "student" ? "h-11 w-full md:w-auto" : ""}`}>
+          Save Profile
+        </button>
       </form>
     </div>
   );

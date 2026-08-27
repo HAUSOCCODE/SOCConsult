@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  ChevronUp,
   Clock3,
   Eye,
   Mail,
@@ -367,6 +368,7 @@ function StudentNotificationsContent({
   confirmDelete,
   confirmClear,
 }) {
+  const [expandedNotificationId, setExpandedNotificationId] = useState(null);
   const shown = notifications.filter((notification) =>
     filter === "Unread"
       ? !notification.isRead
@@ -385,6 +387,21 @@ function StudentNotificationsContent({
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, setCurrentPage, totalPages]);
 
+  useEffect(() => {
+    setExpandedNotificationId(null);
+  }, [filter]);
+
+  useEffect(() => {
+    if (
+      expandedNotificationId &&
+      !pageNotifications.some(
+        (notification) => notification._id === expandedNotificationId,
+      )
+    ) {
+      setExpandedNotificationId(null);
+    }
+  }, [expandedNotificationId, pageNotifications]);
+
   const open = async (notification) => {
     setSelected(notification);
     if (!notification.isRead) await read(notification._id);
@@ -401,18 +418,25 @@ function StudentNotificationsContent({
           minute: "2-digit",
         });
   };
-  const shortDate = (value) => {
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return { month: "---", day: "--" };
-    return {
-      month: parsed.toLocaleString(undefined, { month: "short" }),
-      day: parsed.toLocaleString(undefined, { day: "2-digit" }),
-    };
-  };
   const typeLabel = (notification) =>
     notification.type
       ? notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
       : "Update";
+  const notificationDateParts = (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return { month: "---", day: "--", year: "" };
+    }
+    return {
+      month: parsed.toLocaleString(undefined, { month: "short" }).toUpperCase(),
+      day: parsed.toLocaleString(undefined, { day: "2-digit" }),
+      year: parsed.toLocaleString(undefined, { year: "numeric" }),
+    };
+  };
+  const changePage = (page) => {
+    setExpandedNotificationId(null);
+    setCurrentPage(page);
+  };
   const emptyCopy =
     filter === "Unread"
       ? { title: "You're all caught up.", text: "No unread notifications." }
@@ -427,13 +451,13 @@ function StudentNotificationsContent({
           };
 
   return (
-    <div className="student-notifications w-full min-w-0 max-w-full space-y-4 sm:space-y-5">
+    <div className="student-notifications w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
       <div className="student-notifications-heading flex min-w-0 flex-col gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-extrabold tracking-tight text-maroon-900 sm:text-[28px]">
+        <div className="min-w-0 pt-1">
+          <h1 className="text-2xl font-extrabold tracking-tight text-maroon-900 md:text-[28px]">
             Notifications
           </h1>
-          <p className="mt-1.5 text-sm text-slate-600 sm:text-[15px]">
+          <p className="mt-1.5 text-sm text-slate-600 md:text-[15px]">
             Stay updated with your consultation activities.
           </p>
         </div>
@@ -447,17 +471,18 @@ function StudentNotificationsContent({
         />
       </div>
 
-      <div className="flex w-full max-w-md min-w-0 rounded-xl bg-slate-100 p-1 min-[480px]:w-auto min-[480px]:max-w-none min-[480px]:gap-2 min-[480px]:bg-transparent min-[480px]:p-0">
+      <div className="flex w-full max-w-md min-w-0 rounded-xl bg-slate-100 p-1 md:w-auto md:max-w-none md:gap-2 md:bg-transparent md:p-0">
         {["All", "Unread", "Read"].map((name) => (
           <button
             key={name}
             type="button"
             onClick={() => {
+              setExpandedNotificationId(null);
               setFilter(name);
               setCurrentPage(1);
             }}
             aria-pressed={filter === name}
-            className={`h-9 min-w-0 flex-1 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 min-[480px]:min-w-20 min-[480px]:flex-none ${filter === name ? "bg-maroon-800 text-white shadow-sm" : "border border-transparent bg-transparent text-slate-700 hover:bg-white min-[480px]:border-slate-200 min-[480px]:bg-white"}`}
+            className={`h-9 min-w-0 flex-1 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 md:min-w-20 md:flex-none ${filter === name ? "bg-maroon-800 text-white shadow-sm" : "border border-transparent bg-transparent text-slate-700 hover:bg-white md:border-slate-200 md:bg-white"}`}
           >
             {name}
           </button>
@@ -479,7 +504,7 @@ function StudentNotificationsContent({
       ) : shown.length === 0 ? (
         <EmptyState title={emptyCopy.title} text={emptyCopy.text} />
       ) : (
-        <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:rounded-2xl">
           <div className="student-notifications-table min-w-0">
             <table className="w-full table-fixed text-left text-xs min-[1450px]:text-[13px]">
               <thead className="bg-maroon-800 text-[11px] uppercase tracking-wide text-white">
@@ -576,83 +601,143 @@ function StudentNotificationsContent({
             </table>
           </div>
 
-          <div className="student-notifications-cards grid min-w-0 gap-2.5 bg-slate-50/70 p-2.5 sm:p-3">
+          <div className="student-notifications-cards grid min-w-0 gap-2.5 bg-slate-50/70 p-2 sm:p-3">
             {pageNotifications.map((notification) => {
-              const compactDate = shortDate(notification.createdAt);
+              const dateParts = notificationDateParts(notification.createdAt);
+              const isExpanded = expandedNotificationId === notification._id;
+              const detailsId = `student-notification-details-${notification._id}`;
               return (
                 <article
                   key={notification._id}
-                  className={`min-w-0 rounded-xl border p-3 shadow-sm sm:p-4 ${notification.isRead ? "border-slate-200 bg-white" : "border-gold-200 bg-gold-50/80"}`}
+                  className={`min-w-0 overflow-hidden rounded-xl border shadow-sm transition-colors duration-200 ${notification.isRead ? "border-slate-200 bg-white" : "border-gold-200 bg-gold-50/60"}`}
                 >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="hidden h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg border border-maroon-100 bg-white leading-none min-[380px]:flex">
-                      <span className="text-[10px] font-bold uppercase text-maroon-700">
-                        {compactDate.month}
+                  <div className="grid min-h-[92px] min-w-0 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-2.5 p-3 sm:gap-3 sm:p-4">
+                    <div className="grid h-[4.5rem] w-[3.25rem] shrink-0 place-content-center rounded-lg border border-maroon-100 bg-maroon-50/70 text-center text-maroon-800">
+                      <span className="text-[10px] font-bold leading-3">
+                        {dateParts.month}
                       </span>
-                      <span className="mt-1 text-lg font-extrabold text-maroon-900">
-                        {compactDate.day}
+                      <span className="mt-0.5 text-xl font-extrabold leading-6">
+                        {dateParts.day}
+                      </span>
+                      <span className="mt-0.5 text-[9px] font-medium leading-3">
+                        {dateParts.year}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-start gap-2">
                         <span
-                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notification.isRead ? "bg-blue-300" : "bg-gold-500"}`}
+                          className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${notification.isRead ? "bg-blue-400" : "bg-gold-500"}`}
                           aria-hidden="true"
                         />
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={`break-words text-sm leading-5 text-slate-900 ${notification.isRead ? "font-semibold" : "font-bold"}`}
-                          >
-                            {notification.title || "SOCConsult Notification"}
-                          </p>
-                          <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                            <span className="font-semibold text-maroon-700">
-                              {typeLabel(notification)}
-                            </span>
-                            <span aria-hidden="true"> · </span>
-                            {date(notification.createdAt)}
-                          </p>
-                        </div>
-                        <StatusBadge
-                          status={notification.isRead ? "Read" : "Unread"}
-                          compact
-                        />
+                        <p
+                          className={`min-w-0 break-words text-sm leading-5 text-slate-900 ${notification.isRead ? "font-semibold" : "font-bold"}`}
+                        >
+                          {notification.title || "SOCConsult Notification"}
+                        </p>
                       </div>
+                      <p className="mt-1 break-words text-[11px] leading-4 text-slate-500">
+                        <span className="font-semibold text-maroon-700">
+                          {typeLabel(notification)}
+                        </span>
+                        <span aria-hidden="true"> · </span>
+                        {date(notification.createdAt)}
+                      </p>
                     </div>
-                  </div>
-                  <div className="mt-3 flex min-w-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200/80 pt-3">
-                    <button
-                      type="button"
-                      onClick={() => open(notification)}
-                      className="btn-action-sm gap-1.5"
-                    >
-                      <Eye size={14} aria-hidden="true" /> View
-                    </button>
-                    {!notification.isRead && (
+                    <div className="flex shrink-0 items-center gap-0.5 self-center">
+                      <StatusBadge
+                        status={notification.isRead ? "Read" : "Unread"}
+                        compact
+                      />
                       <button
                         type="button"
-                        onClick={() => read(notification._id)}
-                        className="btn-action-sm gap-1.5"
+                        onClick={() =>
+                          setExpandedNotificationId((currentId) =>
+                            currentId === notification._id
+                              ? null
+                              : notification._id,
+                          )
+                        }
+                        aria-expanded={isExpanded}
+                        aria-controls={detailsId}
+                        aria-label={`${isExpanded ? "Collapse" : "Expand"} notification actions for ${notification.title || "SOCConsult Notification"}`}
+                        className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-maroon-800 transition hover:bg-maroon-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300"
                       >
-                        <MailOpen size={14} aria-hidden="true" /> Mark Read
+                        {isExpanded ? (
+                          <ChevronUp size={18} aria-hidden="true" />
+                        ) : (
+                          <ChevronRight size={18} aria-hidden="true" />
+                        )}
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => confirmDelete(notification)}
-                      className="btn-danger-action-sm gap-1.5"
-                    >
-                      <Trash2 size={14} aria-hidden="true" /> Delete
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => open(notification)}
-                      aria-label={`View ${notification.title || "notification"}`}
-                      className="grid h-[30px] w-[30px] place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-200"
-                    >
-                      <ChevronRight size={17} aria-hidden="true" />
-                    </button>
+                    </div>
                   </div>
+
+                  {isExpanded && (
+                    <div
+                      id={detailsId}
+                      className="mx-3 mb-3 min-w-0 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:mx-4 sm:mb-4 sm:p-4"
+                    >
+                      <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-3 min-[360px]:grid-cols-2">
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Date
+                          </dt>
+                          <dd className="mt-1 break-words text-xs leading-5 text-slate-800">
+                            {date(notification.createdAt)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Read status
+                          </dt>
+                          <dd className="mt-1 text-xs leading-5 text-slate-800">
+                            {notification.isRead ? "Read" : "Unread"}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Type
+                          </dt>
+                          <dd className="mt-1 break-words text-xs leading-5 text-slate-800">
+                            {typeLabel(notification)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Notification
+                          </dt>
+                          <dd className="mt-1 break-words text-xs leading-5 text-slate-800">
+                            {notification.title || "SOCConsult Notification"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 min-[360px]:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => open(notification)}
+                          className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-maroon-200 bg-white px-2 text-[11px] font-semibold text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-200"
+                        >
+                          <Eye size={14} aria-hidden="true" /> View
+                        </button>
+                        {!notification.isRead && (
+                          <button
+                            type="button"
+                            onClick={() => read(notification._id)}
+                            className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-maroon-200 bg-white px-2 text-[11px] font-semibold text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-200"
+                          >
+                            <MailOpen size={14} aria-hidden="true" /> Mark as Read
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => confirmDelete(notification)}
+                          className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-red-200 bg-white px-2 text-[11px] font-semibold text-red-700 transition hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-200"
+                        >
+                          <Trash2 size={14} aria-hidden="true" /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -661,7 +746,7 @@ function StudentNotificationsContent({
           <Pagination
             currentPage={safePage}
             totalItems={shown.length}
-            onPageChange={setCurrentPage}
+            onPageChange={changePage}
             itemLabel="notifications"
             itemsPerPage={ITEMS_PER_PAGE}
           />
@@ -698,26 +783,20 @@ function StudentNotificationActions({
       disabled: !hasRead || markingUnread,
       danger: false,
     },
-    ...(unreadCount > 0
-      ? [
-          {
-            label: "Mark All as Read",
-            icon: CheckCircle2,
-            onClick: onReadAll,
-            danger: false,
-          },
-        ]
-      : []),
-    ...(hasRead
-      ? [
-          {
-            label: "Clear Read",
-            icon: MailOpen,
-            onClick: () => onClear("read"),
-            danger: true,
-          },
-        ]
-      : []),
+    {
+      label: "Mark All as Read",
+      icon: CheckCircle2,
+      onClick: onReadAll,
+      disabled: unreadCount === 0,
+      danger: false,
+    },
+    {
+      label: "Clear Read",
+      icon: MailOpen,
+      onClick: () => onClear("read"),
+      disabled: !hasRead,
+      danger: true,
+    },
     {
       label: "Clear All",
       icon: Trash2,
@@ -727,14 +806,14 @@ function StudentNotificationActions({
   ];
 
   return (
-    <div className="student-notifications-actions grid w-full min-w-0 grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+    <div className="student-notifications-actions grid w-full min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none">
       {actions.map(({ label, icon: Icon, onClick, disabled, danger }) => (
         <button
           key={label}
           type="button"
           onClick={onClick}
           disabled={disabled}
-          className={`${danger ? "btn-danger-action" : "btn-action"} w-full gap-2`}
+          className={`${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1.5 border-slate-200 px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:justify-start md:px-3 md:text-sm`}
         >
           <Icon size={15} aria-hidden="true" />
           {label}

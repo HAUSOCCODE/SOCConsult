@@ -5,6 +5,7 @@ import { authorize } from "../src/middleware/auth.js";
 import { answerRoleQuestion, getDeterministicRoleResponse } from "../src/services/roleAiService.js";
 import { facultyAiTools, studentAiTools } from "../src/services/roleAiDataService.js";
 import { readFile } from "node:fs/promises";
+import { DEFAULT_GROQ_MODEL, getGroqModel } from "../src/services/groqModel.js";
 
 describe("Student and Faculty AI security", () => {
   let server; let baseUrl;
@@ -52,6 +53,20 @@ describe("Student and Faculty AI security", () => {
     assert.match(getDeterministicRoleResponse("faculty", "Who has the most consultations in the whole school?"), /Administrators/i);
     assert.match(getDeterministicRoleResponse("faculty", "Approve this request"), /can't/i);
     assert.match(getDeterministicRoleResponse("student", "Cancel my appointment"), /can't change/i);
+    assert.match(getDeterministicRoleResponse("student", "who is kris"), /don't have enough authorized information/i);
+  });
+
+  it("migrates retired Groq model IDs without exposing configuration", () => {
+    const previousModel = process.env.GROQ_MODEL;
+    try {
+      process.env.GROQ_MODEL = "llama-3.3-70b-versatile";
+      assert.equal(getGroqModel(), DEFAULT_GROQ_MODEL);
+      process.env.GROQ_MODEL = "custom-available-model";
+      assert.equal(getGroqModel(), "custom-available-model");
+    } finally {
+      if (previousModel === undefined) delete process.env.GROQ_MODEL;
+      else process.env.GROQ_MODEL = previousModel;
+    }
   });
 
   it("contains no arbitrary identity input or mutation methods in role tools", async () => {

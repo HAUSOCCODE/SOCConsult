@@ -190,12 +190,12 @@ export default function AppointmentRequests() {
   };
 
   return (
-    <div className="w-full min-w-0 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-maroon-900">
+    <div className="w-full min-w-0 space-y-5 sm:space-y-6">
+      <div className="w-full min-w-0 max-w-[850px]">
+        <h1 className="break-words text-2xl font-bold tracking-tight text-maroon-900 sm:text-[30px] sm:leading-9">
           Appointment Requests
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
           Select a published schedule to manage its student requests.
         </p>
       </div>
@@ -209,70 +209,70 @@ export default function AppointmentRequests() {
           text="Upcoming schedules created in Manage Availability will appear here."
         />
       ) : (
-        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="grid w-full min-w-0 max-w-[850px] grid-cols-1 gap-4">
           {schedules.map((schedule) => (
             <article
               key={schedule._id}
               onClick={() => openSchedule(schedule)}
               className="w-full min-w-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-colors duration-150 hover:border-maroon-300"
             >
-              <header className="flex min-w-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-maroon-50 text-maroon-800">
-                    <CalendarDays size={16} aria-hidden="true" />
+              <header className="flex min-w-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-5">
+                <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-maroon-50 text-maroon-800 sm:h-12 sm:w-12">
+                    <CalendarDays size={20} aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
-                    <h2 className="break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
+                    <h2 className="break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-lg">
                       {date(schedule.startAt)}
                     </h2>
-                    <p className="mt-0.5 text-xs font-medium text-slate-500">
+                    <p className="mt-0.5 break-words text-xs font-medium text-slate-500 sm:text-sm">
                       Published consultation schedule
                     </p>
                   </div>
                 </div>
-              <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
-                <Clock3 size={15} className="text-maroon-700" aria-hidden="true" />
-                {time(schedule.startAt)} – {time(schedule.endAt)}
-              </p>
+                <p className="inline-flex h-11 shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 sm:self-center">
+                  <Clock3 size={17} className="text-maroon-700" aria-hidden="true" />
+                  {time(schedule.startAt)} – {time(schedule.endAt)}
+                </p>
               </header>
-              <div className="space-y-4 p-4 sm:p-5">
-              <dl className="grid min-w-0 grid-cols-3 gap-2.5">
-                <Count
-                  label="Pending"
-                  value={schedule.pendingCount || 0}
-                  color="text-amber-700"
-                />
-                <Count
-                  label="Approved"
-                  value={schedule.approvedCount || 0}
-                  color="text-green-700"
-                />
-                <Count
-                  label="Rejected"
-                  value={schedule.rejectedCount || 0}
-                  color="text-red-700"
-                />
-              </dl>
-              <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 2xl:grid-cols-4">
-                <Metric
-                  label="Capacity"
-                  value={`${schedule.capacityMinutes || 0} min`}
-                />
-                <Metric
-                  label="Pending Time"
-                  value={`${schedule.pendingEstimatedMinutes || 0} min`}
-                />
-                <Metric
-                  label="Approved Time"
-                  value={`${schedule.approvedEstimatedMinutes || 0} min`}
-                />
-                <Metric
-                  label="Total Time"
-                  value={`${schedule.totalEstimatedMinutes || 0} min`}
-                />
-              </dl>
+              <div className="space-y-4 p-4 sm:space-y-5 sm:p-6">
+                <dl className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3">
+                  <Count
+                    label="Pending"
+                    value={schedule.pendingCount || 0}
+                    color="text-amber-700"
+                  />
+                  <Count
+                    label="Approved"
+                    value={schedule.approvedCount || 0}
+                    color="text-green-700"
+                  />
+                  <Count
+                    label="Rejected"
+                    value={schedule.rejectedCount || 0}
+                    color="text-red-700"
+                  />
+                </dl>
+                <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4">
+                  <Metric
+                    label="Capacity"
+                    value={`${schedule.capacityMinutes || 0} min`}
+                  />
+                  <Metric
+                    label="Pending Time"
+                    value={`${schedule.pendingEstimatedMinutes || 0} min`}
+                  />
+                  <Metric
+                    label="Approved Time"
+                    value={`${schedule.approvedEstimatedMinutes || 0} min`}
+                  />
+                  <Metric
+                    label="Total Time"
+                    value={`${schedule.totalEstimatedMinutes || 0} min`}
+                  />
+                </dl>
               </div>
-              <footer className="flex w-full items-center justify-center border-t border-slate-200 bg-slate-50/70 p-3">
+              <footer className="flex w-full items-center justify-center border-t border-slate-200 bg-white p-3.5 sm:p-4">
                 <button
                   type="button"
                   onClick={(event) => {
@@ -280,7 +280,7 @@ export default function AppointmentRequests() {
                     openSchedule(schedule);
                   }}
                   aria-label={`View appointment requests for ${date(schedule.startAt)}`}
-                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-maroon-800 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-maroon-900 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-auto"
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-maroon-800 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-maroon-900 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-44"
                 >
                   View Requests
                   <ChevronRight size={16} aria-hidden="true" />
@@ -312,14 +312,14 @@ export default function AppointmentRequests() {
 
 function Metric({ label, value }) {
   return (
-    <div className="min-w-0 bg-slate-50 px-3 py-2.5">
+    <div className="min-w-0 bg-slate-50 px-3 py-3 sm:px-4">
       <dt
-        className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500"
+        className="break-words text-[10px] font-bold uppercase leading-4 tracking-wide text-slate-500 sm:whitespace-nowrap"
         title={label}
       >
         {label}
       </dt>
-      <dd className="mt-1 text-sm font-bold text-slate-900">{value}</dd>
+      <dd className="mt-1 whitespace-nowrap text-sm font-bold text-slate-900 sm:text-base">{value}</dd>
     </div>
   );
 }
@@ -327,15 +327,15 @@ function Metric({ label, value }) {
 function Count({ label, value, color }) {
   return (
     <div
-      className={`min-w-0 rounded-xl border px-2.5 py-2.5 sm:px-3 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
+      className={`min-w-0 rounded-xl border px-2 py-3 sm:min-h-[88px] sm:px-4 sm:py-3.5 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
     >
       <dt
-        className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-600"
+        className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-600 sm:text-xs"
         title={label}
       >
         {label}
       </dt>
-      <dd className={`mt-1 text-xl font-extrabold ${color}`}>{value}</dd>
+      <dd className={`mt-1 text-xl font-extrabold sm:text-2xl ${color}`}>{value}</dd>
     </div>
   );
 }

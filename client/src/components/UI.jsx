@@ -1,4 +1,4 @@
-export const StatusBadge = ({ status, compact = false }) => {
+export const StatusBadge = ({ status, compact = false, allowWrap = false }) => {
   const colors = {
     Pending: "bg-amber-100 text-amber-800",
     Approved: "bg-green-100 text-green-800",
@@ -17,7 +17,7 @@ export const StatusBadge = ({ status, compact = false }) => {
   };
   return (
     <span
-      className={`inline-flex w-auto min-w-max max-w-none shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 px-2.5 py-1 text-center font-semibold leading-none ${compact ? "text-[11px]" : "text-xs"} ${colors[status] || "bg-slate-100 text-slate-700"}`}
+      className={`inline-flex w-auto shrink-0 items-center justify-center rounded-full border border-slate-200 px-2.5 py-1 text-center font-semibold leading-none ${allowWrap ? "min-w-0 max-w-full whitespace-normal" : "min-w-max max-w-none whitespace-nowrap"} ${compact ? "text-[11px]" : "text-xs"} ${colors[status] || "bg-slate-100 text-slate-700"}`}
     >
       {status}
     </span>

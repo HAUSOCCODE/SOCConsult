@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
@@ -83,16 +83,27 @@ export default function ProfilePictureEditor() {
 
   return (
     <>
-      <div className="flex shrink-0 flex-col items-center gap-2">
-        <ProfileImagePreview
-          user={user}
-          className="h-20 w-20 rounded-2xl bg-maroon-800 text-3xl font-bold text-gold-300 shadow-lg ring-4 ring-maroon-100"
-        />
+      <div className="flex shrink-0 flex-col items-center gap-3">
+        <div className="relative">
+          <ProfileImagePreview
+            user={user}
+            className="h-24 w-24 rounded-2xl bg-maroon-800 text-3xl font-bold text-gold-300 shadow-lg ring-4 ring-maroon-100 md:h-20 md:w-20"
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            aria-label="Change profile photo"
+            className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center rounded-full border border-slate-200 bg-white text-maroon-800 shadow-md md:hidden"
+          >
+            <Pencil size={14} aria-hidden="true" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="btn-action-sm"
+          className="btn-action-sm gap-1.5"
         >
+          <Pencil size={13} aria-hidden="true" className="md:hidden" />
           Change Photo
         </button>
         {user.profilePicture && (
