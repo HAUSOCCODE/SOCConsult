@@ -15,7 +15,6 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import hauSocLogo from "../../assets/hau_soc_original_logo.png";
 import { Footer, Navbar } from "../../components/public/PublicLayout";
 import SOCConsultPublicAIGuide from "../../components/public/SOCConsultPublicAIGuide";
 import { api } from "../../api/apiClient";
@@ -227,9 +226,9 @@ export default function LandingPage() {
               <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full border border-gold-300/30" />
               <div className="relative flex aspect-[16/10] items-center justify-center rounded-xl border border-white/15 bg-white/95 p-6 sm:p-8">
                 <img
-                  src={hauSocLogo}
-                  alt="Holy Angel University School of Computing emblem"
-                  className="h-full max-h-56 w-full object-contain"
+                  src="/images/social/hau-building.jpg"
+                  alt="Holy Angel University building"
+                  className="h-full w-full object-cover"
                 />
               </div>
               <p className="relative mt-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-gold-200">
