@@ -10,6 +10,7 @@ import {
   getRegistrations,
   getUser,
   getUsers,
+  getUserRegistrationReport,
   rejectRegistration,
   resetUserPassword,
   updateUserStatus,
@@ -42,6 +43,7 @@ router.get("/registrations/:id", getRegistration);
 router.put("/registrations/:id/approve", approveRegistration);
 router.put("/registrations/:id/reject", rejectRegistration);
 router.get("/users", getUsers);
+router.get("/reports/user-registrations", getUserRegistrationReport);
 router.get("/users/:id", getUser);
 router.put("/users/:id/reset-password", resetUserPassword);
 router.put("/users/:id/status", updateUserStatus);

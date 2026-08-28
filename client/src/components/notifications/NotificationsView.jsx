@@ -11,6 +11,7 @@ import {
   Mail,
   MailOpen,
   Trash2,
+  UserRound,
   X,
   XCircle,
 } from "lucide-react";
@@ -39,6 +40,7 @@ export default function NotificationsPage({
   compact = false,
   admin = false,
   student = false,
+  faculty = false,
 }) {
   const toast = useToast();
   const [notifications, setNotifications] = useState([]);
@@ -195,7 +197,7 @@ export default function NotificationsPage({
   if (compact)
     return (
       <>
-        {student ? (
+        {student || faculty ? (
           <StudentNotificationsContent
             notifications={notifications}
             unreadCount={unreadCount}
@@ -213,6 +215,7 @@ export default function NotificationsPage({
             markingUnread={markingUnread}
             confirmDelete={confirmDelete}
             confirmClear={confirmClear}
+            faculty={faculty}
           />
         ) : (
           <CompactNotifications
@@ -367,6 +370,7 @@ function StudentNotificationsContent({
   markingUnread,
   confirmDelete,
   confirmClear,
+  faculty = false,
 }) {
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
   const shown = notifications.filter((notification) =>
@@ -451,8 +455,8 @@ function StudentNotificationsContent({
           };
 
   return (
-    <div className="student-notifications w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
-      <div className="student-notifications-heading flex min-w-0 flex-col gap-4">
+    <div className={`${faculty ? "faculty-notifications pb-20 md:pb-16" : "student-notifications pb-16 md:pb-0"} w-full min-w-0 max-w-full space-y-4 sm:space-y-5`}>
+      {!faculty && <div className="student-notifications-heading flex min-w-0 flex-col gap-4">
         <div className="min-w-0 pt-1">
           <h1 className="text-2xl font-extrabold tracking-tight text-maroon-900 md:text-[28px]">
             Notifications
@@ -469,9 +473,10 @@ function StudentNotificationsContent({
           markingUnread={markingUnread}
           onClear={confirmClear}
         />
-      </div>
+      </div>}
 
-      <div className="flex w-full max-w-md min-w-0 rounded-xl bg-slate-100 p-1 md:w-auto md:max-w-none md:gap-2 md:bg-transparent md:p-0">
+      <div className={`${faculty ? "flex flex-wrap items-center justify-between gap-3" : ""}`}>
+      <div className="flex w-auto min-w-0 gap-2">
         {["All", "Unread", "Read"].map((name) => (
           <button
             key={name}
@@ -482,11 +487,21 @@ function StudentNotificationsContent({
               setCurrentPage(1);
             }}
             aria-pressed={filter === name}
-            className={`h-9 min-w-0 flex-1 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 md:min-w-20 md:flex-none ${filter === name ? "bg-maroon-800 text-white shadow-sm" : "border border-transparent bg-transparent text-slate-700 hover:bg-white md:border-slate-200 md:bg-white"}`}
+            className={faculty ? `h-9 min-w-0 rounded-lg border px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 sm:text-sm ${filter === name ? "border-maroon-800 bg-maroon-800 text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-maroon-200 hover:bg-maroon-50"}` : `h-9 min-w-0 flex-1 rounded-lg px-3 text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 md:min-w-20 md:flex-none ${filter === name ? "bg-maroon-800 text-white shadow-sm" : "border border-transparent bg-transparent text-slate-700 hover:bg-white md:border-slate-200 md:bg-white"}`}
           >
             {name}
           </button>
         ))}
+      </div>
+      {faculty && <StudentNotificationActions
+          notifications={notifications}
+          unreadCount={unreadCount}
+          onReadAll={readAll}
+          onUnreadAll={unreadAll}
+          markingUnread={markingUnread}
+          onClear={confirmClear}
+          faculty
+        />}
       </div>
 
       {error && (
@@ -505,23 +520,23 @@ function StudentNotificationsContent({
         <EmptyState title={emptyCopy.title} text={emptyCopy.text} />
       ) : (
         <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:rounded-2xl">
-          <div className="student-notifications-table min-w-0">
-            <table className="w-full table-fixed text-left text-xs min-[1450px]:text-[13px]">
+          <div className={`${faculty ? "hidden md:block" : "student-notifications-table"} min-w-0`}>
+            <table className={faculty ? "w-full table-fixed text-left text-[11px] min-[1100px]:text-xs min-[1450px]:text-[13px]" : "w-full table-fixed text-left text-xs min-[1450px]:text-[13px]"}>
               <thead className="bg-maroon-800 text-[11px] uppercase tracking-wide text-white">
                 <tr>
-                  <th scope="col" className="w-[14%] px-3 py-3">
+                  <th scope="col" className="w-[13%] px-2 py-3 min-[1200px]:px-3">
                     Type
                   </th>
-                  <th scope="col" className="w-[29%] px-3 py-3">
+                  <th scope="col" className="w-[29%] px-2 py-3 min-[1200px]:px-3">
                     Notification
                   </th>
-                  <th scope="col" className="w-[19%] px-3 py-3">
+                  <th scope="col" className="w-[18%] px-2 py-3 min-[1200px]:px-3">
                     Date &amp; Time
                   </th>
-                  <th scope="col" className="w-[10%] px-3 py-3 text-center">
+                  <th scope="col" className="w-[11%] px-2 py-3 text-center min-[1200px]:px-3">
                     Status
                   </th>
-                  <th scope="col" className="w-[28%] px-3 py-3">
+                  <th scope="col" className="w-[29%] px-2 py-3 min-[1200px]:px-3">
                     Action
                   </th>
                 </tr>
@@ -534,7 +549,7 @@ function StudentNotificationsContent({
                       notification.isRead ? "bg-white" : "bg-gold-50/70"
                     }
                   >
-                    <td className="px-3 py-2.5 text-slate-700">
+                    <td className="px-2 py-2.5 text-slate-700 min-[1200px]:px-3">
                       <span className="flex min-w-0 items-center gap-2">
                         <CalendarDays
                           size={16}
@@ -546,7 +561,7 @@ function StudentNotificationsContent({
                         </span>
                       </span>
                     </td>
-                    <td className="min-w-0 px-3 py-2.5">
+                    <td className="min-w-0 px-2 py-2.5 min-[1200px]:px-3">
                       <div className="flex min-w-0 items-start gap-2">
                         <span
                           className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notification.isRead ? "bg-blue-300" : "bg-gold-500"}`}
@@ -559,39 +574,45 @@ function StudentNotificationsContent({
                         </p>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 leading-5 text-slate-600">
+                    <td className="break-words px-2 py-2.5 leading-4 text-slate-600 min-[1200px]:px-3">
                       {date(notification.createdAt)}
                     </td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-2 py-2.5 text-center min-[1200px]:px-3">
                       <StatusBadge
                         status={notification.isRead ? "Read" : "Unread"}
                         compact
                       />
                     </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <td className="px-2 py-2.5 pr-3 min-[1200px]:px-3 min-[1200px]:pr-4">
+                      <div className="flex min-w-0 flex-nowrap items-center gap-1">
                         <button
                           type="button"
                           onClick={() => open(notification)}
-                          className="btn-action-sm gap-1.5"
+                          aria-label={`View ${notification.title || "notification"}`}
+                          className={faculty ? "btn-action-sm h-8 gap-1 px-1.5 text-[10px] min-[1200px]:px-2 min-[1200px]:text-xs" : "btn-action-sm gap-1.5"}
                         >
-                          <Eye size={14} aria-hidden="true" /> View
+                          <Eye size={14} aria-hidden="true" />
+                          <span className={faculty ? "hidden min-[1100px]:inline" : ""}>View</span>
                         </button>
                         {!notification.isRead && (
                           <button
                             type="button"
                             onClick={() => read(notification._id)}
-                            className="btn-action-sm gap-1.5"
+                            aria-label={`Mark ${notification.title || "notification"} as read`}
+                            className={faculty ? "btn-action-sm h-8 gap-1 px-1.5 text-[10px] min-[1200px]:px-2 min-[1200px]:text-xs" : "btn-action-sm gap-1.5"}
                           >
-                            <MailOpen size={14} aria-hidden="true" /> Mark Read
+                            <MailOpen size={14} aria-hidden="true" />
+                            <span className={faculty ? "hidden min-[1100px]:inline" : ""}>Mark Read</span>
                           </button>
                         )}
                         <button
                           type="button"
                           onClick={() => confirmDelete(notification)}
-                          className="btn-danger-action-sm gap-1.5"
+                          aria-label={`Delete ${notification.title || "notification"}`}
+                          className={faculty ? "btn-danger-action-sm h-8 gap-1 px-1.5 text-[10px] min-[1200px]:px-2 min-[1200px]:text-xs" : "btn-danger-action-sm gap-1.5"}
                         >
-                          <Trash2 size={14} aria-hidden="true" /> Delete
+                          <Trash2 size={14} aria-hidden="true" />
+                          <span className={faculty ? "hidden min-[1100px]:inline" : ""}>Delete</span>
                         </button>
                       </div>
                     </td>
@@ -601,12 +622,29 @@ function StudentNotificationsContent({
             </table>
           </div>
 
-          <div className="student-notifications-cards grid min-w-0 gap-2.5 bg-slate-50/70 p-2 sm:p-3">
+          <div className={`${faculty ? "grid md:hidden" : "student-notifications-cards grid"} min-w-0 gap-2.5 bg-slate-50/70 p-2 sm:p-3`}>
             {pageNotifications.map((notification) => {
               const dateParts = notificationDateParts(notification.createdAt);
               const isExpanded = expandedNotificationId === notification._id;
               const detailsId = `student-notification-details-${notification._id}`;
-              return (
+              return faculty ? (
+                <FacultyNotificationCard
+                  key={notification._id}
+                  notification={notification}
+                  isExpanded={isExpanded}
+                  detailsId={detailsId}
+                  date={date}
+                  typeLabel={typeLabel}
+                  onToggle={() =>
+                    setExpandedNotificationId((currentId) =>
+                      currentId === notification._id ? null : notification._id,
+                    )
+                  }
+                  onOpen={() => open(notification)}
+                  onRead={() => read(notification._id)}
+                  onDelete={() => confirmDelete(notification)}
+                />
+              ) : (
                 <article
                   key={notification._id}
                   className={`min-w-0 overflow-hidden rounded-xl border shadow-sm transition-colors duration-200 ${notification.isRead ? "border-slate-200 bg-white" : "border-gold-200 bg-gold-50/60"}`}
@@ -765,6 +803,107 @@ function StudentNotificationsContent({
   );
 }
 
+function FacultyNotificationCard({
+  notification,
+  isExpanded,
+  detailsId,
+  date,
+  typeLabel,
+  onToggle,
+  onOpen,
+  onRead,
+  onDelete,
+}) {
+  const title = notification.title || "SOCConsult Notification";
+  return (
+    <article
+      className={`min-w-0 overflow-hidden rounded-xl border shadow-sm ${notification.isRead ? "border-slate-200 bg-white" : "border-gold-200 bg-gold-50/60"}`}
+    >
+      <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-2.5 p-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-maroon-50 text-maroon-700">
+          <CalendarDays size={15} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="break-words text-[11px] font-bold text-maroon-800">
+            {typeLabel(notification)}
+          </p>
+          <div className="mt-1 flex min-w-0 items-start gap-1.5">
+            <span
+              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${notification.isRead ? "bg-blue-400" : "bg-gold-500"}`}
+              aria-hidden="true"
+            />
+            <p className={`min-w-0 break-words text-xs leading-4 text-slate-900 ${notification.isRead ? "font-semibold" : "font-bold"}`}>
+              {title}
+            </p>
+          </div>
+          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="break-words text-[11px] leading-4 text-slate-500">
+              {date(notification.createdAt)}
+            </p>
+            <StatusBadge
+              status={notification.isRead ? "Read" : "Unread"}
+              compact
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          aria-controls={detailsId}
+          aria-label={`${isExpanded ? "Collapse" : "Expand"} notification details for ${title}`}
+          className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-300"
+        >
+          {isExpanded ? (
+            <ChevronUp size={17} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={17} aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div id={detailsId} className="border-t border-slate-200 bg-white/90 p-3">
+          <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-3">
+            <div className="min-w-0">
+              <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Type</dt>
+              <dd className="mt-1 break-words text-xs text-slate-800">{typeLabel(notification)}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Date &amp; Time</dt>
+              <dd className="mt-1 break-words text-xs text-slate-800">{date(notification.createdAt)}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Status</dt>
+              <dd className="mt-1 text-xs text-slate-800">{notification.isRead ? "Read" : "Unread"}</dd>
+            </div>
+            <div className="col-span-2 min-w-0">
+              <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Message</dt>
+              <dd className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-800">
+                {formatPersonNameInNotification(notification.message) ||
+                  "A SOCConsult activity was updated."}
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 min-[360px]:grid-cols-3">
+            <button type="button" onClick={onOpen} className="btn-action-sm h-9 min-w-0 gap-1 px-2">
+              <Eye size={14} aria-hidden="true" /> View
+            </button>
+            {!notification.isRead && (
+              <button type="button" onClick={onRead} className="btn-action-sm h-9 min-w-0 gap-1 px-2">
+                <MailOpen size={14} aria-hidden="true" /> Mark Read
+              </button>
+            )}
+            <button type="button" onClick={onDelete} className="btn-danger-action-sm h-9 min-w-0 gap-1 px-2">
+              <Trash2 size={14} aria-hidden="true" /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function StudentNotificationActions({
   notifications,
   unreadCount,
@@ -772,6 +911,7 @@ function StudentNotificationActions({
   onUnreadAll,
   markingUnread,
   onClear,
+  faculty = false,
 }) {
   if (notifications.length === 0) return null;
   const hasRead = notifications.some((notification) => notification.isRead);
@@ -806,14 +946,14 @@ function StudentNotificationActions({
   ];
 
   return (
-    <div className="student-notifications-actions grid w-full min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+    <div className={faculty ? "grid w-full min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm min-[360px]:grid-cols-4 md:flex md:w-auto md:flex-wrap md:justify-end md:border-0 md:bg-transparent md:p-0 md:shadow-none" : "student-notifications-actions grid w-full min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none"}>
       {actions.map(({ label, icon: Icon, onClick, disabled, danger }) => (
         <button
           key={label}
           type="button"
           onClick={onClick}
           disabled={disabled}
-          className={`${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1.5 border-slate-200 px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:justify-start md:px-3 md:text-sm`}
+          className={faculty ? `${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1 border-slate-200 px-1 text-[9px] min-[430px]:px-1.5 min-[430px]:text-[10px] md:w-auto md:px-2.5 md:text-xs` : `${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1.5 border-slate-200 px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:justify-start md:px-3 md:text-sm`}
         >
           <Icon size={15} aria-hidden="true" />
           {label}
@@ -878,6 +1018,34 @@ function CompactNotifications({
     notification.type
       ? notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
       : "Update";
+
+  if (admin)
+    return (
+      <AdminNotificationsContent
+        notifications={notifications}
+        unreadCount={unreadCount}
+        loading={loading}
+        error={error}
+        filter={filter}
+        setFilter={setFilter}
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        pageNotifications={pageNotifications}
+        shown={shown}
+        safePage={safePage}
+        open={open}
+        read={read}
+        readAll={readAll}
+        unreadAll={unreadAll}
+        markingUnread={markingUnread}
+        confirmDelete={confirmDelete}
+        confirmClear={confirmClear}
+        selected={selected}
+        setSelected={setSelected}
+        date={date}
+        typeLabel={typeLabel}
+      />
+    );
 
   return (
     <div
@@ -1076,6 +1244,316 @@ function CompactNotifications({
           onClose={() => setSelected(null)}
         />
       )}
+    </div>
+  );
+}
+
+function AdminNotificationsContent({
+  notifications,
+  unreadCount,
+  loading,
+  error,
+  filter,
+  setFilter,
+  currentPage,
+  setCurrentPage,
+  pageNotifications,
+  shown,
+  safePage,
+  open,
+  read,
+  readAll,
+  unreadAll,
+  markingUnread,
+  confirmDelete,
+  confirmClear,
+  selected,
+  setSelected,
+  date,
+  typeLabel,
+}) {
+  const [expandedNotificationId, setExpandedNotificationId] = useState(null);
+
+  useEffect(() => {
+    setExpandedNotificationId(null);
+  }, [filter, safePage]);
+
+  useEffect(() => {
+    if (
+      expandedNotificationId &&
+      !pageNotifications.some(
+        (notification) => notification._id === expandedNotificationId,
+      )
+    )
+      setExpandedNotificationId(null);
+  }, [expandedNotificationId, pageNotifications]);
+
+  return (
+    <div className="w-full min-w-0 max-w-full space-y-4 pb-20 md:pb-16">
+      <div>
+        <h1 className="text-2xl font-bold text-maroon-900 sm:text-[28px]">
+          Notifications
+        </h1>
+        <p className="mt-1.5 text-sm text-slate-600">
+          Stay updated with your consultation activities.
+        </p>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="order-2 flex min-w-0 gap-2 md:order-1">
+          {["All", "Unread", "Read"].map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => {
+                setFilter(name);
+                setCurrentPage(1);
+              }}
+              aria-pressed={filter === name}
+              className={`h-9 rounded-lg border px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-maroon-200 sm:text-sm ${filter === name ? "border-maroon-800 bg-maroon-800 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-maroon-50"}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <div className="order-1 w-full min-w-0 md:order-2 md:w-auto">
+          <AdminNotificationActions
+            notifications={notifications}
+            unreadCount={unreadCount}
+            onReadAll={readAll}
+            onUnreadAll={unreadAll}
+            markingUnread={markingUnread}
+            onClear={confirmClear}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <p className="py-12 text-center font-semibold text-maroon-800">
+          Loading notifications...
+        </p>
+      ) : shown.length === 0 ? (
+        <EmptyState
+          title="No notifications found."
+          text="Consultation updates will appear here."
+        />
+      ) : (
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid min-w-0 gap-2 bg-slate-50/60 p-2 sm:p-3">
+            {pageNotifications.map((notification) => (
+              <AdminNotificationRow
+                key={notification._id}
+                notification={notification}
+                expanded={expandedNotificationId === notification._id}
+                onToggle={() =>
+                  setExpandedNotificationId((current) =>
+                    current === notification._id ? null : notification._id,
+                  )
+                }
+                onOpen={() => open(notification)}
+                onRead={() => read(notification._id)}
+                onDelete={() => confirmDelete(notification)}
+                date={date}
+                typeLabel={typeLabel}
+              />
+            ))}
+          </div>
+          <Pagination
+            currentPage={safePage}
+            totalItems={shown.length}
+            onPageChange={(page) => {
+              setExpandedNotificationId(null);
+              setCurrentPage(page);
+            }}
+            itemLabel="notifications"
+            itemsPerPage={ITEMS_PER_PAGE}
+          />
+        </div>
+      )}
+
+      {selected && (
+        <NotificationDetailsModal
+          notification={{ ...selected, isRead: true }}
+          date={date}
+          typeLabel={typeLabel}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdminNotificationRow({
+  notification,
+  expanded,
+  onToggle,
+  onOpen,
+  onRead,
+  onDelete,
+  date,
+  typeLabel,
+}) {
+  const title = notification.title || "SOCConsult Notification";
+  const detailsId = `admin-notification-details-${notification._id}`;
+  const status = notification.isRead ? "Read" : "Unread";
+  return (
+    <article
+      className={`min-w-0 overflow-hidden rounded-xl border shadow-sm ${notification.isRead ? "border-slate-200 bg-white" : "border-gold-200 bg-gold-50/50"}`}
+    >
+      <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-start gap-2.5 p-3 md:grid-cols-[2.25rem_minmax(6rem,0.7fr)_minmax(0,1.4fr)_minmax(7rem,0.7fr)_auto_2.25rem] md:items-center md:gap-2 lg:gap-3 lg:px-4">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-maroon-50 text-maroon-700">
+          <UserRound size={16} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="break-words text-xs font-bold text-maroon-900 sm:text-sm">
+            {typeLabel(notification)}
+          </p>
+          <div className="mt-1 flex min-w-0 items-start gap-1.5 md:hidden">
+            {!notification.isRead && (
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
+            )}
+            <p className="min-w-0 break-words text-xs font-semibold leading-4 text-slate-800">
+              {title}
+            </p>
+          </div>
+          <p className="mt-1 break-words text-[11px] leading-4 text-slate-500 md:hidden">
+            {date(notification.createdAt)}
+          </p>
+          <div className="mt-1 md:hidden">
+            <StatusBadge status={status} compact />
+          </div>
+        </div>
+        <div className="hidden min-w-0 items-start gap-1.5 md:flex">
+          {!notification.isRead && (
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
+          )}
+          <p className="min-w-0 break-words text-xs font-semibold leading-5 text-slate-800 lg:text-sm">
+            {title}
+          </p>
+        </div>
+        <p className="hidden min-w-0 break-words text-[11px] leading-4 text-slate-500 md:block lg:text-xs">
+          {date(notification.createdAt)}
+        </p>
+        <span className="hidden md:block">
+          <StatusBadge status={status} compact />
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={detailsId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} notification details for ${title}`}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-300"
+        >
+          {expanded ? (
+            <ChevronUp size={18} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={18} aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      {expanded && (
+        <div id={detailsId} className="border-t border-slate-200 bg-white/90 p-3.5 lg:px-4">
+          <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
+            <NotificationDetail label="Date & Time" value={date(notification.createdAt)} />
+            <NotificationDetail label="Status" value={status} />
+            <NotificationDetail label="Type" value={typeLabel(notification)} />
+            <NotificationDetail label="Notification" value={title} />
+            {notification.message && (
+              <NotificationDetail
+                label="Message"
+                value={formatPersonNameInNotification(notification.message)}
+                className="col-span-2 md:col-span-4"
+              />
+            )}
+          </dl>
+          <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 min-[360px]:grid-cols-3 md:flex md:justify-end">
+            <button type="button" onClick={onOpen} className="btn-action h-10 w-full gap-1.5 px-3 md:w-auto">
+              <Eye size={14} aria-hidden="true" /> View
+            </button>
+            {!notification.isRead && (
+              <button type="button" onClick={onRead} className="btn-action h-10 w-full gap-1.5 px-3 md:w-auto">
+                <MailOpen size={14} aria-hidden="true" /> Mark as Read
+              </button>
+            )}
+            <button type="button" onClick={onDelete} className="btn-danger-action h-10 w-full gap-1.5 px-3 md:w-auto">
+              <Trash2 size={14} aria-hidden="true" /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function NotificationDetail({ label, value, className = "" }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-800">
+        {value || "Not available"}
+      </dd>
+    </div>
+  );
+}
+
+function AdminNotificationActions({
+  notifications,
+  unreadCount,
+  onReadAll,
+  onUnreadAll,
+  markingUnread,
+  onClear,
+}) {
+  if (notifications.length === 0) return null;
+  const hasRead = notifications.some((notification) => notification.isRead);
+  const actions = [
+    {
+      label: markingUnread ? "Marking Unread..." : "Mark All as Unread",
+      icon: Mail,
+      onClick: onUnreadAll,
+      disabled: !hasRead || markingUnread,
+    },
+    {
+      label: "Mark All as Read",
+      icon: CheckCircle2,
+      onClick: onReadAll,
+      disabled: unreadCount === 0,
+    },
+    {
+      label: "Clear Read",
+      icon: MailOpen,
+      onClick: () => onClear("read"),
+      disabled: !hasRead,
+    },
+    {
+      label: "Clear All",
+      icon: Trash2,
+      onClick: () => onClear("all"),
+      danger: true,
+    },
+  ];
+  return (
+    <div className="grid w-full min-w-0 grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:justify-end">
+      {actions.map(({ label, icon: Icon, onClick, disabled, danger }) => (
+        <button
+          key={label}
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className={`${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 gap-1.5 px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs md:w-auto md:px-3`}
+        >
+          <Icon size={14} aria-hidden="true" /> {label}
+        </button>
+      ))}
     </div>
   );
 }

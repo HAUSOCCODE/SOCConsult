@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChevronRight, ChevronUp, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
@@ -29,6 +29,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [expandedUserId, setExpandedUserId] = useState(null);
 
   const load = () => {
     setError("");
@@ -116,6 +117,10 @@ export default function UserManagement({ initialTab = "All Users" }) {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
+  useEffect(() => {
+    setExpandedUserId(null);
+  }, [tab, validPage]);
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (loading)
     return (
@@ -127,14 +132,14 @@ export default function UserManagement({ initialTab = "All Users" }) {
       </div>
     );
   return (
-    <div className="w-full min-w-0 max-w-full space-y-5">
+    <div className="w-full min-w-0 max-w-full space-y-5 pb-20 md:pb-16">
       <div>
         <h1 className="text-2xl font-bold text-maroon-900">User Management</h1>
         <p className="mt-2 text-sm text-slate-500">
           Review registrations and manage Student and Faculty accounts.
         </p>
       </div>
-      <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+      <div className="flex max-w-full gap-2 overflow-x-auto pb-1 min-[900px]:flex-wrap min-[900px]:overflow-visible">
         {tabs.map((name) => (
           <button
             key={name}
@@ -158,54 +163,100 @@ export default function UserManagement({ initialTab = "All Users" }) {
         />
       ) : (
         <>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4 xl:hidden">
-            {pageUsers.map((user) => (
-              <article
-                key={user._id}
-                className="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-              >
-                <div className="flex flex-col items-start gap-3 min-[380px]:flex-row min-[380px]:justify-between">
-                  <div className="min-w-0">
-                    <p
-                      className="break-words font-bold text-slate-900"
-                      title={formatPersonName(user.name)}
+          <div className="grid grid-cols-1 gap-3 min-[900px]:hidden">
+            {pageUsers.map((user) => {
+              const expanded = expandedUserId === user._id;
+              const detailsId = `mobile-user-details-${user._id}`;
+              const displayUserName =
+                formatPersonName(user.name) || "Unnamed user";
+              return (
+                <article
+                  key={user._id}
+                  className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="grid min-h-[96px] min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-3 p-3.5">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-maroon-800 text-sm font-bold text-white">
+                      {displayUserName.charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-bold text-slate-900">
+                        {displayUserName}
+                      </p>
+                      <p className="mt-0.5 [overflow-wrap:anywhere] text-xs lowercase leading-4 text-slate-600">
+                        {user.email?.toLowerCase() || "Email unavailable"}
+                      </p>
+                      <p className="mt-1 text-xs capitalize text-slate-500">
+                        {user.role}
+                      </p>
+                      <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                        <StatusBadge status={user.accountStatus} compact />
+                        <StatusBadge status={user.registrationStatus} compact />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedUserId((current) =>
+                          current === user._id ? null : user._id,
+                        )
+                      }
+                      aria-expanded={expanded}
+                      aria-controls={detailsId}
+                      aria-label={`${expanded ? "Collapse" : "Expand"} actions for ${displayUserName}`}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-300"
                     >
-                      {formatPersonName(user.name) || "Unnamed user"}
-                    </p>
-                    <p
-                      className="mt-1 truncate text-sm lowercase text-slate-600"
-                      title={user.email?.toLowerCase()}
-                    >
-                      {user.email?.toLowerCase()}
-                    </p>
-                    <p className="mt-1 text-sm capitalize text-slate-500">
-                      {user.role}
-                    </p>
+                      {expanded ? (
+                        <ChevronUp size={18} aria-hidden="true" />
+                      ) : (
+                        <ChevronRight size={18} aria-hidden="true" />
+                      )}
+                    </button>
                   </div>
-                  <StatusBadge status={user.registrationStatus} compact />
-                </div>
-                <div className="mt-3">
-                  <StatusBadge status={user.accountStatus} compact />
-                </div>
-                <UserActions
-                  user={user}
-                  onView={view}
-                  onReset={setResetTarget}
-                  onAction={action}
-                />
-              </article>
-            ))}
+                  {expanded && (
+                    <div id={detailsId} className="border-t border-slate-200 bg-slate-50/70 p-3.5">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-gold-600">
+                        Account Details
+                      </p>
+                      <dl className="mt-3 grid min-w-0 grid-cols-2 gap-3">
+                        <MobileDetail label="Role" value={user.role} capitalize />
+                        <MobileDetail label="Registration" value={user.registrationStatus} />
+                        <MobileDetail label="Account" value={user.accountStatus} />
+                        <MobileDetail
+                          label="Registered"
+                          value={
+                            user.createdAt
+                              ? new Date(user.createdAt).toLocaleDateString()
+                              : "Not available"
+                          }
+                        />
+                        <MobileDetail
+                          label="Email"
+                          value={user.email?.toLowerCase() || "Not available"}
+                          className="col-span-2"
+                        />
+                      </dl>
+                      <UserActions
+                        user={user}
+                        onView={view}
+                        onReset={setResetTarget}
+                        onAction={action}
+                      />
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
-          <div className="responsive-table-shell hidden xl:block">
+          <div className="responsive-table-shell hidden min-[900px]:block">
             <table className="responsive-table text-xs 2xl:text-sm">
               <colgroup>
-                <col className="w-[16%]" />
-                <col className="w-[24%]" />
-                <col className="w-[8%]" />
+                <col className="w-[15%]" />
+                <col className="w-[23%]" />
+                <col className="w-[9%]" />
                 <col className="w-[11%]" />
-                <col className="w-[14%]" />
+                <col className="w-[13%]" />
                 <col className="w-[11%]" />
-                <col className="w-[16%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <thead className="bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
                 <tr>
@@ -220,7 +271,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
                   ].map((heading) => (
                     <th
                       key={heading}
-                      className="whitespace-nowrap px-2.5 py-3 font-semibold 2xl:px-3"
+                      className="whitespace-nowrap px-1.5 py-3 font-semibold min-[1200px]:px-2.5 2xl:px-3"
                     >
                       {heading}
                     </th>
@@ -233,41 +284,41 @@ export default function UserManagement({ initialTab = "All Users" }) {
                     key={user._id}
                     className="border-t border-slate-200 align-middle transition-colors hover:bg-slate-50"
                   >
-                    <td className="min-w-0 px-2.5 py-2 2xl:px-3">
+                    <td className="min-w-0 px-1.5 py-2 min-[1200px]:px-2.5 2xl:px-3">
                       <p
-                        className="whitespace-normal break-normal font-semibold leading-4"
+                        className="whitespace-normal break-words font-semibold leading-4"
                         title={formatPersonName(user.name)}
                       >
                         {formatPersonName(user.name) || "—"}
                       </p>
                     </td>
-                    <td className="min-w-0 px-2.5 py-2 2xl:px-3">
+                    <td className="min-w-0 px-1.5 py-2 min-[1200px]:px-2.5 2xl:px-3">
                       <p
-                        className="truncate lowercase"
+                        className="[overflow-wrap:anywhere] lowercase leading-4"
                         title={user.email?.toLowerCase()}
                       >
                         {user.email?.toLowerCase() || "—"}
                       </p>
                     </td>
-                    <td className="px-2.5 py-2 capitalize 2xl:px-3">
+                    <td className="px-1.5 py-2 capitalize min-[1200px]:px-2.5 2xl:px-3">
                       {user.role}
                     </td>
-                    <td className="px-2.5 py-2 text-[11px] whitespace-nowrap 2xl:px-3 2xl:text-xs">
+                    <td className="whitespace-nowrap px-1.5 py-2 text-[10px] min-[1200px]:px-2.5 min-[1200px]:text-[11px] 2xl:px-3 2xl:text-xs">
                       {user.createdAt
                         ? new Date(user.createdAt).toLocaleDateString()
                         : "—"}
                     </td>
-                    <td className="px-2 py-2 2xl:px-3">
+                    <td className="px-1 py-2 min-[1200px]:px-2 2xl:px-3">
                       <div className="flex items-center justify-center">
                         <StatusBadge status={user.registrationStatus} compact />
                       </div>
                     </td>
-                    <td className="px-2 py-2 2xl:px-3">
+                    <td className="px-1 py-2 min-[1200px]:px-2 2xl:px-3">
                       <div className="flex items-center justify-center">
                         <StatusBadge status={user.accountStatus} compact />
                       </div>
                     </td>
-                    <td className="px-2 py-2 2xl:px-3">
+                    <td className="px-1 py-2 pr-2 min-[1200px]:px-2 2xl:px-3">
                       <UserActions
                         user={user}
                         onView={view}
@@ -321,16 +372,16 @@ export default function UserManagement({ initialTab = "All Users" }) {
 function UserActions({ user, onView, onReset, onAction, compact = false }) {
   if (compact)
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1">
         <button
           type="button"
           onClick={() => onView(user)}
-          className="btn-action-sm"
+          className="btn-action-sm h-8 px-1.5 text-[10px] min-[1200px]:px-2 min-[1200px]:text-xs"
         >
           View
         </button>
         <details className="group relative">
-          <summary className="btn-action-sm list-none [&::-webkit-details-marker]:hidden">
+          <summary className="btn-action-sm h-8 list-none px-1.5 text-[10px] min-[1200px]:px-2 min-[1200px]:text-xs [&::-webkit-details-marker]:hidden">
             Actions <span aria-hidden="true">▾</span>
           </summary>
           <div className="absolute right-0 z-20 mt-1.5 min-w-40 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
@@ -377,18 +428,18 @@ function UserActions({ user, onView, onReset, onAction, compact = false }) {
       </div>
     );
   return (
-    <div className="mt-4 flex flex-wrap gap-2">
+    <div className="mt-4 grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2">
       <button
         type="button"
         onClick={() => onView(user)}
-        className="btn-action-sm"
+        className="btn-action-sm h-9 w-full"
       >
         View
       </button>
       <button
         type="button"
         onClick={() => onReset(user)}
-        className="btn-action-sm"
+        className="btn-action-sm h-9 w-full"
       >
         Reset Password
       </button>
@@ -397,14 +448,14 @@ function UserActions({ user, onView, onReset, onAction, compact = false }) {
           <button
             type="button"
             onClick={() => onAction(user, "approve")}
-            className="inline-flex h-8 items-center rounded-lg border border-green-200 bg-white px-2.5 text-xs font-semibold text-green-700 hover:bg-green-50"
+            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-green-200 bg-white px-2.5 text-xs font-semibold text-green-700 hover:bg-green-50"
           >
             Approve
           </button>
           <button
             type="button"
             onClick={() => onAction(user, "reject")}
-            className="btn-danger-action-sm"
+            className="btn-danger-action-sm h-9 w-full"
           >
             Reject
           </button>
@@ -420,13 +471,28 @@ function UserActions({ user, onView, onReset, onAction, compact = false }) {
           }
           className={
             user.accountStatus === "Active"
-              ? "btn-danger-action-sm"
-              : "inline-flex h-8 items-center rounded-lg border border-green-200 bg-white px-2.5 text-xs font-semibold text-green-700 hover:bg-green-50"
+              ? "btn-danger-action-sm h-9 w-full"
+              : "inline-flex h-9 w-full items-center justify-center rounded-lg border border-green-200 bg-white px-2.5 text-xs font-semibold text-green-700 hover:bg-green-50"
           }
         >
           {user.accountStatus === "Active" ? "Deactivate" : "Activate"}
         </button>
       )}
+    </div>
+  );
+}
+
+function MobileDetail({ label, value, capitalize = false, className = "" }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd
+        className={`mt-1 [overflow-wrap:anywhere] text-xs font-medium text-slate-800 ${capitalize ? "capitalize" : ""}`}
+      >
+        {value || "Not available"}
+      </dd>
     </div>
   );
 }

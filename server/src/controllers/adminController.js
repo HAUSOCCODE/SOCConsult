@@ -41,6 +41,7 @@ export async function approveRegistration(req, res) {
       $set: {
         registrationStatus: "Approved",
         accountStatus: "Active",
+        approvalMethod: "admin",
         approvedAt: new Date(),
         approvedBy: req.user.id,
       },
@@ -115,6 +116,17 @@ export async function getUsers(_req, res) {
   res.json({
     users: users.map(withProfileUrl),
   });
+}
+export async function getUserRegistrationReport(_req, res) {
+  const users = await User.find({ role: { $in: managedRoles } })
+    .select(
+      "name email role createdAt emailVerified emailVerifiedAt registrationStatus approvalMethod approvedBy approvedAt rejectedBy rejectedAt accountStatus",
+    )
+    .populate("approvedBy", "name email")
+    .populate("rejectedBy", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json({ users });
 }
 export async function getUser(req, res) {
   const user = await User.findOne({

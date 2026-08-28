@@ -50,6 +50,13 @@ const userSchema = new mongoose.Schema(
       default: "Inactive",
       index: true,
     },
+    emailVerified: { type: Boolean, default: undefined },
+    emailVerifiedAt: Date,
+    approvalMethod: {
+      type: String,
+      enum: ["admin", "email_verification", "system"],
+      default: null,
+    },
     approvedAt: Date,
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     rejectedAt: Date,

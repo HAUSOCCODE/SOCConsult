@@ -10,6 +10,7 @@ import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import {
   Clock3,
+  ChevronDown,
   MapPin,
   Monitor,
   Pencil,
@@ -86,6 +87,13 @@ export default function ManageAvailability() {
   const [removing, setRemoving] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [toggling, setToggling] = useState(false);
+  const [expandedScheduleId, setExpandedScheduleId] = useState(null);
+
+  useEffect(() => {
+    if (availability?.length && expandedScheduleId === null) {
+      setExpandedScheduleId(availability[0]._id);
+    }
+  }, [availability, expandedScheduleId]);
 
   const load = async () => {
     try {
@@ -257,7 +265,7 @@ export default function ManageAvailability() {
   if (!availability) return <Loading />;
 
   return (
-    <div className="w-full min-w-0 max-w-full space-y-6">
+    <div className="grid w-full min-w-0 max-w-full gap-5 pb-20 md:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)] md:items-start min-[1200px]:grid-cols-1 min-[1200px]:gap-5">
       <ConfirmDialog
         open={Boolean(removeTarget)}
         title="Remove Consultation Availability"
@@ -281,23 +289,23 @@ export default function ManageAvailability() {
         onConfirm={() => updateActiveState(deactivateTarget)}
         onCancel={() => !toggling && setDeactivateTarget(null)}
       />
-      <section className="w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 xl:p-6">
-        <h1 className="text-xl font-bold text-maroon-900">
-          Manage Consultation Availability
+      <section className="w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-[1200px]:p-5">
+        <h1 className="text-base font-bold text-maroon-900">
+          Add Consultation Availability
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Publish the schedules Students can select when booking.
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Publish the schedules students can select when booking.
         </p>
         {formError && (
           <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {formError}
           </p>
         )}
-        <form onSubmit={save} className="mt-6 min-w-0 max-w-full space-y-4">
-          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <form onSubmit={save} className="mt-4 min-w-0 max-w-full space-y-3.5">
+          <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-3">
             <Field label="Availability Date">
               <input
-                className="field mt-2"
+                className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                 type="date"
                 required
                 value={form.date}
@@ -308,7 +316,7 @@ export default function ManageAvailability() {
             </Field>
             <Field label="Start Time">
               <input
-                className="field mt-2"
+                className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                 type="time"
                 step="60"
                 required
@@ -320,7 +328,7 @@ export default function ManageAvailability() {
             </Field>
             <Field label="End Time">
               <input
-                className="field mt-2"
+                className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                 type="time"
                 step="60"
                 required
@@ -331,10 +339,10 @@ export default function ManageAvailability() {
               />
             </Field>
           </div>
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <Field label="Consultation Mode">
               <select
-                className="field mt-2"
+                className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                 value={form.mode}
                 onChange={(event) => {
                   const mode = event.target.value;
@@ -360,9 +368,9 @@ export default function ManageAvailability() {
             {form.mode === "Face-to-Face" ? (
               <Field label="Location">
                 <input
-                  className="field mt-2"
+                  className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                   required
-                  placeholder="SJH Building - Room 104"
+                  placeholder="e.g., SJH Building - Room 104"
                   value={form.location}
                   onChange={(event) =>
                     setForm({ ...form, location: event.target.value })
@@ -373,7 +381,7 @@ export default function ManageAvailability() {
               <>
                 <Field label="Meeting Platform">
                   <select
-                    className="field mt-2"
+                    className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                     required
                     value={form.meetingPlatform}
                     onChange={(event) => {
@@ -398,7 +406,7 @@ export default function ManageAvailability() {
                 {form.meetingPlatform === "Other" && (
                   <Field label="Platform Name">
                     <input
-                      className="field mt-2"
+                      className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                       required
                       placeholder="Enter meeting platform"
                       value={form.customMeetingPlatform}
@@ -413,7 +421,7 @@ export default function ManageAvailability() {
                 )}
                 <Field label="Meeting Link">
                   <input
-                    className="field mt-2"
+                    className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                     type="url"
                     placeholder="https://meet.google.com/abc-defg-hij"
                     value={form.meetingLink}
@@ -425,10 +433,10 @@ export default function ManageAvailability() {
               </>
             )}
           </div>
-          <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-col items-stretch gap-2 min-[1200px]:flex-row min-[1200px]:items-center">
             <button
               disabled={saving}
-              className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-48"
+              className="btn-primary h-10 min-h-0 w-full rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 min-[1200px]:w-[168px]"
             >
               {saving
                 ? "Saving..."
@@ -449,8 +457,8 @@ export default function ManageAvailability() {
         </form>
       </section>
 
-      <section>
-        <h2 className="mb-4 text-xl font-bold text-slate-900">
+      <section className="min-w-0">
+        <h2 className="mb-3 text-lg font-bold text-slate-900">
           Published Schedules
         </h2>
         {availability.length === 0 ? (
@@ -459,7 +467,7 @@ export default function ManageAvailability() {
             text="Create an availability schedule above to make consultation times available to Students."
           />
         ) : (
-          <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-2">
             {availability.map((item) => (
               <ScheduleCard
                 key={item._id}
@@ -468,6 +476,12 @@ export default function ManageAvailability() {
                 onToggle={toggle}
                 onRemove={(id) =>
                   setRemoveTarget(availability.find((item) => item._id === id))
+                }
+                expanded={expandedScheduleId === item._id}
+                onExpand={() =>
+                  setExpandedScheduleId((current) =>
+                    current === item._id ? "" : item._id,
+                  )
                 }
               />
             ))}
@@ -478,7 +492,14 @@ export default function ManageAvailability() {
   );
 }
 
-function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
+function ScheduleCard({
+  item,
+  onEdit,
+  onToggle,
+  onRemove,
+  expanded,
+  onExpand,
+}) {
   const dateOptions = {
     weekday: "long",
     year: "numeric",
@@ -498,16 +519,28 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
     : formatLocation(item.location);
   const ModeIcon = online ? Monitor : UsersRound;
   return (
-    <article className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors duration-150 hover:border-maroon-200">
-      <div className="p-4 sm:p-5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
+    <article className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-colors duration-150 hover:border-maroon-200">
+      <div className="p-3.5">
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-start justify-between gap-2 text-left md:pointer-events-none"
+          aria-expanded={expanded}
+          onClick={onExpand}
+        >
           <h3 className="min-w-0 break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
             {new Date(item.startAt).toLocaleDateString(undefined, dateOptions)}
           </h3>
-          <StatusBadge status={statusLabel} compact />
-        </div>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <StatusBadge status={statusLabel} compact />
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={`mt-0.5 shrink-0 text-slate-500 transition-transform md:hidden ${expanded ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
 
-        <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-[1.1fr_.85fr_1.5fr]">
+        <dl className={`${expanded ? "grid" : "hidden"} mt-3 min-w-0 grid-cols-1 gap-2 md:grid md:grid-cols-[1.05fr_.8fr_1.15fr]`}>
           <ScheduleDetail icon={Clock3} label="Time">
             {new Date(item.startAt).toLocaleTimeString([], timeOptions)} –{" "}
             {new Date(item.endAt).toLocaleTimeString([], timeOptions)}
@@ -518,22 +551,19 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
           <ScheduleDetail
             icon={online ? Monitor : MapPin}
             label={online ? "Platform" : "Location"}
-            className="sm:col-span-2 2xl:col-span-1"
           >
             {detail}
           </ScheduleDetail>
         </dl>
       </div>
 
-      <div
-        className="flex min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-3"
-      >
+      <div className={`${expanded ? "flex" : "hidden"} min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-2.5 md:flex`}>
         {!expired && (
           <>
             <button
               type="button"
               onClick={() => onEdit(item)}
-              className="btn-action-sm h-9 w-auto gap-1.5 px-3"
+              className="btn-action-sm h-8 w-auto gap-1.5 px-2.5"
             >
               <Pencil size={14} aria-hidden="true" />
               Edit
@@ -541,7 +571,7 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
             <button
               type="button"
               onClick={() => onToggle(item)}
-              className={`inline-flex h-9 w-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-semibold transition-colors duration-150 focus-visible:ring-2 ${item.isActive ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-200" : "border-maroon-200 bg-white text-maroon-800 hover:bg-maroon-50 focus-visible:ring-maroon-100"}`}
+              className={`inline-flex h-8 w-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold transition-colors duration-150 focus-visible:ring-2 ${item.isActive ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-200" : "border-maroon-200 bg-white text-maroon-800 hover:bg-maroon-50 focus-visible:ring-maroon-100"}`}
             >
               <Power size={14} aria-hidden="true" />
               {item.isActive ? "Deactivate" : "Activate"}
@@ -551,7 +581,7 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
         <button
           type="button"
           onClick={() => onRemove(item._id)}
-          className="btn-danger-action-sm h-9 w-auto gap-1.5 px-3"
+          className="btn-danger-action-sm h-8 w-auto gap-1.5 px-2.5"
         >
           <Trash2 size={14} aria-hidden="true" />
           Remove
@@ -564,16 +594,16 @@ function ScheduleCard({ item, onEdit, onToggle, onRemove }) {
 function ScheduleDetail({ icon: Icon, label, className = "", children }) {
   return (
     <div
-      className={`flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 ${className}`}
+      className={`flex min-w-0 items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 ${className}`}
     >
-      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-maroon-700 shadow-sm">
+      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white text-maroon-700 shadow-sm">
         <Icon size={15} aria-hidden="true" />
       </span>
       <div className="min-w-0">
         <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
           {label}
         </dt>
-        <dd className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-700">
+        <dd className="mt-0.5 break-words text-xs font-semibold leading-5 text-slate-700 sm:text-sm">
           {children}
         </dd>
       </div>
@@ -583,7 +613,7 @@ function ScheduleDetail({ icon: Icon, label, className = "", children }) {
 
 function Field({ label, children }) {
   return (
-    <label className="block w-full min-w-0 max-w-full text-sm font-semibold text-slate-700">
+    <label className="block w-full min-w-0 max-w-full text-xs font-semibold text-slate-700">
       {label}
       {children}
     </label>
