@@ -10,6 +10,7 @@ export const StatusBadge = ({ status, compact = false, allowWrap = false }) => {
     Cancelled: "bg-slate-200 text-slate-700",
     Rescheduled: "bg-purple-100 text-purple-800",
     "Needs Reschedule": "bg-amber-100 text-amber-800",
+    "Awaiting Faculty Schedule": "bg-amber-100 text-amber-800",
     "Awaiting Faculty Update": "bg-orange-100 text-orange-800",
     "No Show": "bg-rose-100 text-rose-800",
     Unread: "bg-gold-100 text-maroon-900",

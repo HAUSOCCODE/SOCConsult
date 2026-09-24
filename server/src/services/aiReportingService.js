@@ -3,6 +3,7 @@ import User from "../models/User.js";
 
 export const APPOINTMENT_STATUSES = [
   "Pending",
+  "Awaiting Faculty Schedule",
   "Approved",
   "Rejected",
   "Needs Reschedule",

@@ -151,6 +151,14 @@ export default function BookPage() {
     }
   };
 
+  const requestSchedule = (member) => {
+    setSelected(member);
+    setAvailabilityOpen(false);
+    setFormError("");
+    setForm(initialForm(user.yearLevel));
+    setChosenSchedule({ onDemand: true });
+  };
+
   useEffect(() => {
     if (!reschedule || !faculty || rescheduleInitialized.current) return;
     const originalFaculty = faculty.find(
@@ -222,7 +230,9 @@ export default function BookPage() {
       request.append("subject", form.subject);
       request.append("reason", form.reason);
       request.append("yearLevel", form.yearLevel);
-      request.append("availabilityId", chosenSchedule.availabilityId);
+      if (!chosenSchedule.onDemand)
+        request.append("availabilityId", chosenSchedule.availabilityId);
+      else request.append("facultyId", selected._id);
       const estimatedDuration =
         form.estimatedDurationMinutes === "custom"
           ? form.customEstimatedDuration
@@ -236,7 +246,12 @@ export default function BookPage() {
               availabilityId: chosenSchedule.availabilityId,
             }),
           })
-        : await api("/appointments", { method: "POST", body: request });
+        : chosenSchedule.onDemand
+          ? await api("/schedule-requests", {
+              method: "POST",
+              body: request,
+            })
+          : await api("/appointments", { method: "POST", body: request });
       if (reschedule) {
         toast.success(data.message || "New schedule submitted successfully.");
         navigate("/student/appointments", { replace: true, state: {} });
@@ -249,6 +264,7 @@ export default function BookPage() {
       toast.success(
         data.message || "Consultation request submitted successfully.",
       );
+      if (chosenSchedule.onDemand) navigate("/student/appointments");
     } catch (requestError) {
       if (
         requestError.message ===
@@ -270,12 +286,14 @@ export default function BookPage() {
   };
 
   if (error) return <ErrorState message={error} onRetry={loadFaculty} />;
-  const availabilityMinutes = chosenSchedule
-    ? Math.round(
-        (new Date(chosenSchedule.endAt) - new Date(chosenSchedule.startAt)) /
-          60000,
-      )
-    : 0;
+  const availabilityMinutes = chosenSchedule?.onDemand
+    ? 240
+    : chosenSchedule
+      ? Math.round(
+          (new Date(chosenSchedule.endAt) - new Date(chosenSchedule.startAt)) /
+            60000,
+        )
+      : 0;
   return (
     <div className="w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
       <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm sm:p-5">
@@ -338,7 +356,8 @@ export default function BookPage() {
         </div>
         {faculty !== null && (
           <p className="max-w-28 break-words text-right text-xs font-semibold leading-4 text-slate-500 sm:max-w-none">
-            {visibleFaculty.length} {visibleFaculty.length === 1 ? "Faculty Member" : "Faculty Members"}
+            {visibleFaculty.length}{" "}
+            {visibleFaculty.length === 1 ? "Faculty Member" : "Faculty Members"}
           </p>
         )}
       </div>
@@ -376,7 +395,7 @@ export default function BookPage() {
               }}
               className={`min-h-[104px] w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border shadow-sm transition-colors duration-150 hover:border-maroon-300 focus:outline-none focus:ring-2 focus:ring-maroon-400 md:min-h-[112px] ${selected?._id === member._id ? "border-maroon-400 bg-maroon-50/40" : "border-slate-200 bg-white"}`}
             >
-              <div className="grid min-h-[inherit] min-w-0 grid-cols-[minmax(0,1fr)_6.5rem] items-stretch min-[360px]:grid-cols-[minmax(0,1fr)_7.5rem] md:grid-cols-[minmax(0,1fr)_12rem]">
+              <div className="grid min-h-[inherit] min-w-0 grid-cols-[minmax(0,1fr)_8rem] items-stretch min-[360px]:grid-cols-[minmax(0,1fr)_9rem] md:grid-cols-[minmax(0,1fr)_12rem]">
                 <div className="flex min-w-0 items-center gap-2.5 p-3 sm:gap-3 sm:p-4 md:gap-4 md:px-5">
                   <span
                     className="shrink-0"
@@ -415,17 +434,31 @@ export default function BookPage() {
                       ? "schedule"
                       : "schedules"}
                   </p>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void viewAvailability(member);
-                    }}
-                    className="mt-2.5 inline-flex h-9 w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-md bg-maroon-800 px-1.5 text-[10px] font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2 min-[360px]:gap-1 min-[360px]:px-2 min-[360px]:text-xs md:mt-3 md:gap-1.5 md:px-3 md:text-sm"
-                  >
-                    View Schedule
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </button>
+                  <div className="mt-2.5 flex flex-col gap-2 md:mt-3">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void viewAvailability(member);
+                      }}
+                      className="inline-flex h-9 w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-md bg-maroon-800 px-1.5 text-[10px] font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2 min-[360px]:gap-1 min-[360px]:px-2 min-[360px]:text-xs md:gap-1.5 md:px-3 md:text-sm"
+                    >
+                      View Schedule
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    {!reschedule && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestSchedule(member);
+                        }}
+                        className="btn-secondary inline-flex h-9 w-full items-center justify-center whitespace-nowrap px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:px-3 md:text-sm"
+                      >
+                        Request a Schedule
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </article>
@@ -437,7 +470,8 @@ export default function BookPage() {
               aria-hidden="true"
             />
             <p className="min-w-0 break-words">
-              Can&apos;t find the right Faculty Member? Try adjusting your search.
+              Can&apos;t find the right Faculty Member? Try adjusting your
+              search.
             </p>
           </div>
         </div>
@@ -638,7 +672,11 @@ export default function BookPage() {
                     id="booking-modal-title"
                     className="text-xl font-bold text-maroon-900"
                   >
-                    {reschedule ? "Choose a New Schedule" : "Book Consultation"}
+                    {reschedule
+                      ? "Choose a New Schedule"
+                      : chosenSchedule.onDemand
+                        ? "Request a Schedule"
+                        : "Book Consultation"}
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
                     Faculty: {formatPersonName(selected.name)}
@@ -655,30 +693,37 @@ export default function BookPage() {
                 </button>
               </header>
               <div className="px-5 py-4 sm:px-6">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                  <p className="font-semibold">
-                    {new Date(chosenSchedule.startAt).toLocaleDateString(
-                      undefined,
-                      {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                      },
-                    )}
+                {chosenSchedule.onDemand ? (
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    No date or time is selected. Your request will await the
+                    Faculty Member's decision.
                   </p>
-                  <p>
-                    {time(chosenSchedule.startAt)} –{" "}
-                    {time(chosenSchedule.endAt)}
-                  </p>
-                  <p className="mt-1">
-                    {chosenSchedule.mode} ·{" "}
-                    {chosenSchedule.mode === "Online"
-                      ? chosenSchedule.meetingPlatform ||
-                        "Meeting platform not provided"
-                      : chosenSchedule.location || "Location not provided"}
-                  </p>
-                </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <p className="font-semibold">
+                      {new Date(chosenSchedule.startAt).toLocaleDateString(
+                        undefined,
+                        {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      )}
+                    </p>
+                    <p>
+                      {time(chosenSchedule.startAt)} –{" "}
+                      {time(chosenSchedule.endAt)}
+                    </p>
+                    <p className="mt-1">
+                      {chosenSchedule.mode} ·{" "}
+                      {chosenSchedule.mode === "Online"
+                        ? chosenSchedule.meetingPlatform ||
+                          "Meeting platform not provided"
+                        : chosenSchedule.location || "Location not provided"}
+                    </p>
+                  </div>
+                )}
                 <div className="mt-4 space-y-4">
                   <label className="block text-sm font-semibold">
                     Subject / Topic
@@ -862,7 +907,9 @@ export default function BookPage() {
                     ? "Submitting..."
                     : reschedule
                       ? "Submit New Schedule"
-                      : "Submit Consultation Request"}
+                      : chosenSchedule.onDemand
+                        ? "Send Schedule Request"
+                        : "Submit Consultation Request"}
                 </button>
               </footer>
             </form>

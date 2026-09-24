@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Appointment from "../models/Appointment.js";
 import { logActivity, notify } from "../services/activityService.js";
+import { createConsultationSummary } from "../services/consultationSummaryService.js";
 
 const managedRoles = ["student", "faculty"];
 const withProfileUrl = (user) => ({
@@ -194,6 +195,7 @@ export async function updateUserStatus(req, res) {
 }
 export async function getAdminAppointments(_req, res) {
   const records = await Appointment.find()
+    .select("+meetingLink")
     .populate("student", "name email program")
     .populate("faculty", "name email position")
     .populate("availability", "meetingPlatform +meetingLink")
@@ -204,10 +206,32 @@ export async function getAdminAppointments(_req, res) {
     availability: availability?._id || availability,
     meetingPlatform:
       availability?.meetingPlatform ||
+      appointment.meetingPlatform ||
       (appointment.consultationMode === "Online" ? appointment.location : ""),
-    meetingLink: availability?.meetingLink || "",
+    meetingLink: availability?.meetingLink || appointment.meetingLink || "",
   }));
   res.json({ appointments });
+}
+
+export async function getAiConsultationSummary(req, res) {
+  try {
+    const report = await createConsultationSummary(
+      req.query.startDate,
+      req.query.endDate,
+    );
+    return res.json(report);
+  } catch (error) {
+    const status = Number(error.statusCode) || 502;
+    if (status >= 500) console.error("[Admin AI Summary]", error.message);
+    return res.status(status).json({
+      message:
+        status === 503
+          ? "AI summary is currently unavailable because the AI service is not configured."
+          : status >= 500
+            ? "AI summary is temporarily unavailable. Please try again later."
+            : error.message,
+    });
+  }
 }
 export async function changeAdminPassword(req, res) {
   const user = await User.findById(req.user.id).select("+password");

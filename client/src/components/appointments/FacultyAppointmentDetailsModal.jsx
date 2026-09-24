@@ -8,9 +8,10 @@ import ProfileImagePreview from "../profile/ProfileImagePreview";
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const safeDate = (value, options) => {
+  if (!value) return "Not scheduled";
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleString(undefined, options)
+    ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila", ...options })
     : "Not provided";
 };
 const clock = (value) =>
@@ -163,8 +164,16 @@ export default function FacultyAppointmentDetailsModal({
               })}
             />
             <Detail
-              label="Faculty Availability Window"
-              value={`${clock(appointment.startAt)} – ${clock(appointment.endAt)}`}
+              label={
+                appointment.bookingMethod === "schedule_request"
+                  ? "Consultation Time"
+                  : "Faculty Availability Window"
+              }
+              value={
+                appointment.startAt
+                  ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
+                  : "Not scheduled"
+              }
             />
             <Detail
               label="Consultation Mode"

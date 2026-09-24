@@ -6,6 +6,7 @@ export const STUDENT_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const timestamp = (value) => {
+  if (!value) return NaN;
   const parsed = value instanceof Date ? value : new Date(value);
   return parsed.getTime();
 };

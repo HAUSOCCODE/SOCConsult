@@ -37,7 +37,13 @@ router.get("/admin", authorize("admin"), async (_req, res) => {
       registrationStatus: "Pending",
     }),
     Promise.all(
-      statuses.map((status) => Appointment.countDocuments({ status })),
+      statuses.map((status) =>
+        Appointment.countDocuments(
+          status === "Pending"
+            ? { status: { $in: ["Pending", "Awaiting Faculty Schedule"] } }
+            : { status },
+        ),
+      ),
     ),
     User.find({
       role: { $in: ["student", "faculty"] },
@@ -89,8 +95,10 @@ router.get("/student", authorize("student"), async (req, res) => {
     }),
     Appointment.countDocuments({
       student: req.user.id,
-      status: "Pending",
-      endAt: { $gt: now },
+      $or: [
+        { status: "Pending", endAt: { $gt: now } },
+        { status: "Awaiting Faculty Schedule" },
+      ],
     }),
     Appointment.countDocuments({ student: req.user.id, status: "Completed" }),
     Task.countDocuments({ student: req.user.id, status: "Pending" }),
@@ -148,14 +156,20 @@ router.get("/faculty", authorize("faculty"), async (req, res) => {
         status: { $in: ["Approved", "Rescheduled"] },
         startAt: { $gte: start, $lt: tomorrow },
       }),
-      Appointment.countDocuments({ faculty: req.user.id, status: "Pending" }),
+      Appointment.countDocuments({
+        faculty: req.user.id,
+        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
+      }),
       Appointment.countDocuments({
         faculty: req.user.id,
         status: { $in: ["Approved", "Completed", "Rescheduled"] },
         startAt: { $gte: start, $lt: week },
       }),
       Appointment.countDocuments({ faculty: req.user.id, status: "Completed" }),
-      Appointment.find({ faculty: req.user.id, status: "Pending" })
+      Appointment.find({
+        faculty: req.user.id,
+        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
+      })
         .populate("student", "name email")
         .sort({ createdAt: -1 })
         .limit(5),

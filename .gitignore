@@ -15,3 +15,13 @@ server/.env.local
 .vite/
 coverage/
 *.log
+
+# Local upload and temporary-storage directories (private/generated data)
+uploads/
+**/uploads/
+server/tmp/
+server/temp/
+
+# Private key material
+*.pem
+*.key

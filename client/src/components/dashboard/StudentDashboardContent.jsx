@@ -90,7 +90,9 @@ const WEEK_ITEMS = [
 ];
 
 const formatTimeRange = (appointment) =>
-  `${MANILA_TIME.format(new Date(appointment.startAt))} – ${MANILA_TIME.format(new Date(appointment.endAt))}`;
+  appointment.startAt
+    ? `${MANILA_TIME.format(new Date(appointment.startAt))} – ${MANILA_TIME.format(new Date(appointment.endAt))}`
+    : "Awaiting Faculty Schedule";
 
 export default function StudentDashboardContent() {
   const { user } = useAuth();
@@ -279,7 +281,7 @@ export default function StudentDashboardContent() {
 }
 
 function DashboardAppointment({ appointment }) {
-  const start = new Date(appointment.startAt);
+  const start = appointment.startAt ? new Date(appointment.startAt) : null;
   const historicalStatuses = ["Completed", "Rejected", "Cancelled", "No Show"];
   const destination =
     historicalStatuses.includes(appointment.status) ||
@@ -297,13 +299,13 @@ function DashboardAppointment({ appointment }) {
     >
       <span className="grid h-14 w-full shrink-0 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center">
         <span className="text-[10px] font-extrabold uppercase tracking-wide text-maroon-700">
-          {MANILA_MONTH.format(start)}
+          {start ? MANILA_MONTH.format(start) : "TBD"}
         </span>
         <span className="text-xl font-extrabold leading-5 text-maroon-900">
-          {MANILA_DAY.format(start)}
+          {start ? MANILA_DAY.format(start) : "–"}
         </span>
         <span className="text-[9px] font-semibold text-slate-500">
-          {MANILA_YEAR.format(start)}
+          {start ? MANILA_YEAR.format(start) : ""}
         </span>
       </span>
       <div className="min-w-0">

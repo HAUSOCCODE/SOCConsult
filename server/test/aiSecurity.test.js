@@ -222,6 +222,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
   it("uses the exact appointment status values from the schema", () => {
     assert.deepEqual(APPOINTMENT_STATUSES, [
       "Pending",
+      "Awaiting Faculty Schedule",
       "Approved",
       "Rejected",
       "Needs Reschedule",

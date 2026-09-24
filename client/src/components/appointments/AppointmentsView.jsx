@@ -29,28 +29,6 @@ import {
   UserRound,
 } from "lucide-react";
 const HISTORY_ITEMS_PER_PAGE = 6;
-const STUDENT_HISTORY_FILTERS = [
-  "All",
-  "Pending",
-  "Approved",
-  "Needs Reschedule",
-  "Rescheduled",
-  "Completed",
-  "No Show",
-  "Rejected",
-  "Cancelled",
-];
-const STUDENT_MOBILE_HISTORY_FILTERS = [
-  "All",
-  "Pending",
-  "Approved",
-  "Completed",
-  "Cancelled",
-  "Needs Reschedule",
-  "Rescheduled",
-  "No Show",
-  "Rejected",
-];
 export default function AppointmentsPage({ filter }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -168,7 +146,13 @@ export default function AppointmentsPage({ filter }) {
     });
   const cancel = async (id) => {
     try {
-      const d = await api(`/appointments/${id}/cancel`, { method: "PUT" });
+      const target = items?.find((item) => item._id === id);
+      const d = await api(
+        target?.bookingMethod === "schedule_request"
+          ? `/schedule-requests/${id}/cancel`
+          : `/appointments/${id}/cancel`,
+        { method: "PUT" },
+      );
       toast.success(d.message);
       setCancelTarget(null);
       load();
@@ -283,7 +267,9 @@ export default function AppointmentsPage({ filter }) {
         : x.status === historyTab,
     );
     shown = [...shown].sort((left, right) => {
-      const difference = new Date(left.startAt) - new Date(right.startAt);
+      const leftDate = left.startAt || left.endAt || left.createdAt;
+      const rightDate = right.startAt || right.endAt || right.createdAt;
+      const difference = new Date(leftDate || 0) - new Date(rightDate || 0);
       return historySort === "oldest" ? difference : -difference;
     });
   }
@@ -351,6 +337,19 @@ export default function AppointmentsPage({ filter }) {
             Cancel
           </button>
         )}
+      {appointment.status === "Awaiting Faculty Schedule" && (
+        <button
+          type="button"
+          onClick={() => setCancelTarget(appointment)}
+          className={
+            mobile
+              ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
+              : "btn-danger-action-sm"
+          }
+        >
+          Cancel Request
+        </button>
+      )}
       {["Approved", "Rescheduled"].includes(appointment.status) &&
         new Date(appointment.startAt) > new Date() && (
           <button
@@ -431,26 +430,14 @@ export default function AppointmentsPage({ filter }) {
           </div>
         </section>
       ) : user.role === "student" && filter === "history" ? (
-        <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm">
-          <div className="pointer-events-none absolute -right-6 -top-8 hidden h-24 w-24 rounded-full border border-gold-300/30 md:block" />
-          <div className="relative flex min-w-0 items-center gap-3.5">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-maroon-100 bg-maroon-50 text-maroon-800">
-              <CalendarDays size={19} aria-hidden="true" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">
-                Consultation Records
-              </p>
-              <h1 className="mt-1 hidden text-2xl font-bold tracking-tight text-maroon-900 md:block md:text-[26px]">
-                Consultation History
-              </h1>
-              <p className="mt-1.5 text-sm leading-5 text-slate-600 md:text-[15px]">
-                Review your completed, rejected, and cancelled consultation
-                records.
-              </p>
-            </div>
-          </div>
-        </section>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-maroon-900 sm:text-[30px]">
+            Consultation History
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            Review your completed, rejected, and cancelled consultation records.
+          </p>
+        </div>
       ) : user.role === "faculty" && !filter ? (
         <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
           <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 md:block" />
@@ -473,7 +460,9 @@ export default function AppointmentsPage({ filter }) {
         </section>
       ) : (
         <div>
-          <h1 className={`font-bold tracking-tight text-maroon-900 ${user.role === "faculty" && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}>
+          <h1
+            className={`font-bold tracking-tight text-maroon-900 ${user.role === "faculty" && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}
+          >
             {filter === "requests"
               ? "Appointment Requests"
               : filter === "history"
@@ -488,13 +477,13 @@ export default function AppointmentsPage({ filter }) {
         </div>
       )}
       {user.role === "student" && filter === "history" && (
-        <div className="student-history-toolbar flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div
-            className="scrollbar-hide flex min-w-0 overflow-x-auto border-b border-slate-100 md:hidden"
+            className="grid min-w-0 grid-cols-2 gap-2 min-[480px]:flex min-[480px]:flex-wrap"
             role="group"
             aria-label="Filter consultation history"
           >
-            {STUDENT_MOBILE_HISTORY_FILTERS.map((name) => (
+            {["All", "Completed", "No Show", "Cancelled"].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -503,49 +492,28 @@ export default function AppointmentsPage({ filter }) {
                   setHistoryPage(1);
                 }}
                 aria-pressed={historyTab === name}
-                className={`relative h-12 min-w-[72px] shrink-0 px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-maroon-300 ${historyTab === name ? "bg-maroon-50 text-maroon-900 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-maroon-700" : "bg-white text-slate-600"}`}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-          <div
-            className="student-history-filters hidden min-w-0 grid-cols-2 gap-2 min-[480px]:grid-cols-3 md:grid"
-            role="group"
-            aria-label="Filter consultation history"
-          >
-            {STUDENT_HISTORY_FILTERS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => {
-                  setHistoryTab(name);
-                  setHistoryPage(1);
-                }}
-                aria-pressed={historyTab === name}
-                className={`min-h-9 min-w-0 rounded-lg px-2.5 py-2 text-xs font-bold leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 ${
+                className={`h-10 min-w-0 rounded-lg border px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[480px]:min-w-[108px] ${
                   historyTab === name
-                    ? "bg-maroon-50 text-maroon-900 shadow-[inset_0_-2px_0_#7f1d33]"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-maroon-800"
+                    ? "border-maroon-800 bg-maroon-800 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-maroon-200 hover:bg-maroon-50"
                 }`}
               >
                 {name}
               </button>
             ))}
           </div>
-          <label className="student-history-sort flex shrink-0 items-center gap-2 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-600 md:border-0 md:pt-0">
-            <ArrowUpDown size={15} aria-hidden="true" />
-            <span>Sort by</span>
+          <label className="flex shrink-0 items-center gap-2 text-sm text-slate-600">
+            <span>Sort by:</span>
             <select
               value={historySort}
               onChange={(event) => {
                 setHistorySort(event.target.value);
                 setHistoryPage(1);
               }}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100"
             >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
             </select>
           </label>
         </div>
@@ -1047,9 +1015,13 @@ export default function AppointmentsPage({ filter }) {
           role={user.role}
           mobileResetKey={`${historyTab}-${historySort}`}
           emptyTitle={
-            historyTab === "All"
-              ? "No consultation records found."
-              : `No ${historyTab.toLowerCase()} consultation records found.`
+            user.role === "student"
+              ? historyTab === "All"
+                ? "No consultation history yet."
+                : "No records match the selected filter."
+              : historyTab === "All"
+                ? "No consultation records found."
+                : `No ${historyTab.toLowerCase()} consultation records found.`
           }
           showTime
           renderActions={
@@ -1057,8 +1029,8 @@ export default function AppointmentsPage({ filter }) {
               ? (appointment, mobile = false) => (
                   <div
                     className={
-                        mobile
-                          ? "mt-3 flex min-w-0 flex-col gap-2 border-t border-slate-200 pt-3 min-[360px]:flex-row"
+                      mobile
+                        ? "mt-3 flex min-w-0 flex-col gap-2 border-t border-slate-200 pt-3 min-[360px]:flex-row"
                         : "student-history-table-actions flex min-w-0 flex-nowrap items-center !gap-2 whitespace-nowrap"
                     }
                   >
@@ -1588,7 +1560,9 @@ function FacultyCurrentAppointments({
       </div>
 
       {sorted.length === 0 ? (
-        <EmptyState title={`No ${activeFilter.toLowerCase()} appointments found.`} />
+        <EmptyState
+          title={`No ${activeFilter.toLowerCase()} appointments found.`}
+        />
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="divide-y divide-slate-200">
@@ -1635,7 +1609,9 @@ function FacultyFilterButton({ filter, active, onClick, mobile = false }) {
       onClick={onClick}
       aria-pressed={active}
       className={`min-h-9 rounded-lg font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 ${
-        mobile ? "min-w-0 px-1 py-2 text-[10px] min-[380px]:text-xs" : "px-3 py-2 text-xs sm:text-sm"
+        mobile
+          ? "min-w-0 px-1 py-2 text-[10px] min-[380px]:text-xs"
+          : "px-3 py-2 text-xs sm:text-sm"
       } ${
         active
           ? "border border-maroon-800 bg-maroon-800 text-white shadow-sm"
@@ -1686,7 +1662,8 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
                 </h2>
                 <p className="mt-1 break-words text-xs text-slate-600 sm:text-sm">
                   <span className="font-semibold">Student:</span>{" "}
-                  {formatPersonName(appointment.student?.name) || "Not provided"}
+                  {formatPersonName(appointment.student?.name) ||
+                    "Not provided"}
                 </p>
               </div>
             </div>
@@ -1699,15 +1676,25 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
 
       <div className="col-span-2 min-w-0 border-t border-slate-200 bg-slate-50/60 px-3 py-3 text-sm text-slate-600 md:col-span-1 md:flex md:flex-col md:justify-center md:border-l md:border-t-0 md:bg-white md:px-4 min-[1200px]:px-5">
         <p className="flex min-w-0 items-start gap-2">
-          <Clock3 size={15} className="mt-0.5 shrink-0 text-maroon-700" aria-hidden="true" />
+          <Clock3
+            size={15}
+            className="mt-0.5 shrink-0 text-maroon-700"
+            aria-hidden="true"
+          />
           <span className="break-words font-semibold">
-            {formatClock(appointment.startAt)} {" – "}{formatClock(appointment.endAt)}
+            {formatClock(appointment.startAt)} {" – "}
+            {formatClock(appointment.endAt)}
           </span>
         </p>
         <p className="mt-2 flex min-w-0 items-start gap-2">
-          <ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" aria-hidden="true" />
+          <ModeIcon
+            size={15}
+            className="mt-0.5 shrink-0 text-maroon-700"
+            aria-hidden="true"
+          />
           <span className="break-words">
-            {appointment.consultationMode || "Mode not provided"} · {destination}
+            {appointment.consultationMode || "Mode not provided"} ·{" "}
+            {destination}
           </span>
         </p>
       </div>
@@ -1742,46 +1729,82 @@ function FacultyAppointmentActions({
   const mobileButton = mobile ? "h-10 w-full sm:w-auto sm:flex-1" : "h-8";
   return (
     <div className={buttonLayout}>
-      <button type="button" onClick={() => onView(appointment)} className={`btn-action ${mobileButton}`}>
+      <button
+        type="button"
+        onClick={() => onView(appointment)}
+        className={`btn-action ${mobileButton}`}
+      >
         View Details
       </button>
       {appointment.status === "Pending" && (
         <>
-          <button disabled={updatingIds.has(appointment._id)} onClick={() => onApprove(appointment)} className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}>
+          <button
+            disabled={updatingIds.has(appointment._id)}
+            onClick={() => onApprove(appointment)}
+            className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}
+          >
             Approve
           </button>
-          <button disabled={updatingIds.has(appointment._id)} onClick={() => onReject(appointment)} className={`rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}>
+          <button
+            disabled={updatingIds.has(appointment._id)}
+            onClick={() => onReject(appointment)}
+            className={`rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60 ${mobileButton}`}
+          >
             Reject
           </button>
-          <button onClick={() => onBeginReschedule(appointment)} className={`btn-action ${mobileButton}`}>
+          <button
+            onClick={() => onBeginReschedule(appointment)}
+            className={`btn-action ${mobileButton}`}
+          >
             Reschedule
           </button>
         </>
       )}
-      {!appointment.rescheduleRequested && ["Approved", "Rescheduled"].includes(appointment.status) && (
-        <>
-          <button disabled={updatingIds.has(appointment._id)} onClick={() => onComplete(appointment)} className={`rounded-lg bg-maroon-800 px-4 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60 ${mobileButton}`}>
-            {updatingIds.has(appointment._id) ? "Completing..." : "Complete"}
-          </button>
-          {new Date(appointment.endAt) < new Date() && (
-            <button type="button" onClick={() => onBeginReschedule(appointment)} className={`btn-action ${mobileButton}`}>
-              Reschedule
+      {!appointment.rescheduleRequested &&
+        ["Approved", "Rescheduled"].includes(appointment.status) && (
+          <>
+            <button
+              disabled={updatingIds.has(appointment._id)}
+              onClick={() => onComplete(appointment)}
+              className={`rounded-lg bg-maroon-800 px-4 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60 ${mobileButton}`}
+            >
+              {updatingIds.has(appointment._id) ? "Completing..." : "Complete"}
             </button>
-          )}
-        </>
-      )}
+            {new Date(appointment.endAt) < new Date() && (
+              <button
+                type="button"
+                onClick={() => onBeginReschedule(appointment)}
+                className={`btn-action ${mobileButton}`}
+              >
+                Reschedule
+              </button>
+            )}
+          </>
+        )}
       {appointment.rescheduleRequestStatus === "Pending" && (
         <>
-          <button type="button" onClick={() => onReviewReschedule(appointment, "Approved")} className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white ${mobileButton}`}>
+          <button
+            type="button"
+            onClick={() => onReviewReschedule(appointment, "Approved")}
+            className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white ${mobileButton}`}
+          >
             Approve Reschedule
           </button>
-          <button type="button" onClick={() => onReviewReschedule(appointment, "Rejected")} className={`btn-danger-action ${mobileButton}`}>
+          <button
+            type="button"
+            onClick={() => onReviewReschedule(appointment, "Rejected")}
+            className={`btn-danger-action ${mobileButton}`}
+          >
             Reject Reschedule
           </button>
         </>
       )}
       {appointment.supportingDocument?.name && (
-        <button type="button" onClick={() => onViewDocument(appointment)} className={`btn-action ${mobileButton}`}>
+        <button
+          type="button"
+          onClick={() => onViewDocument(appointment)}
+          className={`btn-action ${mobileButton}`}
+        >
           View Document
         </button>
       )}
@@ -1801,13 +1824,24 @@ function Capacity({ label, value, wide = false }) {
 }
 
 const formatClock = (value) =>
-  new Date(value).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  value
+    ? new Date(value).toLocaleTimeString("en-PH", {
+        timeZone: "Asia/Manila",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "Not scheduled";
+const appointmentDatePart = (appointment, options) =>
+  appointment.startAt
+    ? new Date(appointment.startAt).toLocaleDateString("en-PH", {
+        timeZone: "Asia/Manila",
+        ...options,
+      })
+    : "TBD";
 
 const CURRENT_APPOINTMENT_FILTERS = [
   "All",
+  "Awaiting Faculty Schedule",
   "Upcoming",
   "Pending",
   "Approved",
@@ -1822,6 +1856,7 @@ const PRIMARY_MOBILE_APPOINTMENT_FILTERS = [
   "Approved",
 ];
 const SECONDARY_MOBILE_APPOINTMENT_FILTERS = [
+  "Awaiting Faculty Schedule",
   "Rescheduled",
   "Needs Reschedule",
 ];
@@ -1837,7 +1872,10 @@ function StudentCurrentAppointments({
   const now = new Date();
   const filtered = appointments.filter((appointment) => {
     if (activeFilter === "All") return true;
-    if (activeFilter === "Upcoming") return new Date(appointment.startAt) > now;
+    if (activeFilter === "Upcoming")
+      return (
+        Boolean(appointment.startAt) && new Date(appointment.startAt) > now
+      );
     return appointment.status === activeFilter;
   });
   const sorted = [...filtered].sort((left, right) => {
@@ -2070,7 +2108,8 @@ function StudentAppointmentCard({ appointment, renderActions }) {
                 </h2>
                 <p className="mt-1 break-words text-xs text-slate-600 sm:text-sm">
                   <span className="font-semibold">Faculty:</span>{" "}
-                  {formatPersonName(appointment.faculty?.name) || "Not provided"}
+                  {formatPersonName(appointment.faculty?.name) ||
+                    "Not provided"}
                 </p>
               </div>
               <span className="shrink-0 md:hidden">
@@ -2087,8 +2126,9 @@ function StudentAppointmentCard({ appointment, renderActions }) {
             <Clock3 size={13} aria-hidden="true" /> Time
           </dt>
           <dd className="mt-1 break-words font-semibold text-slate-700">
-            {formatClock(appointment.startAt)} –{" "}
-            {formatClock(appointment.endAt)}
+            {appointment.startAt
+              ? `${formatClock(appointment.startAt)} – ${formatClock(appointment.endAt)}`
+              : "Not scheduled yet"}
           </dd>
         </div>
         <div className="mt-2 min-w-0">
@@ -2096,8 +2136,9 @@ function StudentAppointmentCard({ appointment, renderActions }) {
             <ModeIcon size={13} aria-hidden="true" /> Mode
           </dt>
           <dd className="mt-1 break-words font-semibold text-slate-700">
-            {appointment.consultationMode || "Not provided"} ·{" "}
-            {consultationPlace}
+            {appointment.startAt
+              ? `${appointment.consultationMode || "Not provided"} · ${consultationPlace}`
+              : "Faculty will choose the meeting mode"}
           </dd>
         </div>
       </dl>
@@ -2179,10 +2220,12 @@ function ConsultationHistoryTable({
     }
   }, [expandedAppointmentId, pageAppointments]);
   const date = (value) => {
+    if (!value) return "Not scheduled";
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Not provided"
-      : parsed.toLocaleDateString(undefined, {
+      : parsed.toLocaleDateString("en-PH", {
+          timeZone: "Asia/Manila",
           year: "numeric",
           month: "short",
           day: "numeric",
@@ -2195,13 +2238,7 @@ function ConsultationHistoryTable({
 
   return (
     <>
-      <div
-        className={
-          role === "student"
-            ? "consultation-history-table responsive-table-shell"
-            : "hidden"
-        }
-      >
+      <div className="hidden">
         <table
           className={`responsive-table text-xs 2xl:text-[13px] ${role === "student" ? "student-consultation-history-table" : ""}`}
         >
@@ -2350,18 +2387,16 @@ function ConsultationHistoryTable({
         </table>
       </div>
 
-      <div
-        className={`min-w-0 gap-3 ${role === "student" ? "consultation-history-cards grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))]" : "grid"}`}
-      >
+      <div className="grid min-w-0 gap-3">
         {appointments.length === 0 ? (
           <EmptyState title={emptyTitle} />
         ) : (
           pageAppointments.map((appointment) =>
             role === "student" ? (
-              <StudentHistoryMobileRow
+              <FacultyHistoryAccordionRow
                 key={appointment._id}
                 appointment={appointment}
-                facultyName={
+                studentName={
                   formatPersonName(personFor(appointment)?.name) ||
                   "Faculty not provided"
                 }
@@ -2373,7 +2408,8 @@ function ConsultationHistoryTable({
                     current === appointment._id ? null : appointment._id,
                   )
                 }
-                renderActions={renderActions}
+                onView={() => onView(appointment)}
+                participantLabel="Faculty"
               />
             ) : (
               <FacultyHistoryAccordionRow
@@ -2400,9 +2436,7 @@ function ConsultationHistoryTable({
       {appointments.length > 0 && (
         <div
           className={`overflow-hidden rounded-xl border border-slate-200 ${
-            role === "student"
-              ? "consultation-history-pagination"
-              : ""
+            role === "student" ? "consultation-history-pagination" : ""
           }`}
         >
           <Pagination
@@ -2429,6 +2463,7 @@ function FacultyHistoryAccordionRow({
   expanded,
   onToggle,
   onView,
+  participantLabel = "Student",
 }) {
   const panelId = `faculty-history-panel-${appointment._id}`;
   const subject = appointment.subject || "Consultation";
@@ -2444,17 +2479,17 @@ function FacultyHistoryAccordionRow({
       <div className="grid min-h-[92px] min-w-0 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 p-3 sm:min-h-[96px] sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:gap-4 sm:px-5 sm:py-3.5">
         <div className="grid h-[4.5rem] w-14 shrink-0 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center sm:h-20 sm:w-16">
           <span className="text-[9px] font-extrabold uppercase tracking-wide text-maroon-700 sm:text-[10px]">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               month: "short",
             })}
           </span>
           <span className="text-xl font-extrabold leading-6 text-maroon-900 sm:text-2xl">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               day: "numeric",
             })}
           </span>
           <span className="text-[9px] font-semibold text-slate-500">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               year: "numeric",
             })}
           </span>
@@ -2465,13 +2500,22 @@ function FacultyHistoryAccordionRow({
             {subject}
           </h2>
           <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:text-sm">
-            <UserRound size={14} className="shrink-0 text-maroon-700" aria-hidden="true" />
+            <UserRound
+              size={14}
+              className="shrink-0 text-maroon-700"
+              aria-hidden="true"
+            />
             <span className="min-w-0 break-words">
-              <span className="font-semibold">Student:</span> {studentName}
+              <span className="font-semibold">{participantLabel}:</span>{" "}
+              {studentName}
             </span>
           </p>
           <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:text-sm">
-            <ModeIcon size={14} className="shrink-0 text-maroon-700" aria-hidden="true" />
+            <ModeIcon
+              size={14}
+              className="shrink-0 text-maroon-700"
+              aria-hidden="true"
+            />
             <span className="min-w-0 break-words">
               {mode} <span aria-hidden="true">·</span> {duration}
             </span>
@@ -2503,7 +2547,8 @@ function FacultyHistoryAccordionRow({
             <FacultyHistoryDetail icon={CalendarDays} label="Date & Time">
               <span className="block">{formattedDate}</span>
               <span className="mt-0.5 block break-words text-xs text-slate-600">
-                {formatClock(appointment.startAt)} – {formatClock(appointment.endAt)}
+                {formatClock(appointment.startAt)} –{" "}
+                {formatClock(appointment.endAt)}
               </span>
             </FacultyHistoryDetail>
             <FacultyHistoryDetail icon={ModeIcon} label="Mode">
@@ -2585,17 +2630,17 @@ function StudentHistoryMobileRow({
       <div className="grid min-h-[88px] min-w-0 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-2.5 p-3">
         <div className="grid h-16 w-[3.25rem] shrink-0 content-center rounded-lg bg-maroon-50 text-center">
           <span className="text-[9px] font-extrabold uppercase tracking-wide text-maroon-700">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               month: "short",
             })}
           </span>
           <span className="text-xl font-extrabold leading-5 text-maroon-900">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               day: "numeric",
             })}
           </span>
           <span className="text-[9px] font-semibold text-slate-500">
-            {new Date(appointment.startAt).toLocaleDateString(undefined, {
+            {appointmentDatePart(appointment, {
               year: "numeric",
             })}
           </span>

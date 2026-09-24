@@ -18,9 +18,24 @@ const appointment = (id, status, startAt, endAt) => ({
 
 describe("Student appointment timestamp classification", () => {
   it("keeps future-today, currently happening, and tomorrow appointments current", () => {
-    const futureToday = appointment("future-today", "Pending", "2026-08-17T06:30:00.000Z", "2026-08-17T07:00:00.000Z");
-    const happening = appointment("happening", "Approved", "2026-08-17T05:30:00.000Z", "2026-08-17T06:30:00.000Z");
-    const tomorrow = appointment("tomorrow", "Needs Reschedule", "2026-08-18T05:00:00.000Z", "2026-08-18T05:30:00.000Z");
+    const futureToday = appointment(
+      "future-today",
+      "Pending",
+      "2026-08-17T06:30:00.000Z",
+      "2026-08-17T07:00:00.000Z",
+    );
+    const happening = appointment(
+      "happening",
+      "Approved",
+      "2026-08-17T05:30:00.000Z",
+      "2026-08-17T06:30:00.000Z",
+    );
+    const tomorrow = appointment(
+      "tomorrow",
+      "Needs Reschedule",
+      "2026-08-18T05:00:00.000Z",
+      "2026-08-18T05:30:00.000Z",
+    );
     for (const item of [futureToday, happening, tomorrow]) {
       assert.equal(isStudentCurrentAppointment(item, now), true);
       assert.equal(isStudentHistoryAppointment(item, now), false);
@@ -28,39 +43,122 @@ describe("Student appointment timestamp classification", () => {
   });
 
   it("uses the exact end boundary and classifies yesterday as history", () => {
-    const justFinished = appointment("boundary", "Approved", "2026-08-17T05:30:00.000Z", "2026-08-17T06:00:00.000Z");
-    const yesterday = appointment("yesterday", "Pending", "2026-08-16T05:00:00.000Z", "2026-08-16T05:30:00.000Z");
+    const justFinished = appointment(
+      "boundary",
+      "Approved",
+      "2026-08-17T05:30:00.000Z",
+      "2026-08-17T06:00:00.000Z",
+    );
+    const yesterday = appointment(
+      "yesterday",
+      "Pending",
+      "2026-08-16T05:00:00.000Z",
+      "2026-08-16T05:30:00.000Z",
+    );
     assert.equal(isAppointmentPast(justFinished, now), true);
     assert.equal(isStudentHistoryAppointment(justFinished, now), true);
     assert.equal(isStudentHistoryAppointment(yesterday, now), true);
   });
 
   it("moves every past status to history without rewriting the status", () => {
-    const statuses = ["Pending", "Approved", "Needs Reschedule", "Completed", "Cancelled", "Rejected", "No Show"];
-    const records = statuses.map((status, index) => appointment(String(index), status, `2026-08-${String(10 + index).padStart(2, "0")}T05:00:00.000Z`, `2026-08-${String(10 + index).padStart(2, "0")}T05:30:00.000Z`));
+    const statuses = [
+      "Pending",
+      "Approved",
+      "Needs Reschedule",
+      "Completed",
+      "Cancelled",
+      "Rejected",
+      "No Show",
+    ];
+    const records = statuses.map((status, index) =>
+      appointment(
+        String(index),
+        status,
+        `2026-08-${String(10 + index).padStart(2, "0")}T05:00:00.000Z`,
+        `2026-08-${String(10 + index).padStart(2, "0")}T05:30:00.000Z`,
+      ),
+    );
     const result = classifyStudentAppointments(records, now);
     assert.equal(result.current.length, 0);
     assert.equal(result.history.length, statuses.length);
-    assert.deepEqual(new Set(result.history.map((item) => item.status)), new Set(statuses));
-    assert.equal(records.find((item) => item.status === "Approved").status, "Approved");
+    assert.deepEqual(
+      new Set(result.history.map((item) => item.status)),
+      new Set(statuses),
+    );
+    assert.equal(
+      records.find((item) => item.status === "Approved").status,
+      "Approved",
+    );
   });
 
   it("puts future terminal records in history and sorts both views correctly", () => {
     const records = [
-      appointment("later", "Pending", "2026-08-18T07:00:00.000Z", "2026-08-18T07:30:00.000Z"),
-      appointment("nearer", "Approved", "2026-08-17T07:00:00.000Z", "2026-08-17T07:30:00.000Z"),
-      appointment("cancelled", "Cancelled", "2026-08-19T07:00:00.000Z", "2026-08-19T07:30:00.000Z"),
-      appointment("older", "No Show", "2026-08-15T07:00:00.000Z", "2026-08-15T07:30:00.000Z"),
+      appointment(
+        "later",
+        "Pending",
+        "2026-08-18T07:00:00.000Z",
+        "2026-08-18T07:30:00.000Z",
+      ),
+      appointment(
+        "nearer",
+        "Approved",
+        "2026-08-17T07:00:00.000Z",
+        "2026-08-17T07:30:00.000Z",
+      ),
+      appointment(
+        "cancelled",
+        "Cancelled",
+        "2026-08-19T07:00:00.000Z",
+        "2026-08-19T07:30:00.000Z",
+      ),
+      appointment(
+        "older",
+        "No Show",
+        "2026-08-15T07:00:00.000Z",
+        "2026-08-15T07:30:00.000Z",
+      ),
     ];
     const result = classifyStudentAppointments(records, now);
-    assert.deepEqual(result.current.map((item) => item._id), ["nearer", "later"]);
-    assert.deepEqual(result.history.map((item) => item._id), ["cancelled", "older"]);
+    assert.deepEqual(
+      result.current.map((item) => item._id),
+      ["nearer", "later"],
+    );
+    assert.deepEqual(
+      result.history.map((item) => item._id),
+      ["cancelled", "older"],
+    );
     assert.equal(Math.ceil(result.current.length / 6), 1);
   });
 
+  it("keeps an unscheduled request current without inventing a date, then archives a rejection", () => {
+    const request = {
+      _id: "schedule-request",
+      status: "Awaiting Faculty Schedule",
+      startAt: null,
+      endAt: null,
+    };
+    assert.equal(isAppointmentPast(request, now), false);
+    assert.deepEqual(classifyStudentAppointments([request], now).current, [
+      request,
+    ]);
+    request.status = "Rejected";
+    assert.deepEqual(classifyStudentAppointments([request], now).history, [
+      request,
+    ]);
+  });
+
   it("keeps ownership in the authenticated route and performs no expiry deletion", async () => {
-    const route = await readFile(new URL("../src/routes/appointmentRoutes.js", import.meta.url), "utf8");
-    const classifier = await readFile(new URL("../src/services/appointmentClassificationService.js", import.meta.url), "utf8");
+    const route = await readFile(
+      new URL("../src/routes/appointmentRoutes.js", import.meta.url),
+      "utf8",
+    );
+    const classifier = await readFile(
+      new URL(
+        "../src/services/appointmentClassificationService.js",
+        import.meta.url,
+      ),
+      "utf8",
+    );
     assert.match(route, /\{ student: req\.user\.id \}/);
     assert.match(route, /classifyStudentAppointments/);
     assert.doesNotMatch(classifier, /delete|update|save\s*\(|Completed\s*[=:]/);

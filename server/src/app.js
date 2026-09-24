@@ -7,6 +7,7 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import availabilityRoutes from "./routes/availabilityRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import scheduleRequestRoutes from "./routes/scheduleRequestRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
@@ -18,15 +19,14 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: env.clientUrl }));
 app.use(express.json({ limit: "2mb" }));
-app.get("/", (_req, res) =>
-  res.json({ message: "SOCConsult API is running" }),
-);
+app.get("/", (_req, res) => res.json({ message: "SOCConsult API is running" }));
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/schedule-requests", scheduleRequestRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/tasks", taskRoutes);

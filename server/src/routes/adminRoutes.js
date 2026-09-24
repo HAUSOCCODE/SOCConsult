@@ -6,6 +6,7 @@ import {
   approveRegistration,
   changeAdminPassword,
   getAdminAppointments,
+  getAiConsultationSummary,
   getRegistration,
   getRegistrations,
   getUser,
@@ -48,6 +49,7 @@ router.get("/users/:id", getUser);
 router.put("/users/:id/reset-password", resetUserPassword);
 router.put("/users/:id/status", updateUserStatus);
 router.get("/appointments", getAdminAppointments);
+router.get("/reports/ai-summary", aiRateLimit, getAiConsultationSummary);
 router.put("/settings/password", changeAdminPassword);
 
 export default router;

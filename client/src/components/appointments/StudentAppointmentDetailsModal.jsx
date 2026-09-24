@@ -11,9 +11,10 @@ import {
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const safeDate = (value, options) => {
+  if (!value) return "Not scheduled yet";
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleString(undefined, options)
+    ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila", ...options })
     : "Not provided";
 };
 const clock = (value) =>
@@ -116,6 +117,12 @@ export default function StudentAppointmentDetailsModal({
             </Section>
           </div>
 
+          {appointment.status === "Awaiting Faculty Schedule" && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Your request is awaiting the Faculty Member's decision. No date or
+              time has been confirmed.
+            </p>
+          )}
           <Section title="Schedule">
             <Detail
               label="Consultation Date"
@@ -127,8 +134,16 @@ export default function StudentAppointmentDetailsModal({
               })}
             />
             <Detail
-              label="Faculty Availability Window"
-              value={`${clock(appointment.startAt)} – ${clock(appointment.endAt)}`}
+              label={
+                appointment.bookingMethod === "schedule_request"
+                  ? "Consultation Time"
+                  : "Faculty Availability Window"
+              }
+              value={
+                appointment.startAt
+                  ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
+                  : "Not scheduled yet"
+              }
             />
             <Detail
               label="Consultation Mode"

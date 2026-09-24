@@ -42,6 +42,20 @@ const fileDate = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
 
+const inputDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const summaryRangeLabel = ({ start, end }) => {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const options = { month: "long", day: "numeric", year: "numeric" };
+  return `${startDate.toLocaleDateString("en-US", options)} – ${endDate.toLocaleDateString("en-US", options)}`;
+};
+
 const approvalMethodLabel = (user) => {
   if (user.registrationStatus === "Pending") return "Pending Admin Approval";
   if (user.registrationStatus === "Rejected") return "Rejected by Admin";
@@ -65,6 +79,14 @@ export default function ReportsAnalytics() {
   const [registrations, setRegistrations] = useState(null);
   const [error, setError] = useState("");
   const [registrationError, setRegistrationError] = useState("");
+  const today = new Date();
+  const [summaryStart, setSummaryStart] = useState(
+    inputDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+  );
+  const [summaryEnd, setSummaryEnd] = useState(inputDate(today));
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
 
   const load = () => {
     setError("");
@@ -110,7 +132,11 @@ export default function ReportsAnalytics() {
         formatPersonName(item.student?.name),
         formatPersonName(item.faculty?.name),
         item.subject,
-        new Date(item.startAt).toLocaleString(),
+        item.startAt
+          ? new Date(item.startAt).toLocaleString("en-PH", {
+              timeZone: "Asia/Manila",
+            })
+          : "Not scheduled",
         item.status,
       ]),
     ];
@@ -152,10 +178,53 @@ export default function ReportsAnalytics() {
         user.accountStatus || "Not Available",
       ]),
     ];
-    downloadCsv(
-      rows,
-      `SOCConsult_User_Registration_Report_${fileDate()}.csv`,
-    );
+    downloadCsv(rows, `SOCConsult_User_Registration_Report_${fileDate()}.csv`);
+  };
+
+  const setSummaryPreset = (preset) => {
+    const now = new Date();
+    let start;
+    let end = now;
+    if (preset === "week") {
+      start = new Date(now);
+      start.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    } else if (preset === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    }
+    setSummaryStart(inputDate(start));
+    setSummaryEnd(inputDate(end));
+    setSummary(null);
+    setSummaryError("");
+  };
+
+  const generateSummary = async () => {
+    setSummaryError("");
+    setSummary(null);
+    if (!summaryStart || !summaryEnd) {
+      setSummaryError("Select a start date and end date.");
+      return;
+    }
+    if (summaryEnd < summaryStart) {
+      setSummaryError("End date must be on or after the start date.");
+      return;
+    }
+    setSummaryLoading(true);
+    try {
+      const query = new URLSearchParams({
+        startDate: summaryStart,
+        endDate: summaryEnd,
+      });
+      setSummary(await api(`/admin/reports/ai-summary?${query}`));
+    } catch (requestError) {
+      setSummaryError(
+        requestError.message || "Unable to generate the summary.",
+      );
+    } finally {
+      setSummaryLoading(false);
+    }
   };
 
   return (
@@ -166,7 +235,8 @@ export default function ReportsAnalytics() {
             Reports &amp; Analytics
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Generate consultation and account audit reports from live system data.
+            Generate consultation and account audit reports from live system
+            data.
           </p>
         </div>
         <details className="group relative w-full sm:w-auto">
@@ -206,11 +276,138 @@ export default function ReportsAnalytics() {
         />
       </div>
       <section className="rounded-2xl border bg-white p-4 sm:p-6">
-        <h2 className="font-bold">AI-Assisted Report Summary</h2>
+        <h2 className="font-bold text-maroon-900">
+          AI-Assisted Report Summary
+        </h2>
         <p className="mt-2 text-sm text-slate-500">
-          AI summaries are reserved for a future configured AI service.
-          Appointment decisions remain entirely human-controlled.
+          Generate a narrative summary of completed consultations for a selected
+          date range.
         </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+          <label className="text-sm font-semibold">
+            Start date
+            <input
+              type="date"
+              className="field mt-1"
+              value={summaryStart}
+              onChange={(event) => {
+                setSummaryStart(event.target.value);
+                setSummary(null);
+              }}
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            End date
+            <input
+              type="date"
+              className="field mt-1"
+              value={summaryEnd}
+              onChange={(event) => {
+                setSummaryEnd(event.target.value);
+                setSummary(null);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-primary h-11"
+            disabled={summaryLoading}
+            onClick={generateSummary}
+          >
+            {summaryLoading
+              ? "Analyzing consultation records…"
+              : "Generate Consultation Summary"}
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => setSummaryPreset("week")}
+          >
+            This Week
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => setSummaryPreset("month")}
+          >
+            This Month
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            onClick={() => setSummaryPreset("previous")}
+          >
+            Previous Month
+          </button>
+        </div>
+        {summaryError && (
+          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {summaryError}
+          </p>
+        )}
+        {summary && (
+          <div className="mt-6 border-t border-slate-200 pt-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-maroon-900">
+                  Consultation Summary
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {summaryRangeLabel(summary.dateRange)}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={summaryLoading}
+                onClick={generateSummary}
+              >
+                Regenerate Summary
+              </button>
+            </div>
+            <p className="mt-4 leading-7 text-slate-700">{summary.summary}</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Insight
+                label="Completed consultations"
+                value={summary.insights.totalConsultations}
+              />
+              <Insight
+                label="Most active faculty"
+                value={summary.insights.mostActiveFaculty || "—"}
+              />
+              <Insight
+                label="Most active year level"
+                value={summary.insights.mostActiveYearLevel || "—"}
+              />
+              <Insight
+                label="Common topics"
+                value={summary.insights.commonTopics?.join(", ") || "—"}
+              />
+              <Insight
+                label="Meeting modes"
+                value={
+                  Object.entries(summary.insights.modeDistribution || {})
+                    .map(([mode, count]) => `${mode}: ${count}`)
+                    .join(" · ") || "—"
+                }
+              />
+              <Insight
+                label="Average duration"
+                value={
+                  summary.insights.averageDurationMinutes
+                    ? `${summary.insights.averageDurationMinutes} minutes`
+                    : "—"
+                }
+              />
+            </div>
+            <p className="mt-5 text-xs text-slate-500">
+              AI-generated for administrative reference. Appointment and
+              academic decisions remain human-controlled.
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -240,6 +437,17 @@ function Metric({ label, value }) {
     <div className="rounded-2xl border bg-white p-5">
       <p className="text-sm text-slate-500">{label}</p>
       <strong className="mt-2 block text-3xl text-maroon-900">{value}</strong>
+    </div>
+  );
+}
+
+function Insight({ label, value }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-bold text-maroon-900">
+        {value}
+      </p>
     </div>
   );
 }

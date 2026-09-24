@@ -2,12 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { EmptyState } from "../../components/UI";
 import FacultyScheduleDetailsModal from "../../components/appointments/FacultyScheduleDetailsModal";
+import OneTimeScheduleRequests from "../../components/appointments/OneTimeScheduleRequests";
 import { useToast } from "../../context/ToastContext";
-import {
-  CalendarDays,
-  ChevronRight,
-  Clock3,
-} from "lucide-react";
+import { CalendarDays, ChevronRight, Clock3 } from "lucide-react";
 
 const date = (value) =>
   new Date(value).toLocaleDateString(undefined, {
@@ -196,9 +193,11 @@ export default function AppointmentRequests() {
           Appointment Requests
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
-          Select a published schedule to manage its student requests.
+          Review student schedule requests or select a published schedule to
+          manage its bookings.
         </p>
       </div>
+      <OneTimeScheduleRequests />
       {schedules === null ? (
         <p className="py-10 text-center text-sm font-semibold text-maroon-800">
           Loading schedules...
@@ -209,70 +208,84 @@ export default function AppointmentRequests() {
           text="Upcoming schedules created in Manage Availability will appear here."
         />
       ) : (
-        <div className="grid w-full min-w-0 max-w-[850px] grid-cols-1 gap-4">
+        <div className="appointment-schedule-list mx-auto grid w-full min-w-0 max-w-[1100px] grid-cols-1 gap-3">
           {schedules.map((schedule) => (
             <article
               key={schedule._id}
               onClick={() => openSchedule(schedule)}
-              className="w-full min-w-0 cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-colors duration-150 hover:border-maroon-300"
+              className="appointment-schedule-card grid w-full min-w-0 cursor-pointer rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-colors duration-150 hover:border-maroon-300"
             >
-              <header className="flex min-w-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-5">
-                <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-maroon-50 text-maroon-800 sm:h-12 sm:w-12">
-                    <CalendarDays size={20} aria-hidden="true" />
+              <header className="appointment-schedule-info grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-2 border-b border-slate-200 px-3 py-3 sm:px-4 sm:py-3.5">
+                <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-maroon-50 text-maroon-800 sm:h-10 sm:w-10">
+                    <CalendarDays size={18} aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
-                    <h2 className="break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-lg">
+                    <h2 className="break-words text-sm font-bold leading-5 text-maroon-900 sm:text-base">
                       {date(schedule.startAt)}
                     </h2>
-                    <p className="mt-0.5 break-words text-xs font-medium text-slate-500 sm:text-sm">
+                    <p className="mt-0.5 break-words text-[11px] font-medium text-slate-500 sm:text-xs">
                       Published consultation schedule
                     </p>
                   </div>
                 </div>
-                <p className="inline-flex h-11 shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 sm:self-center">
-                  <Clock3 size={17} className="text-maroon-700" aria-hidden="true" />
+                <p className="col-span-2 inline-flex h-8 w-fit max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700">
+                  <Clock3
+                    size={15}
+                    className="text-maroon-700"
+                    aria-hidden="true"
+                  />
                   {time(schedule.startAt)} – {time(schedule.endAt)}
                 </p>
               </header>
-              <div className="space-y-4 p-4 sm:space-y-5 sm:p-6">
-                <dl className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3">
-                  <Count
-                    label="Pending"
-                    value={schedule.pendingCount || 0}
-                    color="text-amber-700"
-                  />
-                  <Count
-                    label="Approved"
-                    value={schedule.approvedCount || 0}
-                    color="text-green-700"
-                  />
-                  <Count
-                    label="Rejected"
-                    value={schedule.rejectedCount || 0}
-                    color="text-red-700"
-                  />
-                </dl>
-                <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4">
-                  <Metric
-                    label="Capacity"
-                    value={`${schedule.capacityMinutes || 0} min`}
-                  />
-                  <Metric
-                    label="Pending Time"
-                    value={`${schedule.pendingEstimatedMinutes || 0} min`}
-                  />
-                  <Metric
-                    label="Approved Time"
-                    value={`${schedule.approvedEstimatedMinutes || 0} min`}
-                  />
-                  <Metric
-                    label="Total Time"
-                    value={`${schedule.totalEstimatedMinutes || 0} min`}
-                  />
-                </dl>
+              <div className="contents">
+                <div className="appointment-schedule-status min-w-0 border-b border-slate-200 px-3 py-2.5 sm:px-4">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Status
+                  </p>
+                  <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-1.5">
+                    <Count
+                      label="Pending"
+                      value={schedule.pendingCount || 0}
+                      color="text-amber-700"
+                    />
+                    <Count
+                      label="Approved"
+                      value={schedule.approvedCount || 0}
+                      color="text-green-700"
+                    />
+                    <Count
+                      label="Rejected"
+                      value={schedule.rejectedCount || 0}
+                      color="text-red-700"
+                    />
+                  </dl>
+                </div>
+                <div className="appointment-schedule-time min-w-0 border-b border-slate-200 px-3 py-2.5 sm:px-4">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Time
+                  </p>
+                  <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200">
+                    <Metric
+                      label="Capacity"
+                      value={`${schedule.capacityMinutes || 0} min`}
+                    />
+                    <Metric
+                      label="Pending Time"
+                      value={`${schedule.pendingEstimatedMinutes || 0} min`}
+                    />
+                    <Metric
+                      label="Approved Time"
+                      value={`${schedule.approvedEstimatedMinutes || 0} min`}
+                    />
+                    <Metric
+                      label="Total Time"
+                      value={`${schedule.totalEstimatedMinutes || 0} min`}
+                    />
+                  </dl>
+                </div>
               </div>
-              <footer className="flex w-full items-center justify-center border-t border-slate-200 bg-white p-3.5 sm:p-4">
+              <footer className="appointment-schedule-action flex w-full min-w-0 items-center justify-center bg-white p-2.5 sm:p-3">
                 <button
                   type="button"
                   onClick={(event) => {
@@ -280,7 +293,7 @@ export default function AppointmentRequests() {
                     openSchedule(schedule);
                   }}
                   aria-label={`View appointment requests for ${date(schedule.startAt)}`}
-                  className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-maroon-800 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-maroon-900 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-44"
+                  className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-maroon-800 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-maroon-900 focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-2 sm:w-40"
                 >
                   View Requests
                   <ChevronRight size={16} aria-hidden="true" />
@@ -312,14 +325,16 @@ export default function AppointmentRequests() {
 
 function Metric({ label, value }) {
   return (
-    <div className="min-w-0 bg-slate-50 px-3 py-3 sm:px-4">
+    <div className="min-w-0 bg-slate-50 px-2.5 py-2 sm:px-3">
       <dt
-        className="break-words text-[10px] font-bold uppercase leading-4 tracking-wide text-slate-500 sm:whitespace-nowrap"
+        className="min-w-0 break-words text-[9px] font-bold uppercase leading-3 tracking-wide text-slate-500"
         title={label}
       >
         {label}
       </dt>
-      <dd className="mt-1 whitespace-nowrap text-sm font-bold text-slate-900 sm:text-base">{value}</dd>
+      <dd className="mt-0.5 whitespace-nowrap text-sm font-bold text-slate-900">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -327,15 +342,12 @@ function Metric({ label, value }) {
 function Count({ label, value, color }) {
   return (
     <div
-      className={`min-w-0 rounded-xl border px-2 py-3 sm:min-h-[88px] sm:px-4 sm:py-3.5 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
+      className={`min-w-0 rounded-lg border px-2 py-2 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
     >
-      <dt
-        className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-600 sm:text-xs"
-        title={label}
-      >
+      <dt className="break-words text-[9px] font-bold uppercase leading-4 tracking-wide text-slate-600 sm:text-xs">
         {label}
       </dt>
-      <dd className={`mt-1 text-xl font-extrabold sm:text-2xl ${color}`}>{value}</dd>
+      <dd className={`mt-0.5 text-lg font-extrabold ${color}`}>{value}</dd>
     </div>
   );
 }

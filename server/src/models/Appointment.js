@@ -17,10 +17,44 @@ const appointmentSchema = new mongoose.Schema(
     availability: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Availability",
-      required: true,
+      required: function () {
+        return this.bookingMethod !== "schedule_request";
+      },
     },
-    startAt: { type: Date, required: true, index: true },
-    endAt: { type: Date, required: true, index: true },
+    startAt: {
+      type: Date,
+      required: function () {
+        return (
+          this.bookingMethod !== "schedule_request" ||
+          ["Approved", "Rescheduled", "Completed", "No Show"].includes(
+            this.status,
+          )
+        );
+      },
+      index: true,
+    },
+    endAt: {
+      type: Date,
+      required: function () {
+        return (
+          this.bookingMethod !== "schedule_request" ||
+          ["Approved", "Rescheduled", "Completed", "No Show"].includes(
+            this.status,
+          )
+        );
+      },
+      index: true,
+    },
+    bookingMethod: {
+      type: String,
+      enum: ["published_slot", "schedule_request"],
+      default: "published_slot",
+      index: true,
+    },
+    decisionLock: { type: Boolean, default: false, select: false },
+    decisionLockAt: { type: Date, select: false },
+    meetingPlatform: { type: String, trim: true, maxlength: 100 },
+    meetingLink: { type: String, trim: true, maxlength: 500, select: false },
     estimatedDurationMinutes: { type: Number, min: 5, max: 1440 },
     subject: { type: String, required: true, trim: true, maxlength: 150 },
     yearLevel: {
@@ -32,7 +66,9 @@ const appointmentSchema = new mongoose.Schema(
     consultationMode: {
       type: String,
       enum: ["Face-to-Face", "Online"],
-      default: "Online",
+      default: function () {
+        return this.bookingMethod === "schedule_request" ? undefined : "Online";
+      },
     },
     location: { type: String, trim: true, maxlength: 150 },
     supportingDocument: {
@@ -47,6 +83,7 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Pending",
+        "Awaiting Faculty Schedule",
         "Approved",
         "Rejected",
         "Needs Reschedule",
@@ -79,4 +116,14 @@ const appointmentSchema = new mongoose.Schema(
 appointmentSchema.index({ faculty: 1, startAt: 1, status: 1 });
 appointmentSchema.index({ faculty: 1, availability: 1, status: 1 });
 appointmentSchema.index({ student: 1, startAt: 1, status: 1 });
+appointmentSchema.index(
+  { student: 1, faculty: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      bookingMethod: "schedule_request",
+      status: "Awaiting Faculty Schedule",
+    },
+  },
+);
 export default mongoose.model("Appointment", appointmentSchema);

@@ -18,6 +18,7 @@ export default function ConsultationOverview() {
   if (!items) return <Loading />;
   const statuses = [
     "Pending",
+    "Awaiting Faculty Schedule",
     "Approved",
     "Rescheduled",
     "Completed",

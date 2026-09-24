@@ -6,12 +6,15 @@ import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { formatPersonName } from "../../utils/formatPersonName";
 
-const dateTime = (value) => new Date(value).toLocaleString();
+const dateTime = (value) =>
+  value ? new Date(value).toLocaleString() : "Not scheduled";
 const time = (value) =>
-  new Date(value).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  value
+    ? new Date(value).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "Not scheduled";
 
 export default function AppointmentRequestDetailsModal({
   appointment,
@@ -89,19 +92,27 @@ export default function AppointmentRequestDetailsModal({
               <Detail label="Subject / Topic" value={appointment.subject} />
               <Detail
                 label="Requested Date"
-                value={new Date(appointment.startAt).toLocaleDateString(
-                  undefined,
-                  {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  },
-                )}
+                value={
+                  appointment.startAt
+                    ? new Date(appointment.startAt).toLocaleDateString(
+                        undefined,
+                        {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        },
+                      )
+                    : "Awaiting Faculty Schedule"
+                }
               />
               <Detail
                 label="Faculty Availability Window"
-                value={`${time(appointment.startAt)} – ${time(appointment.endAt)}`}
+                value={
+                  appointment.startAt
+                    ? `${time(appointment.startAt)} – ${time(appointment.endAt)}`
+                    : "Not scheduled"
+                }
               />
               <Detail
                 label="Estimated Consultation Time"

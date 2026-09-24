@@ -6,6 +6,7 @@ import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import SupportingDocument from "../models/SupportingDocument.js";
+import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { classifyStudentAppointments } from "../services/appointmentClassificationService.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
@@ -67,6 +68,15 @@ const cloudinaryResourceType = (mimeType = "") =>
       : "raw";
 const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
+const conflictsWithOneTimeSchedule = (appointment, startAt, endAt) =>
+  OneTimeScheduleHold.exists({
+    appointment: { $ne: appointment._id },
+    minute: {
+      $gte: Math.floor(new Date(startAt).getTime() / 60000),
+      $lt: Math.ceil(new Date(endAt).getTime() / 60000),
+    },
+    $or: [{ faculty: appointment.faculty }, { student: appointment.student }],
+  });
 
 const capacitySummary = async (facultyId) => {
   const appointments = await Appointment.find({
@@ -74,7 +84,11 @@ const capacitySummary = async (facultyId) => {
     status: { $in: ["Pending", "Approved", "Rescheduled"] },
   }).select("availability status estimatedDurationMinutes");
   const availabilityIds = [
-    ...new Set(appointments.map((item) => String(item.availability))),
+    ...new Set(
+      appointments
+        .filter((item) => item.availability)
+        .map((item) => String(item.availability)),
+    ),
   ];
   const schedules = await Availability.find({
     _id: { $in: availabilityIds },
@@ -111,6 +125,7 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       ? { student: req.user.id }
       : { faculty: req.user.id };
   const appointments = await Appointment.find(query)
+    .select("+meetingLink")
     .populate(
       "student",
       "name email studentId program yearLevel +profilePicture",
@@ -123,7 +138,7 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       "availability",
       "startAt endAt mode location meetingPlatform +meetingLink",
     )
-    .sort({ startAt: -1 })
+    .sort({ createdAt: -1 })
     .lean();
   await hydrateLegacyDocuments(appointments);
   const safeAppointments = appointments.map((appointment) => {
@@ -134,12 +149,14 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       appointment.consultationMode === "Online" ||
       availability?.mode === "Online"
     ) {
-      appointment.meetingPlatform = platformFor(availability);
+      appointment.meetingPlatform =
+        appointment.meetingPlatform || platformFor(availability);
       const canAccessLink =
         req.user.role === "faculty" ||
         ["Approved", "Rescheduled", "Completed"].includes(appointment.status);
       if (canAccessLink && availability?.meetingLink)
         appointment.meetingLink = availability.meetingLink;
+      if (!canAccessLink) delete appointment.meetingLink;
       if (availability) delete availability.meetingLink;
       if (looksLikeUrl(appointment.location)) appointment.location = "";
     }
@@ -461,6 +478,14 @@ router.put("/:id/status", authorize("faculty"), async (req, res) => {
   });
   if (!appointment)
     return res.status(404).json({ message: "Appointment not found." });
+  if (
+    appointment.bookingMethod === "schedule_request" &&
+    appointment.status === "Awaiting Faculty Schedule"
+  )
+    return res.status(409).json({
+      message:
+        "Decide this request from Appointment Requests by assigning a one-time schedule or rejecting it.",
+    });
   if (["Rejected", "Completed", "No Show"].includes(appointment.status))
     return res
       .status(409)
@@ -503,6 +528,18 @@ router.put("/:id/status", authorize("faculty"), async (req, res) => {
     appointment.consultationMode = slot.mode || "Online";
     appointment.location = slot.location;
   }
+  if (
+    ["Approved", "Rescheduled"].includes(status) &&
+    (await conflictsWithOneTimeSchedule(
+      appointment,
+      appointment.startAt,
+      appointment.endAt,
+    ))
+  )
+    return res.status(409).json({
+      message:
+        "The Faculty Member or Student has a one-time consultation during this schedule.",
+    });
   appointment.status = status;
   appointment.responseNote = (req.body.note || "").trim();
   if (status === "Rescheduled") {
@@ -510,6 +547,11 @@ router.put("/:id/status", authorize("faculty"), async (req, res) => {
     appointment.rescheduleRequestNote = "";
   }
   await appointment.save();
+  if (
+    status === "Rescheduled" &&
+    appointment.bookingMethod === "schedule_request"
+  )
+    await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
   const verb = status.toLowerCase();
   const notificationTitles = {
     Approved: "Consultation Approved",
@@ -679,6 +721,11 @@ router.put(
     appointment.rescheduleDecisionNote = decisionNote;
     if (decision === "Approved") appointment.status = "Needs Reschedule";
     await appointment.save();
+    if (
+      decision === "Approved" &&
+      appointment.bookingMethod === "schedule_request"
+    )
+      await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
     const approved = decision === "Approved";
     await Promise.all([
       logActivity(

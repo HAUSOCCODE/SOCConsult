@@ -11,6 +11,7 @@ const appointmentFilters = [
   "All Appointments",
   "Approved",
   "Pending",
+  "Awaiting Faculty Schedule",
   "Rescheduled",
   "Completed",
   "Cancelled",
@@ -18,9 +19,11 @@ const appointmentFilters = [
 ];
 
 const dateLabel = (value) => {
+  if (!value) return "Not scheduled";
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleDateString(undefined, {
+    ? date.toLocaleDateString("en-PH", {
+        timeZone: "Asia/Manila",
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -29,9 +32,14 @@ const dateLabel = (value) => {
 };
 
 const timeLabel = (value) => {
+  if (!value) return "Not scheduled";
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    ? date.toLocaleTimeString("en-PH", {
+        timeZone: "Asia/Manila",
+        hour: "numeric",
+        minute: "2-digit",
+      })
     : "Not available";
 };
 
@@ -146,7 +154,11 @@ export default function AdminRecordsList({ title }) {
         </div>
         <label className="relative block w-full min-w-0 min-[900px]:w-60 min-[1200px]:w-64">
           <span className="sr-only">Search appointments</span>
-          <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
           <input
             type="search"
             value={search}
@@ -170,45 +182,98 @@ export default function AdminRecordsList({ title }) {
               const detailsId = `admin-appointment-details-${appointment._id}`;
               const subject = appointment.subject || "Consultation";
               return (
-                <article key={appointment._id} className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <article
+                  key={appointment._id}
+                  className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                >
                   <div className="grid min-h-[98px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 p-3.5">
                     <div className="min-w-0">
-                      <p className="break-words text-sm font-bold text-slate-900">{subject}</p>
+                      <p className="break-words text-sm font-bold text-slate-900">
+                        {subject}
+                      </p>
                       <p className="mt-1 break-words text-[11px] leading-4 text-slate-500">
-                        {dateLabel(appointment.startAt)} · {timeLabel(appointment.startAt)} – {timeLabel(appointment.endAt)}
+                        {dateLabel(appointment.startAt)} ·{" "}
+                        {timeLabel(appointment.startAt)} –{" "}
+                        {timeLabel(appointment.endAt)}
                       </p>
                       <p className="mt-1.5 break-words text-xs font-semibold text-slate-700">
-                        {formatPersonName(appointment.student?.name) || "Student unavailable"}
+                        {formatPersonName(appointment.student?.name) ||
+                          "Student unavailable"}
                       </p>
                       <p className="mt-0.5 break-words text-[11px] leading-4 text-slate-500">
-                        with {formatPersonName(appointment.faculty?.name) || "Faculty unavailable"} · {appointment.consultationMode || "Online"} · {appointment.estimatedDurationMinutes ? `${appointment.estimatedDurationMinutes} min` : "Duration unavailable"}
+                        with{" "}
+                        {formatPersonName(appointment.faculty?.name) ||
+                          "Faculty unavailable"}{" "}
+                        · {appointment.consultationMode || "Online"} ·{" "}
+                        {appointment.estimatedDurationMinutes
+                          ? `${appointment.estimatedDurationMinutes} min`
+                          : "Duration unavailable"}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <StatusBadge status={appointment.status} compact />
                       <button
                         type="button"
-                        onClick={() => setExpandedAppointmentId((current) => current === appointment._id ? null : appointment._id)}
+                        onClick={() =>
+                          setExpandedAppointmentId((current) =>
+                            current === appointment._id
+                              ? null
+                              : appointment._id,
+                          )
+                        }
                         aria-expanded={expanded}
                         aria-controls={detailsId}
                         aria-label={`${expanded ? "Collapse" : "Expand"} appointment details for ${subject}`}
                         className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-maroon-800 transition hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-300"
                       >
-                        {expanded ? <ChevronUp size={17} aria-hidden="true" /> : <ChevronRight size={17} aria-hidden="true" />}
+                        {expanded ? (
+                          <ChevronUp size={17} aria-hidden="true" />
+                        ) : (
+                          <ChevronRight size={17} aria-hidden="true" />
+                        )}
                       </button>
                     </div>
                   </div>
                   {expanded && (
-                    <div id={detailsId} className="border-t border-slate-200 bg-slate-50/70 p-3.5">
+                    <div
+                      id={detailsId}
+                      className="border-t border-slate-200 bg-slate-50/70 p-3.5"
+                    >
                       <dl className="grid min-w-0 grid-cols-2 gap-3 text-xs">
-                        <MobileDetail label="Student" value={formatPersonName(appointment.student?.name)} />
-                        <MobileDetail label="Faculty" value={formatPersonName(appointment.faculty?.name)} />
-                        <MobileDetail label="Mode" value={appointment.consultationMode || "Online"} />
-                        <MobileDetail label="Duration" value={appointment.estimatedDurationMinutes ? `${appointment.estimatedDurationMinutes} min` : null} />
-                        <MobileDetail label="Status" value={appointment.status} />
-                        <MobileDetail label="Scheduled" value={`${dateLabel(appointment.startAt)} · ${timeLabel(appointment.startAt)} – ${timeLabel(appointment.endAt)}`} />
+                        <MobileDetail
+                          label="Student"
+                          value={formatPersonName(appointment.student?.name)}
+                        />
+                        <MobileDetail
+                          label="Faculty"
+                          value={formatPersonName(appointment.faculty?.name)}
+                        />
+                        <MobileDetail
+                          label="Mode"
+                          value={appointment.consultationMode || "Online"}
+                        />
+                        <MobileDetail
+                          label="Duration"
+                          value={
+                            appointment.estimatedDurationMinutes
+                              ? `${appointment.estimatedDurationMinutes} min`
+                              : null
+                          }
+                        />
+                        <MobileDetail
+                          label="Status"
+                          value={appointment.status}
+                        />
+                        <MobileDetail
+                          label="Scheduled"
+                          value={`${dateLabel(appointment.startAt)} · ${timeLabel(appointment.startAt)} – ${timeLabel(appointment.endAt)}`}
+                        />
                       </dl>
-                      <button type="button" onClick={() => setDetails(appointment)} className="btn-action mt-4 h-9 w-full">
+                      <button
+                        type="button"
+                        onClick={() => setDetails(appointment)}
+                        className="btn-action mt-4 h-9 w-full"
+                      >
                         View Details
                       </button>
                     </div>
