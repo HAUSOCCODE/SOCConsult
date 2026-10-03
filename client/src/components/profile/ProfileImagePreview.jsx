@@ -32,7 +32,7 @@ export default function ProfileImagePreview({
     <>
       <button
         type="button"
-        aria-label={`View ${formatPersonName(user?.name) || "user"} profile picture`}
+        aria-label={`View ${formatPersonName(user) || "user"} profile picture`}
         onClick={(event) => {
           event.stopPropagation();
           setOpen(true);
@@ -52,7 +52,7 @@ export default function ProfileImagePreview({
             <section
               role="dialog"
               aria-modal="true"
-              aria-label={`${formatPersonName(user?.name) || "User"} profile picture preview`}
+              aria-label={`${formatPersonName(user) || "User"} profile picture preview`}
               className="relative flex max-h-[92vh] max-w-[94vw] items-center justify-center rounded-2xl bg-slate-950/80 p-3 shadow-2xl sm:p-5"
               onMouseDown={(event) => event.stopPropagation()}
             >
@@ -67,7 +67,7 @@ export default function ProfileImagePreview({
               </button>
               <img
                 src={source}
-                alt={`${formatPersonName(user?.name) || "User"} profile`}
+                alt={`${formatPersonName(user) || "User"} profile`}
                 className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain"
               />
             </section>

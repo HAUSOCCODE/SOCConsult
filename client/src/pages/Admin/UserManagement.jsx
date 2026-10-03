@@ -167,8 +167,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
             {pageUsers.map((user) => {
               const expanded = expandedUserId === user._id;
               const detailsId = `mobile-user-details-${user._id}`;
-              const displayUserName =
-                formatPersonName(user.name) || "Unnamed user";
+              const displayUserName = formatPersonName(user) || "Unnamed user";
               return (
                 <article
                   key={user._id}
@@ -213,14 +212,27 @@ export default function UserManagement({ initialTab = "All Users" }) {
                     </button>
                   </div>
                   {expanded && (
-                    <div id={detailsId} className="border-t border-slate-200 bg-slate-50/70 p-3.5">
+                    <div
+                      id={detailsId}
+                      className="border-t border-slate-200 bg-slate-50/70 p-3.5"
+                    >
                       <p className="text-[10px] font-extrabold uppercase tracking-wider text-gold-600">
                         Account Details
                       </p>
                       <dl className="mt-3 grid min-w-0 grid-cols-2 gap-3">
-                        <MobileDetail label="Role" value={user.role} capitalize />
-                        <MobileDetail label="Registration" value={user.registrationStatus} />
-                        <MobileDetail label="Account" value={user.accountStatus} />
+                        <MobileDetail
+                          label="Role"
+                          value={user.role}
+                          capitalize
+                        />
+                        <MobileDetail
+                          label="Registration"
+                          value={user.registrationStatus}
+                        />
+                        <MobileDetail
+                          label="Account"
+                          value={user.accountStatus}
+                        />
                         <MobileDetail
                           label="Registered"
                           value={
@@ -287,9 +299,9 @@ export default function UserManagement({ initialTab = "All Users" }) {
                     <td className="min-w-0 px-1.5 py-2 min-[1200px]:px-2.5 2xl:px-3">
                       <p
                         className="whitespace-normal break-words font-semibold leading-4"
-                        title={formatPersonName(user.name)}
+                        title={formatPersonName(user)}
                       >
-                        {formatPersonName(user.name) || "—"}
+                        {formatPersonName(user) || "—"}
                       </p>
                     </td>
                     <td className="min-w-0 px-1.5 py-2 min-[1200px]:px-2.5 2xl:px-3">
@@ -499,7 +511,10 @@ function MobileDetail({ label, value, capitalize = false, className = "" }) {
 
 function UserDetails({ user, loading, onClose, onReset, onAction }) {
   const account = [
-    ["Full Name", formatPersonName(user.name)],
+    ["First Name", user.firstName],
+    ["Middle Name", user.middleName || "—"],
+    ["Last Name", user.lastName],
+    ["Formatted Full Name", formatPersonName(user)],
     [
       user.role === "student"
         ? "Official HAU Student Email"
@@ -552,12 +567,12 @@ function UserDetails({ user, loading, onClose, onReset, onAction }) {
               />
             ) : (
               <span className="grid h-16 w-16 place-items-center rounded-full bg-maroon-800 text-2xl font-bold text-white">
-                {user.name?.[0] || "U"}
+                {formatPersonName(user)?.[0] || "U"}
               </span>
             )}
             <div className="min-w-0">
               <p className="font-bold text-slate-900">
-                {formatPersonName(user.name)}
+                {formatPersonName(user)}
               </p>
               <p className="[overflow-wrap:anywhere] text-sm lowercase text-slate-600">
                 {user.email?.toLowerCase()}
@@ -664,7 +679,7 @@ function ResetPassword({ user, onClose, onSuccess }) {
   return (
     <Modal
       title="Reset Password"
-      subtitle={`Set a new password for ${formatPersonName(user.name)}. The existing password cannot be viewed.`}
+      subtitle={`Set a new password for ${formatPersonName(user)}. The existing password cannot be viewed.`}
       onClose={onClose}
       compact
     >

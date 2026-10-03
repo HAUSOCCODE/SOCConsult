@@ -235,6 +235,36 @@ export default function FacultyAppointmentDetailsModal({
             </Section>
           )}
 
+          {appointment.scheduleHistory?.length > 0 && (
+            <Section title="Reschedule History">
+              {appointment.scheduleHistory
+                .slice()
+                .reverse()
+                .map((entry) => (
+                  <div
+                    key={entry._id || entry.createdAt}
+                    className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <p className="font-bold text-amber-900">
+                      Rescheduled by {entry.initiatedByRole || "Faculty"}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      <strong>Previous:</strong>{" "}
+                      {safeDate(entry.previous?.startAt)} –{" "}
+                      {clock(entry.previous?.endAt)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      <strong>New:</strong> {safeDate(entry.next?.startAt)} –{" "}
+                      {clock(entry.next?.endAt)}
+                    </p>
+                    <p className="mt-1 break-words text-sm text-slate-700">
+                      <strong>Reason:</strong> {entry.reason}
+                    </p>
+                  </div>
+                ))}
+            </Section>
+          )}
+
           <Section title="Supporting Documents">
             <div className="sm:col-span-2">
               <SupportingDocumentViewer appointment={appointment} />

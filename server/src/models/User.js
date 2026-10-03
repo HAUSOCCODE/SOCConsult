@@ -3,6 +3,23 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    firstName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      required: function () {
+        return Boolean(this.firstName || this.lastName);
+      },
+    },
+    middleName: { type: String, default: "", trim: true, maxlength: 80 },
+    lastName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      required: function () {
+        return Boolean(this.firstName || this.lastName);
+      },
+    },
     email: {
       type: String,
       trim: true,

@@ -7,6 +7,7 @@ import Pagination from "../Pagination";
 import AppointmentRequestDetailsModal from "./AppointmentRequestDetailsModal";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import FacultyAppointmentDetailsModal from "./FacultyAppointmentDetailsModal";
+import FacultyRescheduleModal from "./FacultyRescheduleModal";
 import {
   getAppointmentDisplayStatus,
   isAwaitingFacultyUpdate,
@@ -43,6 +44,7 @@ export default function AppointmentsPage({ filter }) {
   const [appointmentsPage, setAppointmentsPage] = useState(1);
   const [details, setDetails] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [facultyReschedule, setFacultyReschedule] = useState(null);
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
   const [requestTarget, setRequestTarget] = useState(null);
   const [requestReason, setRequestReason] = useState("");
@@ -643,6 +645,26 @@ export default function AppointmentsPage({ filter }) {
           }}
         />
       )}
+      {facultyReschedule && (
+        <FacultyRescheduleModal
+          appointment={facultyReschedule.appointment}
+          opener={facultyReschedule.opener}
+          onClose={() => setFacultyReschedule(null)}
+          onSuccess={(data) => {
+            toast.success(data.message);
+            setItems((current) =>
+              current?.map((appointment) =>
+                appointment._id === data.appointment?._id
+                  ? { ...appointment, ...data.appointment }
+                  : appointment,
+              ),
+            );
+            setFacultyReschedule(null);
+            window.dispatchEvent(new Event("notifications:updated"));
+            void load();
+          }}
+        />
+      )}
       {cancelTarget &&
         createPortal(
           <div
@@ -1000,6 +1022,9 @@ export default function AppointmentsPage({ filter }) {
             setRejectNote("");
           }}
           onBeginReschedule={beginReschedule}
+          onFacultyReschedule={(appointment, opener) =>
+            setFacultyReschedule({ appointment, opener })
+          }
           onComplete={(appointment) => update(appointment._id, "Completed")}
           onReviewReschedule={(appointment, decision) =>
             setReviewTarget({ appointment, decision })
@@ -1411,6 +1436,7 @@ function FacultyCurrentAppointments({
   onApprove,
   onReject,
   onBeginReschedule,
+  onFacultyReschedule,
   onComplete,
   onReviewReschedule,
   onViewDocument,
@@ -1579,6 +1605,7 @@ function FacultyCurrentAppointments({
                     onApprove={onApprove}
                     onReject={onReject}
                     onBeginReschedule={onBeginReschedule}
+                    onFacultyReschedule={onFacultyReschedule}
                     onComplete={onComplete}
                     onReviewReschedule={onReviewReschedule}
                     onViewDocument={onViewDocument}
@@ -1719,6 +1746,7 @@ function FacultyAppointmentActions({
   onApprove,
   onReject,
   onBeginReschedule,
+  onFacultyReschedule,
   onComplete,
   onReviewReschedule,
   onViewDocument,
@@ -1763,6 +1791,17 @@ function FacultyAppointmentActions({
       {!appointment.rescheduleRequested &&
         ["Approved", "Rescheduled"].includes(appointment.status) && (
           <>
+            {new Date(appointment.startAt) > new Date() && (
+              <button
+                type="button"
+                onClick={(event) =>
+                  onFacultyReschedule(appointment, event.currentTarget)
+                }
+                className={`rounded-lg border border-gold-500 bg-gold-50 px-4 text-sm font-bold text-maroon-900 transition-colors hover:bg-gold-100 ${mobileButton}`}
+              >
+                Reschedule
+              </button>
+            )}
             <button
               disabled={updatingIds.has(appointment._id)}
               onClick={() => onComplete(appointment)}

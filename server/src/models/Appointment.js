@@ -1,5 +1,45 @@
 import mongoose from "mongoose";
 
+const scheduleSnapshotSchema = new mongoose.Schema(
+  {
+    consultationDate: { type: String, required: true },
+    startAt: { type: Date, required: true },
+    endAt: { type: Date, required: true },
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
+    durationMinutes: { type: Number, required: true, min: 5, max: 240 },
+    mode: {
+      type: String,
+      enum: ["Face-to-Face", "Online"],
+      required: true,
+    },
+    location: { type: String, trim: true, maxlength: 150 },
+    meetingPlatform: { type: String, trim: true, maxlength: 100 },
+    meetingLink: { type: String, trim: true, maxlength: 500 },
+  },
+  { _id: false },
+);
+
+const scheduleHistorySchema = new mongoose.Schema(
+  {
+    previous: { type: scheduleSnapshotSchema, required: true },
+    next: { type: scheduleSnapshotSchema, required: true },
+    reason: { type: String, required: true, trim: true, maxlength: 500 },
+    initiatedByRole: {
+      type: String,
+      enum: ["Faculty", "Student"],
+      required: true,
+    },
+    initiatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    createdAt: { type: Date, default: Date.now, required: true },
+  },
+  { _id: true },
+);
+
 const appointmentSchema = new mongoose.Schema(
   {
     student: {
@@ -18,7 +58,10 @@ const appointmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Availability",
       required: function () {
-        return this.bookingMethod !== "schedule_request";
+        return (
+          this.bookingMethod !== "schedule_request" &&
+          this.status !== "Rescheduled"
+        );
       },
     },
     startAt: {
@@ -109,6 +152,7 @@ const appointmentSchema = new mongoose.Schema(
       ref: "User",
     },
     rescheduleDecisionNote: { type: String, trim: true, maxlength: 500 },
+    scheduleHistory: { type: [scheduleHistorySchema], default: [] },
   },
   { timestamps: true },
 );

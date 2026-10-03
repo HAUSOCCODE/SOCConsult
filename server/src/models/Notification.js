@@ -11,6 +11,7 @@ const schema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
     relatedEntityId: mongoose.Schema.Types.ObjectId,
+    actionUrl: { type: String, trim: true, maxlength: 200 },
     isRead: { type: Boolean, default: false, index: true },
     readAt: Date,
   },

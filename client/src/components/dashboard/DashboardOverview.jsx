@@ -82,7 +82,7 @@ export default function DashboardOverview({
       <section className="w-full min-w-0 rounded-2xl bg-[#72182A] p-5 text-white shadow-sm sm:p-8">
         <p className="eyebrow !text-gold-300">Welcome back</p>
         <h1 className="mt-2 max-w-full whitespace-normal break-normal font-sans text-[2rem] font-bold leading-[1.1] tracking-[-0.02em] sm:text-[2.5rem] lg:text-[2.875rem]">
-          Hello, {formatPersonName(user.name)}
+          Hello, {formatPersonName(user)}
         </h1>
         <p className="mt-2 text-sm text-slate-100">
           Here is the latest activity from your SOCConsult workspace.

@@ -4,6 +4,10 @@ import User from "../models/User.js";
 import { env } from "../config/env.js";
 import { STUDENT_PROGRAMS } from "../config/programs.js";
 import {
+  formatFullName,
+  validatePersonName,
+} from "../services/personNameService.js";
+import {
   cloudinaryReference,
   destroyAsset,
   uploadBuffer,
@@ -27,7 +31,10 @@ const passwordValidationMessage =
 import { logActivity, notify } from "../services/activityService.js";
 const publicUser = (user) => ({
   id: user.id,
-  name: user.name,
+  firstName: user.firstName || "",
+  middleName: user.middleName || "",
+  lastName: user.lastName || "",
+  name: formatFullName(user),
   email: user.email,
   username: user.username,
   role: user.role,
@@ -53,13 +60,18 @@ export async function register(req, res) {
     return res
       .status(404)
       .json({ message: "Registration is unavailable for this role." });
-  const name = (req.body.name || "").trim();
+  const nameValidation = validatePersonName(req.body);
   const email = normalize(req.body.email);
   const password = req.body.password || "";
   const domain = role === "student" ? env.studentDomain : env.facultyDomain;
   const roleLabel = role === "student" ? "student" : "faculty";
-  if (name.length < 2)
-    return res.status(400).json({ message: "Please enter your full name." });
+  if (!nameValidation.valid)
+    return res.status(400).json({
+      message: "Please correct the highlighted name fields.",
+      errors: nameValidation.errors,
+    });
+  const { firstName, middleName, lastName } = nameValidation.values;
+  const name = formatFullName(nameValidation.values);
   if (!validEmail(email, domain)) {
     return res.status(400).json({
       message: `Please use your official Holy Angel University ${roleLabel} email (@${domain}).`,
@@ -100,6 +112,9 @@ export async function register(req, res) {
       .json({ message: "Position / Designation is required." });
   const user = await User.create({
     name,
+    firstName,
+    middleName,
+    lastName,
     email,
     password: await bcrypt.hash(password, 12),
     role,
@@ -180,7 +195,6 @@ export async function me(req, res) {
 
 export async function updateProfile(req, res) {
   const allowed = [
-    "name",
     "program",
     "yearLevel",
     "position",
@@ -193,6 +207,29 @@ export async function updateProfile(req, res) {
       .filter((key) => req.body[key] !== undefined)
       .map((key) => [key, String(req.body[key]).trim()]),
   );
+  const hasNameUpdate = ["firstName", "middleName", "lastName"].some(
+    (key) => req.body[key] !== undefined,
+  );
+  if (hasNameUpdate) {
+    const existing = await User.findById(req.user.id).select(
+      "firstName middleName lastName name",
+    );
+    if (!existing)
+      return res.status(404).json({ message: "User not found." });
+    const nameValidation = validatePersonName({
+      firstName: req.body.firstName ?? existing.firstName,
+      middleName: req.body.middleName ?? existing.middleName,
+      lastName: req.body.lastName ?? existing.lastName,
+    });
+    if (!nameValidation.valid)
+      return res.status(400).json({
+        message: "Please correct the highlighted name fields.",
+        errors: nameValidation.errors,
+      });
+    Object.assign(updates, nameValidation.values, {
+      name: formatFullName(nameValidation.values),
+    });
+  }
   if (req.user.role !== "faculty") delete updates.position;
   if (
     req.user.role === "faculty" &&
@@ -206,6 +243,10 @@ export async function updateProfile(req, res) {
     new: true,
     runValidators: true,
   }).select("-password +profilePicture");
+  await logActivity("profile_updated", req.user.id, "User", req.user.id, {
+    role: req.user.role,
+    fieldNames: Object.keys(updates),
+  });
   res.json({
     message: "Profile updated successfully.",
     user: publicUser(user),
@@ -243,6 +284,13 @@ export async function updateProfilePicture(req, res) {
   const previous = currentUser?.profilePicture;
   if (previous && typeof previous !== "string")
     await destroyAsset(previous).catch(() => {});
+  await logActivity(
+    "profile_picture_updated",
+    req.user.id,
+    "User",
+    req.user.id,
+    { role: req.user.role },
+  );
   res.json({
     message: "Profile picture updated successfully.",
     user: publicUser(user),
@@ -261,6 +309,13 @@ export async function removeProfilePicture(req, res) {
   const previous = currentUser?.profilePicture;
   if (previous && typeof previous !== "string")
     await destroyAsset(previous).catch(() => {});
+  await logActivity(
+    "profile_picture_removed",
+    req.user.id,
+    "User",
+    req.user.id,
+    { role: req.user.role },
+  );
   res.json({
     message: "Profile picture removed successfully.",
     user: publicUser(user),

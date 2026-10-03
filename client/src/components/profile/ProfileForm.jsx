@@ -13,7 +13,10 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import ProfilePictureEditor from "./ProfilePictureEditor";
-import { formatPersonName } from "../../utils/formatPersonName";
+import {
+  formatPersonName,
+  validatePersonNameFields,
+} from "../../utils/formatPersonName";
 import {
   FACULTY_POSITIONS,
   OTHER_POSITION,
@@ -22,7 +25,9 @@ export default function ProfilePage() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const [form, setForm] = useState({
-    name: formatPersonName(user.name),
+    firstName: user.firstName || "",
+    middleName: user.middleName || "",
+    lastName: user.lastName || "",
     program: user.program || "",
     position: FACULTY_POSITIONS.includes(user.position)
       ? user.position
@@ -40,9 +45,16 @@ export default function ProfilePage() {
     specialization: user.specialization || "",
     contactNumber: user.contactNumber || "",
   });
+  const [nameErrors, setNameErrors] = useState({});
   const save = async (e) => {
     e.preventDefault();
     try {
+      const nameValidation = validatePersonNameFields(form);
+      if (!nameValidation.valid) {
+        setNameErrors(nameValidation.errors);
+        toast.error("Please complete the required name fields.");
+        return;
+      }
       if (user.role === "faculty" && !form.position) {
         toast.error("Position / Designation is required.");
         return;
@@ -60,7 +72,7 @@ export default function ProfilePage() {
         method: "PUT",
         body: JSON.stringify({
           ...profileForm,
-          name: formatPersonName(form.name),
+          ...nameValidation.values,
           position:
             user.role === "faculty"
               ? form.position === OTHER_POSITION
@@ -70,8 +82,10 @@ export default function ProfilePage() {
         }),
       });
       updateUser(data.user);
+      setNameErrors({});
       toast.success(data.message || "Profile updated successfully.");
     } catch (error) {
+      if (error.errors) setNameErrors(error.errors);
       toast.error(error.message || "Unable to update profile.");
     }
   };
@@ -88,7 +102,7 @@ export default function ProfilePage() {
         <div className="mb-6 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
           <ProfilePictureEditor />
           <div className={`min-w-0 ${user.role === "student" ? "hidden md:block" : ""}`}>
-            <h2 className="font-bold">{formatPersonName(user.name)}</h2>
+            <h2 className="font-bold">{formatPersonName(user)}</h2>
             <p className="[overflow-wrap:anywhere] text-sm text-slate-500">
               {user.email || user.username}
             </p>
@@ -96,7 +110,9 @@ export default function ProfilePage() {
         </div>
         <div className={`grid gap-4 ${user.role === "student" ? "md:grid-cols-2 md:gap-5" : "sm:grid-cols-2 sm:gap-5"}`}>
           {[
-            ["name", "Full Name"],
+            ["firstName", "First Name"],
+            ["lastName", "Last Name"],
+            ["middleName", "Middle Name (Optional)"],
             ["program", "Program"],
             ["yearLevel", "Year Level"],
             ["office", "Office"],
@@ -104,14 +120,21 @@ export default function ProfilePage() {
             ["contactNumber", "Contact Number"],
           ]
             .filter(([key]) => {
-              if (key === "name" || key === "contactNumber") return true;
+              if (
+                ["firstName", "middleName", "lastName", "contactNumber"].includes(
+                  key,
+                )
+              )
+                return true;
               return user.role === "student"
                 ? ["program", "yearLevel"].includes(key)
                 : ["office", "specialization"].includes(key);
             })
             .map(([key, label]) => {
               const StudentIcon = {
-                name: UserRound,
+                firstName: UserRound,
+                middleName: UserRound,
+                lastName: UserRound,
                 program: GraduationCap,
                 yearLevel: CalendarDays,
                 contactNumber: Phone,
@@ -145,9 +168,33 @@ export default function ProfilePage() {
                 ) : (
                   <input
                     className="field mt-2 min-h-11 py-2.5"
+                    required={["firstName", "lastName"].includes(key)}
+                    maxLength={
+                      ["firstName", "middleName", "lastName"].includes(key)
+                        ? 80
+                        : undefined
+                    }
+                    placeholder={
+                      key === "firstName"
+                        ? "Enter your first name"
+                        : key === "middleName"
+                          ? "Enter your middle name"
+                          : key === "lastName"
+                            ? "Enter your last name"
+                            : undefined
+                    }
+                    aria-invalid={Boolean(nameErrors[key])}
                     value={form[key]}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, [key]: e.target.value });
+                      setNameErrors((current) => ({ ...current, [key]: "" }));
+                    }}
                   />
+                )}
+                {nameErrors[key] && (
+                  <span className="mt-1.5 block text-xs font-medium text-red-700">
+                    {nameErrors[key]}
+                  </span>
                 )}
               </label>
               );

@@ -77,7 +77,7 @@ export default function RoleLayout({ role, navigation }) {
   const displayName =
     role === "admin" && user.name === "ConsultIO Administrator"
       ? "SOCConsult Administrator"
-      : user.name;
+      : formatPersonName(user);
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
     try {

@@ -219,6 +219,18 @@ body,
 .appointment-schedule-list {
   container-type: inline-size;
 }
+.faculty-calendar-page {
+  container-type: inline-size;
+}
+.faculty-calendar-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+@container (min-width: 1100px) {
+  .faculty-calendar-layout {
+    grid-template-columns: minmax(0, 2.2fr) minmax(18rem, 0.8fr);
+    align-items: start;
+  }
+}
 .appointment-schedule-card {
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
@@ -381,5 +393,29 @@ body,
       opacity: 1;
       transform: translateY(0);
     }
+  }
+}
+
+.audit-logs-page {
+  container-type: inline-size;
+}
+.audit-master-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+@container (min-width: 900px) {
+  .audit-master-detail {
+    grid-template-columns: minmax(18rem, 0.38fr) minmax(0, 0.62fr);
+  }
+}
+@container (max-width: 639px) {
+  .audit-master-detail .audit-details-panel {
+    display: none;
+  }
+  .audit-master-detail.show-mobile-details .audit-user-panel {
+    display: none;
+  }
+  .audit-master-detail.show-mobile-details .audit-details-panel {
+    display: block;
   }
 }

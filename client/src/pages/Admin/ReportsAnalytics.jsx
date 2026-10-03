@@ -159,7 +159,7 @@ export default function ReportsAnalytics() {
         "Account Status",
       ],
       ...registrations.map((user) => [
-        formatPersonName(user.name),
+        formatPersonName(user),
         user.email,
         user.role
           ? `${user.role.charAt(0).toUpperCase()}${user.role.slice(1)}`

@@ -154,7 +154,11 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       const canAccessLink =
         req.user.role === "faculty" ||
         ["Approved", "Rescheduled", "Completed"].includes(appointment.status);
-      if (canAccessLink && availability?.meetingLink)
+      if (
+        canAccessLink &&
+        availability?.meetingLink &&
+        !appointment.meetingLink
+      )
         appointment.meetingLink = availability.meetingLink;
       if (!canAccessLink) delete appointment.meetingLink;
       if (availability) delete availability.meetingLink;
@@ -297,6 +301,24 @@ router.post(
         "Appointment",
         appointment.id,
       ),
+      logActivity(
+        "published_schedule_selected",
+        req.user.id,
+        "Appointment",
+        appointment.id,
+        { mode: appointment.consultationMode },
+      ),
+      ...(uploadedAssets.length
+        ? [
+            logActivity(
+              "supporting_document_uploaded",
+              req.user.id,
+              "Appointment",
+              appointment.id,
+              { documentCount: uploadedAssets.length },
+            ),
+          ]
+        : []),
       notify(
         slot.faculty,
         "appointment",
@@ -438,6 +460,13 @@ router.delete(
       (document) => String(document?._id || document) !== req.params.documentId,
     );
     await appointment.save();
+    await logActivity(
+      "supporting_document_removed",
+      req.user.id,
+      "Appointment",
+      appointment.id,
+      { documentCount: 1 },
+    );
     res.json({ message: "Supporting document removed." });
   },
 );
@@ -470,7 +499,11 @@ router.get(
 router.put("/:id/status", authorize("faculty"), async (req, res) => {
   await processExpiredAvailability({ facultyId: req.user.id });
   const status = req.body.status;
-  if (!["Approved", "Rejected", "Completed", "Rescheduled"].includes(status))
+  if (
+    !["Approved", "Rejected", "Completed", "No Show", "Rescheduled"].includes(
+      status,
+    )
+  )
     return res.status(400).json({ message: "Invalid appointment status." });
   const appointment = await Appointment.findOne({
     _id: req.params.id,
@@ -490,6 +523,7 @@ router.put("/:id/status", authorize("faculty"), async (req, res) => {
     return res
       .status(409)
       .json({ message: "This appointment can no longer be updated." });
+  const previousStatus = appointment.status;
   if (
     status === "Approved" &&
     !(await Availability.exists({
@@ -566,6 +600,7 @@ router.put("/:id/status", authorize("faculty"), async (req, res) => {
       req.user.id,
       "Appointment",
       appointment.id,
+      { previousStatus, newStatus: status, mode: appointment.consultationMode },
     ),
     notify(
       appointment.student,
@@ -798,6 +833,7 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
       message: "This schedule no longer has enough time for your consultation.",
     });
   appointment.availability = slot.id;
+  const previousStatus = appointment.status;
   appointment.startAt = slot.startAt;
   appointment.endAt = slot.endAt;
   appointment.consultationMode = slot.mode || "Online";
@@ -812,7 +848,11 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
       req.user.id,
       "Appointment",
       appointment.id,
-      { availabilityId: slot.id },
+      {
+        previousStatus,
+        newStatus: "Rescheduled",
+        mode: appointment.consultationMode,
+      },
     ),
     notify(
       appointment.faculty,

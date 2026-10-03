@@ -186,6 +186,17 @@ router.post(
         "Appointment",
         appointment.id,
       ),
+      ...(assets.length
+        ? [
+            logActivity(
+              "supporting_document_uploaded",
+              req.user.id,
+              "Appointment",
+              appointment.id,
+              { documentCount: assets.length },
+            ),
+          ]
+        : []),
       notify(
         facultyId,
         "appointment",
@@ -431,6 +442,16 @@ router.put("/:id/approve", authorize("faculty"), async (req, res) => {
         req.user.id,
         "Appointment",
         appointment.id,
+        { previousStatus: pending, newStatus: "Approved", mode },
+      ),
+      logActivity(
+        mode === "Online"
+          ? "online_meeting_details_updated"
+          : "consultation_location_updated",
+        req.user.id,
+        "Appointment",
+        appointment.id,
+        { mode },
       ),
       notify(
         appointment.student,

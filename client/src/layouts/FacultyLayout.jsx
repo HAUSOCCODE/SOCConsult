@@ -18,6 +18,11 @@ const navigation = [
     path: "/faculty/appointments",
   },
   {
+    icon: CalendarDays,
+    label: "Consultation Calendar",
+    path: "/faculty/calendar",
+  },
+  {
     icon: ClipboardList,
     label: "Appointment Requests",
     path: "/faculty/requests",
@@ -33,5 +38,10 @@ const navigation = [
   { icon: LockKeyhole, label: "Security Settings", path: "/faculty/security" },
 ];
 export default function FacultyLayout() {
-  return <><RoleLayout role="faculty" navigation={navigation} /><SOCConsultFacultyAIAssistant /></>;
+  return (
+    <>
+      <RoleLayout role="faculty" navigation={navigation} />
+      <SOCConsultFacultyAIAssistant />
+    </>
+  );
 }

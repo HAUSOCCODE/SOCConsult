@@ -3,6 +3,11 @@ import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { chatWithAi } from "../controllers/aiController.js";
 import {
+  exportAuditLogs,
+  getAuditUserLogs,
+  getAuditUsers,
+} from "../controllers/auditController.js";
+import {
   approveRegistration,
   changeAdminPassword,
   getAdminAppointments,
@@ -49,6 +54,9 @@ router.get("/users/:id", getUser);
 router.put("/users/:id/reset-password", resetUserPassword);
 router.put("/users/:id/status", updateUserStatus);
 router.get("/appointments", getAdminAppointments);
+router.get("/audit-users", getAuditUsers);
+router.get("/audit-users/:userId/logs", getAuditUserLogs);
+router.get("/audit-logs/export", exportAuditLogs);
 router.get("/reports/ai-summary", aiRateLimit, getAiConsultationSummary);
 router.put("/settings/password", changeAdminPassword);
 

@@ -8,6 +8,7 @@ import {
   FACULTY_POSITIONS,
   OTHER_POSITION,
 } from "../../config/facultyPositions";
+import { validatePersonNameFields } from "../../utils/formatPersonName";
 const labels = {
   student: "Student",
   faculty: "Faculty Member",
@@ -37,7 +38,9 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [form, setForm] = useState({
-    name: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
     email: "",
     identifier: "",
     password: "",
@@ -49,11 +52,13 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
   });
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setSuccess("");
     setError("");
+    setFieldErrors({});
   }, [mode, role]);
   if (!labels[role] || (role === "admin" && mode === "register"))
     return <Navigate to="/get-started" replace />;
@@ -61,9 +66,17 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setFieldErrors({});
     setBusy(true);
     try {
       if (mode === "register") {
+        const nameValidation = validatePersonNameFields(form);
+        if (!nameValidation.valid) {
+          setFieldErrors(nameValidation.errors);
+          setError("Please correct the highlighted name fields.");
+          setBusy(false);
+          return;
+        }
         if (role === "faculty" && !form.position) {
           setError("Position / Designation is required.");
           setBusy(false);
@@ -81,6 +94,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
         const { customPosition, ...registrationForm } = form;
         const normalized = {
           ...registrationForm,
+          ...nameValidation.values,
           email: form.email.trim().toLowerCase(),
           position:
             role === "faculty"
@@ -105,6 +119,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
       }
     } catch (e) {
       setError(e.message);
+      if (e.errors) setFieldErrors(e.errors);
     } finally {
       setBusy(false);
     }
@@ -178,17 +193,75 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
               <div className="grid gap-5 sm:grid-cols-2">
                 {mode === "register" && (
                   <>
-                    <Field label="Full name">
-                      <input
-                        className="field"
-                        required
-                        minLength="2"
-                        value={form.name}
-                        onChange={(e) =>
-                          setForm({ ...form, name: e.target.value })
-                        }
-                      />
-                    </Field>
+                    <fieldset className="min-w-0 sm:col-span-2">
+                      <legend className="sr-only">Name</legend>
+                      <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+                        <Field label="First Name" error={fieldErrors.firstName}>
+                          <input
+                            className="field"
+                            required
+                            maxLength="80"
+                            autoComplete="given-name"
+                            placeholder="Enter your first name"
+                            value={form.firstName}
+                            aria-invalid={Boolean(fieldErrors.firstName)}
+                            onChange={(e) => {
+                              setForm({ ...form, firstName: e.target.value });
+                              setFieldErrors((current) => ({
+                                ...current,
+                                firstName: "",
+                              }));
+                            }}
+                          />
+                        </Field>
+                        <Field label="Last Name" error={fieldErrors.lastName}>
+                          <input
+                            className="field"
+                            required
+                            maxLength="80"
+                            autoComplete="family-name"
+                            placeholder="Enter your last name"
+                            value={form.lastName}
+                            aria-invalid={Boolean(fieldErrors.lastName)}
+                            onChange={(e) => {
+                              setForm({ ...form, lastName: e.target.value });
+                              setFieldErrors((current) => ({
+                                ...current,
+                                lastName: "",
+                              }));
+                            }}
+                          />
+                        </Field>
+                        <Field
+                          label={
+                            <>
+                              Middle Name{" "}
+                              <span className="font-normal text-slate-500">
+                                (Optional)
+                              </span>
+                            </>
+                          }
+                          error={fieldErrors.middleName}
+                          wide
+                        >
+                          <input
+                            className="field"
+                            maxLength="80"
+                            autoComplete="additional-name"
+                            placeholder="Enter your middle name"
+                            value={form.middleName}
+                            aria-invalid={Boolean(fieldErrors.middleName)}
+                            onChange={(e) => {
+                              setForm({ ...form, middleName: e.target.value });
+                              setFieldErrors((current) => ({
+                                ...current,
+                                middleName: "",
+                              }));
+                            }}
+                          />
+                        </Field>
+                      </div>
+                    </fieldset>
                     <Field
                       label={role === "student" ? "Student ID" : "Employee ID"}
                     >
@@ -413,13 +486,18 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
     </main>
   );
 }
-function Field({ label, children, wide = false }) {
+function Field({ label, children, wide = false, error = "" }) {
   return (
     <label
       className={`block text-sm font-semibold ${wide ? "sm:col-span-2" : ""}`}
     >
       <span className="mb-2 block">{label}</span>
       {children}
+      {error && (
+        <span className="mt-1.5 block text-xs font-medium text-red-700">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

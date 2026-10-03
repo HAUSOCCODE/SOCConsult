@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarDays,
   FileBarChart,
+  History,
   LayoutDashboard,
   Settings,
   Users,
@@ -24,6 +25,7 @@ const navigation = [
   },
   { icon: FileBarChart, label: "Reports & Analytics", path: "/admin/reports" },
   { icon: Bell, label: "Notifications", path: "/admin/notifications" },
+  { icon: History, label: "Audit Logs", path: "/admin/audit-logs" },
   { icon: Settings, label: "System Settings", path: "/admin/settings" },
 ];
 export default function AdminLayout() {

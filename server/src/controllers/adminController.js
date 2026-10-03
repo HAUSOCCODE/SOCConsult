@@ -57,6 +57,8 @@ export async function approveRegistration(req, res) {
   await Promise.all([
     logActivity("registration_approved", req.user.id, "User", user.id, {
       role: user.role,
+      previousStatus: "Pending",
+      newStatus: "Active",
     }),
     notify(
       user.id,
@@ -97,7 +99,8 @@ export async function rejectRegistration(req, res) {
   await Promise.all([
     logActivity("registration_rejected", req.user.id, "User", user.id, {
       role: user.role,
-      reason,
+      previousStatus: "Pending",
+      newStatus: "Rejected",
     }),
     notify(
       user.id,
@@ -121,7 +124,7 @@ export async function getUsers(_req, res) {
 export async function getUserRegistrationReport(_req, res) {
   const users = await User.find({ role: { $in: managedRoles } })
     .select(
-      "name email role createdAt emailVerified emailVerifiedAt registrationStatus approvalMethod approvedBy approvedAt rejectedBy rejectedAt accountStatus",
+      "name firstName middleName lastName email role createdAt emailVerified emailVerifiedAt registrationStatus approvalMethod approvedBy approvedAt rejectedBy rejectedAt accountStatus",
     )
     .populate("approvedBy", "name email")
     .populate("rejectedBy", "name email")
@@ -174,6 +177,10 @@ export async function resetUserPassword(req, res) {
 export async function updateUserStatus(req, res) {
   if (!["Active", "Inactive"].includes(req.body.accountStatus))
     return res.status(400).json({ message: "Invalid account status." });
+  const previous = await User.findOne({
+    _id: req.params.id,
+    role: { $ne: "admin" },
+  }).select("accountStatus");
   const user = await User.findOneAndUpdate(
     { _id: req.params.id, role: { $ne: "admin" } },
     { accountStatus: req.body.accountStatus },
@@ -187,6 +194,10 @@ export async function updateUserStatus(req, res) {
     req.user.id,
     "User",
     user.id,
+    {
+      previousStatus: previous?.accountStatus,
+      newStatus: req.body.accountStatus,
+    },
   );
   res.json({
     message: `Account ${req.body.accountStatus.toLowerCase()}.`,

@@ -2,7 +2,6 @@ import {
   ArrowRight,
   CalendarDays,
   GraduationCap,
-  Landmark,
   UserPlus,
   Users,
   UserRound,
@@ -59,7 +58,7 @@ export default function AdminDashboard() {
   const displayName = formatPersonName(
     user.name === "ConsultIO Administrator"
       ? "SOCConsult Administrator"
-      : user.name,
+      : user,
   );
   const summaries = [
     ["Total Users", stats.totalUsers, Users],
@@ -70,17 +69,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="w-full min-w-0 space-y-4 pb-20 md:pb-16">
-      <section className="relative min-h-[104px] overflow-hidden rounded-xl bg-gradient-to-br from-[#681827] to-[#861d32] px-5 py-4 text-white shadow-sm sm:px-6 sm:py-5">
-        <Landmark
-          size={128}
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-7 right-5 hidden text-white opacity-[0.055] sm:block"
-        />
+      <section className="w-full min-w-0 rounded-2xl bg-[#72182A] p-5 text-white shadow-sm sm:p-8">
         <p className="eyebrow !text-gold-300">Welcome back</p>
-        <h1 className="relative mt-1.5 max-w-[85%] break-words font-sans text-[clamp(1.25rem,4vw,1.75rem)] font-bold leading-tight tracking-[-0.02em]">
+        <h1 className="mt-2 max-w-full whitespace-normal break-normal font-sans text-[2rem] font-bold leading-[1.1] tracking-[-0.02em] sm:text-[2.5rem] lg:text-[2.875rem]">
           Hello, {displayName}
         </h1>
-        <p className="relative mt-1.5 max-w-2xl text-xs leading-5 text-slate-100 sm:text-sm">
+        <p className="mt-2 text-sm text-slate-100">
           Here is the latest activity from your SOCConsult workspace.
         </p>
       </section>

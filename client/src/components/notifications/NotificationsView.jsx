@@ -1763,7 +1763,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
             </div>
           </dl>
         </div>
-        <footer className="flex justify-end border-t border-slate-200 px-4 py-4 sm:px-6">
+        <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button
             type="button"
             onClick={onClose}
@@ -1771,6 +1771,14 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
           >
             Close
           </button>
+          {notification.actionUrl && (
+            <a
+              href={notification.actionUrl}
+              className="btn-primary w-full text-center sm:w-auto"
+            >
+              View My Appointments
+            </a>
+          )}
         </footer>
       </section>
     </div>,

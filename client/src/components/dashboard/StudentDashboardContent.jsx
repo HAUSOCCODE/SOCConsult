@@ -147,8 +147,8 @@ export default function StudentDashboardContent() {
     );
   if (!data) return <Loading />;
 
-  const formattedName = formatPersonName(user?.name) || "Student";
-  const firstName = formattedName.split(/\s+/)[0];
+  const formattedName = formatPersonName(user) || "Student";
+  const firstName = user?.firstName || formattedName.split(/\s+/)[0];
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-5 sm:space-y-6 md:pb-12">
