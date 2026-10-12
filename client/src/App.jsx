@@ -26,6 +26,7 @@ import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyProfile from "./pages/Faculty/FacultyProfile";
 import FacultySecuritySettings from "./pages/Faculty/FacultySecuritySettings";
 import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
+import CsvImport from "./pages/Dean/CsvImport";
 import DeanLayout from "./layouts/DeanLayout";
 import DeanDashboard from "./pages/Dean/DeanDashboard";
 import UserManagement from "./pages/Dean/UserManagement";
@@ -124,10 +125,7 @@ export default function App() {
               element={<DeanRouteRedirect to="/dean/account" />}
             />
             <Route path="account" element={<SystemSettings />} />
-            <Route
-              path="import"
-              element={<DeferredFeaturePage title="CSV Import" />}
-            />
+            <Route path="import" element={<CsvImport />} />
             <Route
               path="attendance-review"
               element={<DeferredFeaturePage title="Attendance Review" />}
