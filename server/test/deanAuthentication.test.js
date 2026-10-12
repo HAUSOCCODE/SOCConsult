@@ -118,9 +118,9 @@ test("workspace source contracts preserve one session and wait for hydration", a
   const source = async (path) => readFile(new URL(`../../client/src/${path}`, import.meta.url), "utf8");
   const [context, routes, guard, dean, faculty, form, layout] = await Promise.all(["context/AuthContext.jsx", "App.jsx", "components/ProtectedRoute.jsx", "layouts/DeanLayout.jsx", "layouts/FacultyLayout.jsx", "components/auth/AuthPageContent.jsx", "components/RoleLayout.jsx"].map(source));
   assert.match(routes, /ProtectedRoute role=\{\["faculty", "dean"\]\}/);
-  assert.match(dean, /path: "\/faculty\/dashboard"/);
+  assert.match(dean, /path: "\/dean\/faculty\/dashboard"/);
   assert.match(faculty, /user\?\.role === "dean"/);
-  assert.match(faculty, /path: "\/dean\/dashboard"/);
+  assert.match(faculty, /legacyFacultyDestination\(\s*location.pathname,\s*location.search,\s*location.hash,?\s*\)/);
   assert.doesNotMatch(dean + faculty, /sessionStorage|login\(|logout\(/);
   assert.ok(guard.indexOf("if (loading)") < guard.indexOf("if (!user)"));
   assert.match(context, /api\("\/auth\/me"\)/);

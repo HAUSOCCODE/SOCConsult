@@ -81,6 +81,7 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
   patch(User, "find", query => { queries.push(["users", query]); return chain([]); }, restores);
   patch(Appointment, "find", query => { queries.push(["appointments", query]); return chain([]); }, restores);
   patch(Appointment, "countDocuments", async query => { queries.push(["appointments", query]); return 0; }, restores);
+  patch(Appointment, "aggregate", async pipeline => { queries.push(["appointments", pipeline[0].$match]); return []; }, restores);
   patch(Availability, "find", query => { queries.push(["availability", query]); return chain([]); }, restores);
   patch(Availability, "countDocuments", async query => { queries.push(["availability", query]); return 0; }, restores);
   patch(Task, "find", query => { queries.push(["tasks", query]); return chain([]); }, restores);
@@ -100,7 +101,7 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
       queries.length = 0;
       assert.equal((await request(`/appointments/mine?facultyId=${other}`, role)).status, 200);
       for (const [model, query] of queries) if (model === "appointments") assert.equal(String(query[owner]), ids[role]);
-      for (const endpoint of ["/faculty/calendar?start=2026-10-01&end=2026-10-31", "/availability/mine", "/dashboard/faculty", "/tasks"]) {
+      for (const endpoint of ["/faculty/calendar?start=2026-10-01&end=2026-10-31", "/availability/mine", "/availability/request-schedules", "/schedule-requests/mine", "/dashboard/faculty", "/tasks"]) {
         queries.length = 0;
         assert.equal((await request(endpoint, role)).status, role === "student" && endpoint !== "/tasks" ? 403 : 200);
         for (const [model, query] of queries) {
@@ -108,6 +109,11 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
           if (model === "availability" && query._id) continue;
           assert.equal(String(query[owner]), ids[role], `${endpoint}: ${model} must use caller ID`);
         }
+      }
+      queries.length = 0;
+      assert.equal((await request("/dean/appointments", role)).status, role === "dean" ? 200 : 403);
+      if (role === "dean") {
+        assert.ok(queries.some(([model, query]) => model === "appointments" && query === undefined), "Management retains its school-wide query");
       }
       for (const suffix of ["document", "documents/unknown"]) assert.equal((await request(`/appointments/${other}/${suffix}`, role)).status, 403);
       assert.equal((await request(`/appointments/${other}/documents/unknown`, role, "DELETE", { deanManagementAccess: true })).status, 403);

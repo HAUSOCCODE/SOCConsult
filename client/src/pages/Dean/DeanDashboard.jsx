@@ -272,10 +272,10 @@ function PendingRegistrations({ count }) {
         <p className={`mt-0.5 text-xl font-extrabold ${count ? "text-maroon-900" : "text-slate-700"}`}>{count}</p>
         <p className="break-words text-[11px] leading-4 text-slate-500">{subtitle}</p>
       </div>
-      <Link to="/dean/registrations" className="btn-secondary hidden shrink-0 sm:inline-flex md:hidden min-[900px]:inline-flex">
+      <Link to="/dean/users" className="btn-secondary hidden shrink-0 sm:inline-flex md:hidden min-[900px]:inline-flex">
         Review Users
       </Link>
-      <Link to="/dean/registrations" aria-label="Review pending users" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 sm:hidden md:grid min-[900px]:hidden">
+      <Link to="/dean/users" aria-label="Review pending users" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 sm:hidden md:grid min-[900px]:hidden">
         <ArrowRight size={18} aria-hidden="true" />
       </Link>
     </article>
@@ -307,7 +307,7 @@ function RecentRegistrations({ registrations, total }) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
         <Link
-          to="/dean/registrations"
+          to="/dean/users"
           className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-bold text-maroon-800 hover:text-maroon-900"
         >
           View all <ArrowRight size={15} aria-hidden="true" />

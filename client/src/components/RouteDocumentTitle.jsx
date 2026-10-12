@@ -2,6 +2,17 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 const titles = {
+  "/dean/import": "CSV Import | SOCConsult",
+  "/dean/attendance-review": "Attendance Review | SOCConsult",
+  "/dean/account": "Account Settings | SOCConsult",
+  "/dean/faculty": "My Faculty Dashboard | SOCConsult",
+  "/dean/faculty/dashboard": "My Faculty Dashboard | SOCConsult",
+  "/dean/faculty/requests": "My Appointment Requests | SOCConsult",
+  "/dean/faculty/availability": "My Availability | SOCConsult",
+  "/dean/faculty/consultations": "My Consultations | SOCConsult",
+  "/dean/faculty/history": "My Consultation History | SOCConsult",
+  "/dean/faculty/reports": "My Faculty PDF Reports | SOCConsult",
+  "/dean/faculty/calendar": "My Consultation Calendar | SOCConsult",
   "/": "SOCConsult | HAU School of Computing",
   "/get-started": "Get Started | SOCConsult",
   "/student/login": "Student Login | SOCConsult",
