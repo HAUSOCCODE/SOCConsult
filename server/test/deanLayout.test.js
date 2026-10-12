@@ -33,6 +33,46 @@ async function loadComponent(path, imports) {
   )(React, ...Object.values(imports));
 }
 
+test("Dean Import renders template guidance and download without upload behavior", async () => {
+  const CsvImport = await loadComponent("pages/Dean/CsvImport.jsx", {
+    Link: router.Link,
+  });
+  const html = renderToString(
+    React.createElement(
+      router.MemoryRouter,
+      null,
+      React.createElement(CsvImport),
+    ),
+  );
+  assert.match(
+    html,
+    /href="\/templates\/socconsult-account-import-template.csv"/,
+  );
+  assert.match(html, /download="socconsult-account-import-template.csv"/);
+  const columns = [
+    "institutional_id",
+    "first_name",
+    "middle_name",
+    "last_name",
+    "official_email",
+    "role",
+  ];
+  let previous = -1;
+  for (const column of columns) {
+    const position = html.indexOf(`>${column}</td>`);
+    assert.ok(position > previous, column);
+    previous = position;
+  }
+  assert.match(html, /Optional value/);
+  assert.match(html, /student or faculty only/);
+  assert.match(html, /Dean is not allowed/);
+  assert.match(html, /DEA-06/);
+  assert.match(html, /DEA-07/);
+  assert.doesNotMatch(html, /<input|<form|<button/);
+  const page = await source("pages/Dean/CsvImport.jsx");
+  assert.doesNotMatch(page, /fetch\(|\bapi\b|FormData|onSubmit|onChange/);
+});
+
 test("URL workspace selection survives refresh and validates shared-page context", () => {
   for (const page of [
     "dashboard",
@@ -127,7 +167,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     );
   const pages = {
     dashboard: "DeanDashboard",
-    import: "DeferredFeaturePage",
+    import: "CsvImport",
     users: "UserManagement",
     consultations: "ConsultationOverview",
     "attendance-review": "DeferredFeaturePage",
