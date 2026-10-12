@@ -6,7 +6,7 @@ import Appointment from "../models/Appointment.js";
 import { rescheduleFacultyAppointment } from "../controllers/facultyAppointmentController.js";
 
 const router = Router();
-router.use(authenticate, authorize("faculty"));
+router.use(authenticate, authorize("faculty", "dean"));
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
 const CALENDAR_STATUSES = ["Approved", "Rescheduled", "Completed", "No Show"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

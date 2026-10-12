@@ -55,12 +55,12 @@ export default function ProfilePage() {
         toast.error("Please complete the required name fields.");
         return;
       }
-      if (user.role === "faculty" && !form.position) {
+      if (["faculty", "dean"].includes(user.role) && !form.position) {
         toast.error("Position / Designation is required.");
         return;
       }
       if (
-        user.role === "faculty" &&
+        ["faculty", "dean"].includes(user.role) &&
         form.position === OTHER_POSITION &&
         !form.customPosition.trim()
       ) {
@@ -74,7 +74,7 @@ export default function ProfilePage() {
           ...profileForm,
           ...nameValidation.values,
           position:
-            user.role === "faculty"
+            ["faculty", "dean"].includes(user.role)
               ? form.position === OTHER_POSITION
                 ? customPosition.trim()
                 : form.position
@@ -199,7 +199,7 @@ export default function ProfilePage() {
               </label>
               );
             })}
-          {user.role === "faculty" && (
+          {["faculty", "dean"].includes(user.role) && (
             <label className="text-sm font-semibold">
               Position / Designation
               {form.position === OTHER_POSITION ? (

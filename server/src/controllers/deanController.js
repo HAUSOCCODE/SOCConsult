@@ -42,7 +42,7 @@ export async function approveRegistration(req, res) {
       $set: {
         registrationStatus: "Approved",
         accountStatus: "Active",
-        approvalMethod: "admin",
+        approvalMethod: "dean",
         approvedAt: new Date(),
         approvedBy: req.user.id,
       },
@@ -106,14 +106,14 @@ export async function rejectRegistration(req, res) {
       user.id,
       "registration",
       "Registration rejected",
-      reason || "Please contact the School of Computing administrator.",
+      reason || "Please contact the School of Computing dean.",
       user.id,
     ),
   ]);
   res.json({ message: "Registration rejected.", registration: user });
 }
 export async function getUsers(_req, res) {
-  const users = await User.find({ role: { $ne: "admin" } })
+  const users = await User.find({ role: { $ne: "dean" } })
     .select("-password +profilePicture")
     .sort({ createdAt: -1 })
     .lean();
@@ -169,7 +169,7 @@ export async function resetUserPassword(req, res) {
   user.password = await bcrypt.hash(newPassword, 12);
   user.passwordChangedAt = new Date();
   await user.save();
-  await logActivity("admin_password_reset", req.user.id, "User", user.id, {
+  await logActivity("dean_password_reset", req.user.id, "User", user.id, {
     role: user.role,
   });
   res.json({ message: "Password reset successfully." });
@@ -179,10 +179,10 @@ export async function updateUserStatus(req, res) {
     return res.status(400).json({ message: "Invalid account status." });
   const previous = await User.findOne({
     _id: req.params.id,
-    role: { $ne: "admin" },
+    role: { $ne: "dean" },
   }).select("accountStatus");
   const user = await User.findOneAndUpdate(
-    { _id: req.params.id, role: { $ne: "admin" } },
+    { _id: req.params.id, role: { $ne: "dean" } },
     { accountStatus: req.body.accountStatus },
     { new: true },
   ).select("-password");
@@ -204,7 +204,7 @@ export async function updateUserStatus(req, res) {
     user,
   });
 }
-export async function getAdminAppointments(_req, res) {
+export async function getDeanAppointments(_req, res) {
   const records = await Appointment.find()
     .select("+meetingLink")
     .populate("student", "name email program")
@@ -233,7 +233,7 @@ export async function getAiConsultationSummary(req, res) {
     return res.json(report);
   } catch (error) {
     const status = Number(error.statusCode) || 502;
-    if (status >= 500) console.error("[Admin AI Summary]", error.message);
+    if (status >= 500) console.error("[Dean AI Summary]", error.message);
     return res.status(status).json({
       message:
         status === 503
@@ -244,7 +244,7 @@ export async function getAiConsultationSummary(req, res) {
     });
   }
 }
-export async function changeAdminPassword(req, res) {
+export async function changeDeanPassword(req, res) {
   const user = await User.findById(req.user.id).select("+password");
   if (!(await bcrypt.compare(req.body.currentPassword || "", user.password)))
     return res.status(400).json({ message: "Current password is incorrect." });

@@ -47,7 +47,7 @@ const recoverStaleClaims = async (facultyId) => {
   }
 };
 
-router.get("/mine", authorize("faculty"), async (req, res) => {
+router.get("/mine", authorize("faculty", "dean"), async (req, res) => {
   await recoverStaleClaims(req.user.id);
   const requests = await Appointment.find({
     faculty: req.user.id,
@@ -77,7 +77,7 @@ router.post(
       !validId(facultyId) ||
       !(await User.exists({
         _id: facultyId,
-        role: "faculty",
+        role: { $in: ["faculty", "dean"] },
         registrationStatus: "Approved",
         accountStatus: "Active",
       }))
@@ -255,7 +255,7 @@ router.put("/:id/cancel", authorize("student"), async (req, res) => {
   res.json({ message: "Schedule request cancelled.", appointment });
 });
 
-router.put("/:id/reject", authorize("faculty"), async (req, res) => {
+router.put("/:id/reject", authorize("faculty", "dean"), async (req, res) => {
   if (!validId(req.params.id))
     return res.status(404).json({ message: "Request not found." });
   const note = String(req.body.note || "").trim();
@@ -294,7 +294,7 @@ router.put("/:id/reject", authorize("faculty"), async (req, res) => {
   res.json({ message: "Schedule request rejected.", appointment });
 });
 
-router.put("/:id/approve", authorize("faculty"), async (req, res) => {
+router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
   await recoverStaleClaims(req.user.id);
   if (!validId(req.params.id))
     return res.status(404).json({ message: "Request not found." });

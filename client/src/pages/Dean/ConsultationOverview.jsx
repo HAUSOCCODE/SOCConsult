@@ -7,7 +7,7 @@ export default function ConsultationOverview() {
   const load = () => {
     setError("");
     setItems(null);
-    api("/admin/appointments")
+    api("/dean/appointments")
       .then((d) =>
         setItems(Array.isArray(d?.appointments) ? d.appointments : []),
       )

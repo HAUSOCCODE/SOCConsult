@@ -75,8 +75,8 @@ export default function RoleLayout({ role, navigation }) {
     navigation.find(({ path }) => location.pathname === path)?.label ||
     "Dashboard";
   const displayName =
-    role === "admin" && user.name === "ConsultIO Administrator"
-      ? "SOCConsult Administrator"
+    user.role === "dean" && ["ConsultIO Administrator", "SOCConsult Administrator", "ConsultIO Dean"].includes(user.name)
+      ? "SOCConsult Dean"
       : formatPersonName(user);
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
@@ -168,7 +168,7 @@ export default function RoleLayout({ role, navigation }) {
           </SidebarTooltip>
         </div>
         <SidebarTooltip
-          label={`${formatPersonName(displayName)} — ${role === "admin" ? "Admin" : `${role[0].toUpperCase()}${role.slice(1)}`} Portal`}
+          label={`${formatPersonName(displayName)} — ${role === "dean" ? "Dean" : `${role[0].toUpperCase()}${role.slice(1)}`} Portal`}
           enabled={sidebarCollapsed}
         >
           <div
@@ -188,8 +188,8 @@ export default function RoleLayout({ role, navigation }) {
                   {formatPersonName(displayName)}
                 </p>
                 <p className="mt-0.5 text-sm font-medium text-white">
-                  {role === "admin"
-                    ? "Admin Portal"
+                  {role === "dean"
+                    ? "Dean Portal"
                     : `${role[0].toUpperCase()}${role.slice(1)} Portal`}
                 </p>
               </div>

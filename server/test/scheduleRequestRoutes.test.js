@@ -10,7 +10,7 @@ import OneTimeScheduleHold from "../src/models/OneTimeScheduleHold.js";
 import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 
-it("runs the schedule request decision flow through HTTP with an isolated in-memory model harness", async () => {
+for (const providerRole of ["faculty", "dean"]) it(`runs the ${providerRole} schedule request decision flow through HTTP with an isolated in-memory model harness`, async () => {
   const studentId = new mongoose.Types.ObjectId().toString();
   const otherStudentId = new mongoose.Types.ObjectId().toString();
   const facultyId = new mongoose.Types.ObjectId().toString();
@@ -22,7 +22,7 @@ it("runs the schedule request decision flow through HTTP with an isolated in-mem
         otherStudentId,
         { id: otherStudentId, name: "Student B", role: "student" },
       ],
-      [facultyId, { id: facultyId, name: "Faculty A", role: "faculty" }],
+      [facultyId, { id: facultyId, name: "Faculty A", role: providerRole }],
       [
         otherFacultyId,
         { id: otherFacultyId, name: "Faculty B", role: "faculty" },

@@ -106,7 +106,7 @@ export default function AuditLogs() {
         page: userPage,
         limit: 8,
       });
-      const data = await api(`/admin/audit-users?${query}`);
+      const data = await api(`/dean/audit-users?${query}`);
       if (request !== userRequest.current) return;
       setUsersState(data);
       setSelectedId((current) =>
@@ -136,7 +136,7 @@ export default function AuditLogs() {
       if (category !== "All Activities") query.set("category", category);
       if (startDate) query.set("startDate", startDate);
       if (endDate) query.set("endDate", endDate);
-      const data = await api(`/admin/audit-users/${selectedId}/logs?${query}`);
+      const data = await api(`/dean/audit-users/${selectedId}/logs?${query}`);
       if (request === logRequest.current) setDetails(data);
     } catch (error) {
       if (request === logRequest.current)
@@ -179,7 +179,7 @@ export default function AuditLogs() {
       if (startDate) query.set("startDate", startDate);
       if (endDate) query.set("endDate", endDate);
       const response = await fetch(
-        `${API_URL}/admin/audit-logs/export?${query}`,
+        `${API_URL}/dean/audit-logs/export?${query}`,
         {
           headers: {
             Authorization: `Bearer ${sessionStorage.getItem("consultio_token") || ""}`,

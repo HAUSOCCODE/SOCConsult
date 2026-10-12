@@ -12,6 +12,7 @@ const ACTIONS = {
   account_activated: ["Account activated", "Account"],
   account_deactivated: ["Account deactivated", "Account"],
   admin_password_reset: ["Password reset by administrator", "Account"],
+  dean_password_reset: ["Password reset by dean", "Account"],
   password_changed: ["Password changed", "Account"],
   login: ["Successful sign-in", "Authentication"],
   profile_updated: ["Profile information updated", "Profile"],
@@ -111,7 +112,7 @@ export async function recordAuditEvent({
     if (!ids.length) return;
     const records = await Promise.all(ids.map((id) => User.findById(id)));
     const subjects = records.filter((user) =>
-      ["student", "faculty"].includes(user?.role),
+      ["student", "faculty", "dean"].includes(user?.role),
     );
     const actor =
       actorUser && !actorRole

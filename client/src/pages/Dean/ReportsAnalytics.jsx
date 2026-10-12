@@ -57,12 +57,12 @@ const summaryRangeLabel = ({ start, end }) => {
 };
 
 const approvalMethodLabel = (user) => {
-  if (user.registrationStatus === "Pending") return "Pending Admin Approval";
-  if (user.registrationStatus === "Rejected") return "Rejected by Admin";
+  if (user.registrationStatus === "Pending") return "Pending Dean Approval";
+  if (user.registrationStatus === "Rejected") return "Rejected by Dean";
   if (["email_verification", "system"].includes(user.approvalMethod))
     return "Automatic - Email Verification";
-  if (user.approvalMethod === "admin" || user.approvedBy)
-    return "Admin Approval";
+  if (user.approvalMethod === "dean" || user.approvedBy)
+    return "Dean Approval";
   return "Not Available";
 };
 
@@ -94,8 +94,8 @@ export default function ReportsAnalytics() {
     setItems(null);
     setRegistrations(null);
     Promise.allSettled([
-      api("/admin/appointments"),
-      api("/admin/reports/user-registrations"),
+      api("/dean/appointments"),
+      api("/dean/reports/user-registrations"),
     ]).then(([appointmentsResult, registrationsResult]) => {
       if (appointmentsResult.status === "fulfilled") {
         setItems(
@@ -217,7 +217,7 @@ export default function ReportsAnalytics() {
         startDate: summaryStart,
         endDate: summaryEnd,
       });
-      setSummary(await api(`/admin/reports/ai-summary?${query}`));
+      setSummary(await api(`/dean/reports/ai-summary?${query}`));
     } catch (requestError) {
       setSummaryError(
         requestError.message || "Unable to generate the summary.",

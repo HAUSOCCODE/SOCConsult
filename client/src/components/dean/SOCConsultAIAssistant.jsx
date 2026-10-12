@@ -9,7 +9,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 
-const ADMIN_SUGGESTIONS = [
+const DEAN_SUGGESTIONS = [
   "How many students are registered?",
   "How many faculty are registered?",
   "Summarize this month's consultations.",
@@ -29,11 +29,11 @@ const aiErrorMessage = (error) => {
 };
 
 export default function SOCConsultAIAssistant({
-  endpoint = "/admin/ai/chat",
+  endpoint = "/dean/ai/chat",
   title = "SOCConsult AI Assistant",
   subtitle = "Administrative Reporting Assistant",
   welcome = "Ask questions about SOCConsult users, faculty, appointments, consultations, and administrative statistics.",
-  suggestions = ADMIN_SUGGESTIONS,
+  suggestions = DEAN_SUGGESTIONS,
   placeholder = "Ask about SOCConsult statistics...",
   disclaimer = "Read-only administrative reporting from current SOCConsult data.",
   loadingLabel = "Analyzing SOCConsult data...",

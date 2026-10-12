@@ -1,5 +1,5 @@
 import { answerRoleQuestion } from "../services/roleAiService.js";
-import { classifyAdminAiError } from "./aiController.js";
+import { classifyDeanAiError } from "./aiController.js";
 
 const cleanMessage = (value) => typeof value === "string" && value.trim() && value.trim().length <= 2000 ? value.trim() : null;
 const cleanHistory = (value) => {
@@ -23,7 +23,7 @@ export const chatWithRoleAi = (role) => async (req, res) => {
     const answer = await answerRoleQuestion({ role, userId: req.user._id, message, history });
     return res.json({ success: true, answer, generatedAt: new Date().toISOString() });
   } catch (error) {
-    const result = classifyAdminAiError(error);
+    const result = classifyDeanAiError(error);
     console.warn(
       `[${role === "student" ? "Student" : "Faculty"} AI] ${result.code}`,
       {

@@ -24,11 +24,11 @@ const roles = [
     register: true,
   },
   {
-    name: "Administrator",
+    name: "Dean",
     icon: ShieldCheck,
     text: "Monitor consultation activities, manage accounts, review reports, and administer the SOCConsult system.",
-    base: "/admin",
-    button: "Continue as Administrator",
+    base: "/dean",
+    button: "Continue as Dean",
   },
 ];
 export default function GetStartedPage() {

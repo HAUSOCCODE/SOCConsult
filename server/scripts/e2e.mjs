@@ -57,25 +57,25 @@ try {
     ],
   );
   await User.updateMany(
-    { role: "admin", registrationStatus: { $exists: false } },
+    { role: "dean", registrationStatus: { $exists: false } },
     { $set: { registrationStatus: "Approved", accountStatus: "Active" } },
   );
   await startHttp();
-  const adminDoc = await User.findOne({ role: "admin" }).select(
+  const deanDoc = await User.findOne({ role: "dean" }).select(
     "+password passwordChangedAt",
   );
-  check(Boolean(adminDoc), "pre-created administrator exists");
-  const originalAdminHash = adminDoc.password;
-  const originalChangedAt = adminDoc.passwordChangedAt;
+  check(Boolean(deanDoc), "pre-created dean exists");
+  const originalDeanHash = deanDoc.password;
+  const originalChangedAt = deanDoc.passwordChangedAt;
 
-  const invalidAdminPassword = await request("/auth/login/admin", {
+  const invalidDeanPassword = await request("/auth/login/dean", {
     method: "POST",
-    body: { identifier: process.env.ADMIN_USERNAME, password: "weak pass1" },
+    body: { identifier: process.env.DEAN_USERNAME, password: "weak pass1" },
   });
   check(
-    invalidAdminPassword.status === 400 &&
-      invalidAdminPassword.data.message.includes("Spaces are not allowed"),
-    "administrator login rejects passwords that violate complexity rules",
+    invalidDeanPassword.status === 400 &&
+      invalidDeanPassword.data.message.includes("Spaces are not allowed"),
+    "dean login rejects passwords that violate complexity rules",
   );
 
   const previousFacultyDomain = `faculty.${facultyEmail.split("@")[1]}`;
@@ -169,7 +169,7 @@ try {
     check(
       pendingLogin.status === 403 &&
         pendingLogin.data.message ===
-          "Your account has already been created. Please wait for an administrator to approve your registration before you can access SOCConsult. You do not need to register again.",
+          "Your account has already been created. Please wait for a Dean to approve your registration before you can access SOCConsult. You do not need to register again.",
       `${test.role} pending login is denied with exact message`,
     );
     const duplicate = await request(`/auth/register/${test.role}`, {
@@ -179,36 +179,36 @@ try {
     check(
       duplicate.status === 409 &&
         duplicate.data.message ===
-          "An account with this email has already been created and is awaiting administrator approval. You do not need to register again.",
+          "An account with this email has already been created and is awaiting dean approval. You do not need to register again.",
       `${test.role} duplicate pending registration is rejected`,
     );
   }
 
-  const adminLogin = await request("/auth/login/admin", {
+  const deanLogin = await request("/auth/login/dean", {
     method: "POST",
     body: {
-      identifier: process.env.ADMIN_USERNAME,
-      password: process.env.ADMIN_PASSWORD,
+      identifier: process.env.DEAN_USERNAME,
+      password: (process.env.DEAN_PASSWORD || process.env.ADMIN_PASSWORD),
     },
   });
-  check(adminLogin.status === 200, "administrator login succeeds");
-  const adminToken = adminLogin.data.token;
-  const pending = await request("/admin/registrations?status=Pending", {
-    token: adminToken,
+  check(deanLogin.status === 200, "dean login succeeds");
+  const deanToken = deanLogin.data.token;
+  const pending = await request("/dean/registrations?status=Pending", {
+    token: deanToken,
   });
   check(
     [facultyEmail, studentEmail].every((email) =>
       pending.data.registrations.some((x) => x.email === email),
     ),
-    "both QA registrations appear in admin requests",
+    "both QA registrations appear in dean requests",
   );
   for (const id of createdUsers) {
-    const approval = await request(`/admin/registrations/${id}/approve`, {
+    const approval = await request(`/dean/registrations/${id}/approve`, {
       method: "PUT",
-      token: adminToken,
+      token: deanToken,
       body: {},
     });
-    check(approval.status === 200, "administrator approval succeeds");
+    check(approval.status === 200, "dean approval succeeds");
   }
   const approved = await User.find({ _id: { $in: createdUsers } });
   check(
@@ -216,19 +216,19 @@ try {
       (x) =>
         x.registrationStatus === "Approved" &&
         x.accountStatus === "Active" &&
-        String(x.approvedBy) === String(adminDoc.id),
+        String(x.approvedBy) === String(deanDoc.id),
     ),
     "approval is permanently stored with approver",
   );
   for (const [index, role] of ["faculty", "student"].entries()) {
-    const details = await request(`/admin/users/${createdUsers[index]}`, {
-      token: adminToken,
+    const details = await request(`/dean/users/${createdUsers[index]}`, {
+      token: deanToken,
     });
     check(
       details.status === 200 &&
         details.data.user.role === role &&
         !("password" in details.data.user),
-      `administrator views complete ${role} details without password data`,
+      `dean views complete ${role} details without password data`,
     );
   }
 
@@ -261,7 +261,7 @@ try {
   check(
     rejectedLogin.status === 403 &&
       rejectedLogin.data.message ===
-        "Your registration was not approved. Please contact the system administrator if you believe this requires review.",
+        "Your registration was not approved. Please contact the Dean if you believe this requires review.",
     "rejected student receives the rejected-account message",
   );
   await User.updateOne(
@@ -275,7 +275,7 @@ try {
   check(
     inactiveLogin.status === 403 &&
       inactiveLogin.data.message ===
-        "Your account is currently inactive. Please contact the system administrator for assistance.",
+        "Your account is currently inactive. Please contact the Dean for assistance.",
     "inactive student receives the inactive-account message",
   );
   await User.updateOne(
@@ -295,12 +295,12 @@ try {
     facultyLogin.status === 200 && studentLogin.status === 200,
     "approved faculty and student can log in",
   );
-  const wrongRole = await request("/dashboard/admin", {
+  const wrongRole = await request("/dashboard/dean", {
     token: studentLogin.data.token,
   });
   check(
     wrongRole.status === 403,
-    "backend rejects student access to admin API",
+    "backend rejects student access to dean API",
   );
 
   const startAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -434,7 +434,7 @@ try {
       role: "student",
       registrationStatus: "Approved",
       accountStatus: "Active",
-      approvedBy: adminDoc.id,
+      approvedBy: deanDoc.id,
       approvedAt: new Date(),
     });
     createdUsers.push(extraStudent.id);
@@ -462,17 +462,17 @@ try {
       `student ${index + 2} can request the same availability window`,
     );
   }
-  const adminAppointments = await request("/admin/appointments", {
-    token: adminToken,
+  const deanAppointments = await request("/dean/appointments", {
+    token: deanToken,
   });
-  const pendingAdminDashboard = await request("/dashboard/admin", {
-    token: adminToken,
+  const pendingDeanDashboard = await request("/dashboard/dean", {
+    token: deanToken,
   });
   check(
-    adminAppointments.data.appointments.some(
+    deanAppointments.data.appointments.some(
       (item) => item._id === booking.data.appointment._id,
-    ) && pendingAdminDashboard.data.stats.pendingAppointments >= 1,
-    "admin monitors the same Pending appointment and dashboard count",
+    ) && pendingDeanDashboard.data.stats.pendingAppointments >= 1,
+    "dean monitors the same Pending appointment and dashboard count",
   );
   const facultyRequests = await request("/appointments/mine", {
     token: facultyLogin.data.token,
@@ -628,14 +628,14 @@ try {
     ),
     "student immediately sees Approved appointment",
   );
-  const adminDashboard = await request("/dashboard/admin", {
-    token: adminToken,
+  const deanDashboard = await request("/dashboard/dean", {
+    token: deanToken,
   });
   check(
-    adminDashboard.status === 200 &&
-      adminDashboard.data.stats.totalAppointments >= 1 &&
-      adminDashboard.data.stats.approvedAppointments >= 1,
-    "admin dashboard uses live Approved appointment totals",
+    deanDashboard.status === 200 &&
+      deanDashboard.data.stats.totalAppointments >= 1 &&
+      deanDashboard.data.stats.approvedAppointments >= 1,
+    "dean dashboard uses live Approved appointment totals",
   );
   check(
     Boolean(await AuditLog.exists({ action: "registration_approved" })),
@@ -680,7 +680,7 @@ try {
     role: "faculty",
     registrationStatus: "Approved",
     accountStatus: "Active",
-    approvedBy: adminDoc.id,
+    approvedBy: deanDoc.id,
     approvedAt: new Date(),
   });
   createdUsers.push(outsiderFaculty.id);
@@ -1013,23 +1013,23 @@ try {
     "expiration notification is created once per Faculty schedule",
   );
 
-  const changed = await request("/admin/settings/password", {
+  const changed = await request("/dean/settings/password", {
     method: "PUT",
-    token: adminToken,
+    token: deanToken,
     body: {
-      currentPassword: process.env.ADMIN_PASSWORD,
+      currentPassword: (process.env.DEAN_PASSWORD || process.env.ADMIN_PASSWORD),
       newPassword: "Temporary-QA-Password-2026!",
     },
   });
-  check(changed.status === 200, "admin password change validates and saves");
+  check(changed.status === 200, "dean password change validates and saves");
   await User.updateOne(
-    { _id: adminDoc.id },
+    { _id: deanDoc.id },
     {
-      $set: { password: originalAdminHash },
+      $set: { password: originalDeanHash },
       ...(originalChangedAt
         ? {
             $set: {
-              password: originalAdminHash,
+              password: originalDeanHash,
               passwordChangedAt: originalChangedAt,
             },
           }
@@ -1054,7 +1054,7 @@ try {
     );
   }
   const forbiddenReset = await request(
-    `/admin/users/${createdUsers[0]}/reset-password`,
+    `/dean/users/${createdUsers[0]}/reset-password`,
     {
       method: "PUT",
       token: studentLogin.data.token,
@@ -1066,7 +1066,7 @@ try {
   );
   check(
     forbiddenReset.status === 403,
-    "student cannot access the administrator password reset endpoint",
+    "student cannot access the dean password reset endpoint",
   );
   const resetPassword = "Reset-QA-Password-2026!";
   for (const [index, test] of [
@@ -1074,17 +1074,17 @@ try {
     { role: "student", email: studentEmail },
   ].entries()) {
     const reset = await request(
-      `/admin/users/${createdUsers[index]}/reset-password`,
+      `/dean/users/${createdUsers[index]}/reset-password`,
       {
         method: "PUT",
-        token: adminToken,
+        token: deanToken,
         body: {
           newPassword: resetPassword,
           confirmPassword: resetPassword,
         },
       },
     );
-    check(reset.status === 200, `administrator resets ${test.role} password`);
+    check(reset.status === 200, `dean resets ${test.role} password`);
     const oldLogin = await request(`/auth/login/${test.role}`, {
       method: "POST",
       body: { identifier: test.email, password },
@@ -1105,10 +1105,10 @@ try {
   }
   check(
     (await AuditLog.countDocuments({
-      action: "admin_password_reset",
+      action: "dean_password_reset",
       targetId: { $in: createdUsers },
     })) === 2,
-    "administrator password resets are recorded in audit logs",
+    "dean password resets are recorded in audit logs",
   );
   console.log("E2E_RESULT=PASS");
 } finally {

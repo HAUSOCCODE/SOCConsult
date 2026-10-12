@@ -20,7 +20,7 @@ export default function SystemSettings() {
     }
     setValidationError("");
     try {
-      const d = await api("/admin/settings/password", {
+      const d = await api("/dean/settings/password", {
         method: "PUT",
         body: JSON.stringify(form),
       });

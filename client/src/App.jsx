@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/Public/LandingPage";
 import RoleSelectionPage from "./pages/Public/RoleSelectionPage";
@@ -6,7 +6,7 @@ import StudentLogin from "./pages/Auth/StudentLogin";
 import StudentRegister from "./pages/Auth/StudentRegister";
 import FacultyLogin from "./pages/Auth/FacultyLogin";
 import FacultyRegister from "./pages/Auth/FacultyRegister";
-import AdminLogin from "./pages/Auth/AdminLogin";
+import DeanLogin from "./pages/Auth/DeanLogin";
 import StudentLayout from "./layouts/StudentLayout";
 import StudentDashboard from "./pages/Student/StudentDashboard";
 import BookConsultation from "./pages/Student/BookConsultation";
@@ -25,31 +25,36 @@ import ManageAvailability from "./pages/Faculty/ManageAvailability";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyProfile from "./pages/Faculty/FacultyProfile";
 import FacultySecuritySettings from "./pages/Faculty/FacultySecuritySettings";
-import AdminLayout from "./layouts/AdminLayout";
-import AdminDashboard from "./pages/Admin/AdminDashboard";
-import UserManagement from "./pages/Admin/UserManagement";
-import ConsultationOverview from "./pages/Admin/ConsultationOverview";
-import AppointmentsManagement from "./pages/Admin/AppointmentsManagement";
-import ReportsAnalytics from "./pages/Admin/ReportsAnalytics";
-import SystemSettings from "./pages/Admin/SystemSettings";
-import AdminNotifications from "./pages/Admin/AdminNotifications";
-import AuditLogs from "./pages/Admin/AuditLogs";
+import DeanLayout from "./layouts/DeanLayout";
+import DeanDashboard from "./pages/Dean/DeanDashboard";
+import UserManagement from "./pages/Dean/UserManagement";
+import ConsultationOverview from "./pages/Dean/ConsultationOverview";
+import AppointmentsManagement from "./pages/Dean/AppointmentsManagement";
+import ReportsAnalytics from "./pages/Dean/ReportsAnalytics";
+import SystemSettings from "./pages/Dean/SystemSettings";
+import DeanNotifications from "./pages/Dean/DeanNotifications";
+import AuditLogs from "./pages/Dean/AuditLogs";
 import NotFoundPage from "./pages/Public/NotFoundPage";
 import RouteDocumentTitle from "./components/RouteDocumentTitle";
+function LegacyManagementRedirect() {
+  const location = useLocation();
+  return <Navigate to={`${location.pathname.replace(/^\/admin(?=\/|$)/, "/dean")}${location.search}${location.hash}`} replace />;
+}
 export default function App() {
   return (
     <>
       <RouteDocumentTitle />
       <Routes>
+        <Route path="/admin/*" element={<LegacyManagementRedirect />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/get-started" element={<RoleSelectionPage />} />
         <Route path="/student/login" element={<StudentLogin />} />
         <Route path="/student/register" element={<StudentRegister />} />
         <Route path="/faculty/login" element={<FacultyLogin />} />
         <Route path="/faculty/register" element={<FacultyRegister />} />
-        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/dean/login" element={<DeanLogin />} />
         <Route
-          path="/admin/register"
+          path="/dean/register"
           element={<Navigate to="/get-started" replace />}
         />
         <Route element={<ProtectedRoute role="student" />}>
@@ -68,7 +73,7 @@ export default function App() {
             />
           </Route>
         </Route>
-        <Route element={<ProtectedRoute role="faculty" />}>
+        <Route element={<ProtectedRoute role={["faculty", "dean"]} />}>
           <Route path="faculty" element={<FacultyLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<FacultyDashboard />} />
@@ -86,10 +91,10 @@ export default function App() {
             />
           </Route>
         </Route>
-        <Route element={<ProtectedRoute role="admin" />}>
-          <Route path="admin" element={<AdminLayout />}>
+        <Route element={<ProtectedRoute role="dean" />}>
+          <Route path="dean" element={<DeanLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="dashboard" element={<DeanDashboard />} />
             <Route path="users" element={<UserManagement />} />
             <Route
               path="registrations"
@@ -98,16 +103,16 @@ export default function App() {
             <Route path="consultations" element={<ConsultationOverview />} />
             <Route path="appointments" element={<AppointmentsManagement />} />
             <Route path="reports" element={<ReportsAnalytics />} />
-            <Route path="notifications" element={<AdminNotifications />} />
+            <Route path="notifications" element={<DeanNotifications />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route
               path="logs"
-              element={<Navigate to="/admin/dashboard" replace />}
+              element={<Navigate to="/dean/dashboard" replace />}
             />
             <Route path="settings" element={<SystemSettings />} />
             <Route
               path="*"
-              element={<NotFoundPage dashboard="/admin/dashboard" />}
+              element={<NotFoundPage dashboard="/dean/dashboard" />}
             />
           </Route>
         </Route>

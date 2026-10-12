@@ -22,7 +22,7 @@ const SUGGESTIONS = [
 const QUICK_GUIDE = [
   [GraduationCap, "Student", "Book and manage consultations"],
   [UserRoundCheck, "Faculty", "Manage availability and requests"],
-  [ShieldCheck, "Administrator", "Monitor operations and reports"],
+  [ShieldCheck, "Dean", "Monitor operations and reports"],
 ];
 
 const WELCOME = {

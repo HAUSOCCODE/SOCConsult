@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import { Download, Eye, FileText, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -45,20 +46,20 @@ const formatSize = (size = 0) =>
     ? `${Math.max(1, Math.round(size / 1024))} KB`
     : `${(size / (1024 * 1024)).toFixed(2)} MB`;
 
-const metadataFor = (appointment) =>
+const metadataFor = (appointment, management) =>
   appointment.supportingDocuments?.length
     ? appointment.supportingDocuments.map((document) => ({
         id: document._id,
         name: document.originalName,
         mimeType: document.mimeType,
         size: document.size,
-        endpoint: `/appointments/${appointment._id}/documents/${document._id}`,
+        endpoint: `${management ? "/dean" : ""}/appointments/${appointment._id}/documents/${document._id}`,
       }))
     : appointment.supportingDocument?.name
       ? [
           {
             ...appointment.supportingDocument,
-            endpoint: `/appointments/${appointment._id}/document`,
+            endpoint: `${management ? "/dean" : ""}/appointments/${appointment._id}/document`,
           },
         ]
       : [];
@@ -69,7 +70,9 @@ export default function SupportingDocumentViewer({
   wrapFileNames = false,
 }) {
   const toast = useToast();
-  const documents = useMemo(() => metadataFor(appointment), [appointment]);
+  const { pathname } = useLocation();
+  const management = pathname.startsWith("/dean/");
+  const documents = useMemo(() => metadataFor(appointment, management), [appointment, management]);
   const cache = useRef(new Map());
   const [previewTarget, setPreviewTarget] = useState(null);
   const [previewDocument, setPreviewDocument] = useState(null);

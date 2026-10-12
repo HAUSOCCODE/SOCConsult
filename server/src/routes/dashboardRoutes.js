@@ -9,7 +9,7 @@ import { processExpiredAvailability } from "../services/availabilityExpirationSe
 import { getDateRangeFilter } from "../services/aiReportingService.js";
 const router = Router();
 router.use(authenticate);
-router.get("/admin", authorize("admin"), async (_req, res) => {
+router.get("/dean", authorize("dean"), async (_req, res) => {
   const statuses = [
     "Pending",
     "Approved",
@@ -140,7 +140,7 @@ router.get("/student", authorize("student"), async (req, res) => {
     weeklyOverview,
   });
 });
-router.get("/faculty", authorize("faculty"), async (req, res) => {
+router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
   await processExpiredAvailability({ facultyId: req.user.id });
   const now = new Date();
   const start = new Date(now);
