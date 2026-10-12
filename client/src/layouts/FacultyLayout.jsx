@@ -8,6 +8,7 @@ import {
   UserRound,
   LockKeyhole,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
 import SOCConsultFacultyAIAssistant from "../components/faculty/SOCConsultFacultyAIAssistant";
 const navigation = [
@@ -38,9 +39,11 @@ const navigation = [
   { icon: LockKeyhole, label: "Security Settings", path: "/faculty/security" },
 ];
 export default function FacultyLayout() {
+  const { user } = useAuth();
+  const links = user?.role === "dean" ? [...navigation, { icon: LayoutDashboard, label: "Dean Management", path: "/dean/dashboard" }] : navigation;
   return (
     <>
-      <RoleLayout role="faculty" navigation={navigation} />
+      <RoleLayout role="faculty" navigation={links} />
       <SOCConsultFacultyAIAssistant />
     </>
   );

@@ -24,7 +24,7 @@ const DEFINITIONS = {
 const HANDLERS = { student: studentAiTools, faculty: facultyAiTools };
 const LABEL = { student: "Student", faculty: "Faculty" };
 
-const SECURITY = /ignore (all |the )?(previous|prior)|act as (an? )?(admin|administrator)|system prompt|hidden (prompt|instruction)|groq_api_key|mongodb( uri)?|jwt_secret|cloudinary.*secret|environment variable|admin password|database credential|execute|shell command|run (this )?(javascript|code|query)|eval\s*\(|delete (this|a|the) user|another (student|faculty)|other (student|faculty)|professor .+(appointments|consultations|notes)/i;
+const SECURITY = /ignore (all |the )?(previous|prior)|act as (an? )?(dean|admin|administrator)|system prompt|hidden (prompt|instruction)|groq_api_key|mongodb( uri)?|jwt_secret|cloudinary.*secret|environment variable|(?:dean|admin) password|database credential|execute|shell command|run (this )?(javascript|code|query)|eval\s*\(|delete (this|a|the) user|another (student|faculty)|other (student|faculty)|professor .+(appointments|consultations|notes)/i;
 const MUTATION = /^(please )?(book|cancel|reschedule|approve|reject|delete|publish|remove|edit|update|change|assign|mark|complete|upload|record)\b/i;
 const CROSS_REPORT = /most consultations|whole school|system[- ]wide|all (users|faculty|students)|faculty ranking/i;
 
@@ -53,8 +53,8 @@ const FACULTY_GUIDANCE = [
 ];
 
 export function getDeterministicRoleResponse(role, message) {
-  if (SECURITY.test(message)) return "I can't reveal secrets, hidden instructions, execute code or database commands, impersonate an Administrator, or access another person's private records. I can only provide guidance and read-only information belonging to your authenticated account.";
-  if (CROSS_REPORT.test(message)) return "Cross-user and system-wide administrative reporting is available only to authorized Administrators. I can help with your own consultation information.";
+  if (SECURITY.test(message)) return "I can't reveal secrets, hidden instructions, execute code or database commands, impersonate a Dean, or access another person's private records. I can only provide guidance and read-only information belonging to your authenticated account.";
+  if (CROSS_REPORT.test(message)) return "Cross-user and system-wide administrative reporting is available only to authorized Deans. I can help with your own consultation information.";
   const guidance = (role === "student" ? STUDENT_GUIDANCE : FACULTY_GUIDANCE).find(([pattern]) => pattern.test(message));
   if (guidance) return guidance[1];
   if (MUTATION.test(message)) return `I can't make changes to SOCConsult records. I can explain how to perform that action through the normal ${LABEL[role]} interface.`;

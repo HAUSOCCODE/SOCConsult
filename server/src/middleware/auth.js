@@ -14,12 +14,12 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ message: "Account no longer exists." });
     if (user.accountStatus !== "Active")
       return res.status(403).json({ message: "This account is inactive." });
-    if (user.role !== "admin" && user.registrationStatus !== "Approved")
+    if (user.role !== "dean" && user.registrationStatus !== "Approved")
       return res.status(403).json({
         message:
           user.registrationStatus === "Rejected"
-            ? "Your registration request was rejected. Please contact the School of Computing administrator."
-            : "Your registration is awaiting administrator approval.",
+            ? "Your registration request was rejected. Please contact the School of Computing dean."
+            : "Your registration is awaiting dean approval.",
       });
     req.user = user;
     next();

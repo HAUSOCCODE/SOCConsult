@@ -115,7 +115,7 @@ test("appointment schema preserves faculty reschedule history", () => {
   assert.ok(history.schema.path("initiatedBy"));
 });
 
-test("faculty reschedule atomically updates the appointment, history, notification, and audit", async () => {
+for (const providerRole of ["faculty", "dean"]) test(`${providerRole} reschedule atomically updates the appointment, history, notification, and audit`, async () => {
   const restores = [];
   const current = appointmentRecord();
   const updated = appointmentRecord({
@@ -165,7 +165,7 @@ test("faculty reschedule atomically updates the appointment, history, notificati
       user: {
         id: String(ids.faculty),
         name: "Faculty Member",
-        role: "faculty",
+        role: providerRole,
       },
     };
     const res = response();
@@ -184,6 +184,8 @@ test("faculty reschedule atomically updates the appointment, history, notificati
     assert.equal(notifications[0].actionUrl, "/student/appointments");
     assert.equal(audits.length, 2);
     assert.equal(audits[0].action, "appointment_rescheduled");
+    assert.equal(audits[0].actorRole, providerRole);
+    assert.equal(audits[1].subjectRole, providerRole);
     assert.equal(audits[0].metadata.initiatedBy, "Faculty");
   } finally {
     restores.reverse().forEach((restore) => restore());
@@ -296,7 +298,7 @@ test("faculty endpoint is role-protected and existing student reschedule route r
   );
   assert.match(
     facultyRoutes,
-    /router\.use\(authenticate, authorize\("faculty"\)\)/,
+    /router\.use\(authenticate, authorize\("faculty", "dean"\)\)/,
   );
   assert.match(facultyRoutes, /\/appointments\/:appointmentId\/reschedule/);
   assert.match(

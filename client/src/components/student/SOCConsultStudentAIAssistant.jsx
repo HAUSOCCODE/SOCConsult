@@ -1,4 +1,4 @@
-import SOCConsultAIAssistant from "../admin/SOCConsultAIAssistant";
+import SOCConsultAIAssistant from "../dean/SOCConsultAIAssistant";
 
 export default function SOCConsultStudentAIAssistant() {
   return <SOCConsultAIAssistant

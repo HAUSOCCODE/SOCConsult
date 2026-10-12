@@ -38,7 +38,7 @@ const iconFor = (notification) => {
 
 export default function NotificationsPage({
   compact = false,
-  admin = false,
+  dean = false,
   student = false,
   faculty = false,
 }) {
@@ -235,7 +235,7 @@ export default function NotificationsPage({
             markingUnread={markingUnread}
             confirmDelete={confirmDelete}
             confirmClear={confirmClear}
-            admin={admin}
+            dean={dean}
           />
         )}
         {confirmation && (
@@ -980,7 +980,7 @@ function CompactNotifications({
   markingUnread,
   confirmDelete,
   confirmClear,
-  admin,
+  dean,
 }) {
   const shown = notifications.filter((notification) =>
     filter === "Unread"
@@ -1019,9 +1019,9 @@ function CompactNotifications({
       ? notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
       : "Update";
 
-  if (admin)
+  if (dean)
     return (
-      <AdminNotificationsContent
+      <DeanNotificationsContent
         notifications={notifications}
         unreadCount={unreadCount}
         loading={loading}
@@ -1049,7 +1049,7 @@ function CompactNotifications({
 
   return (
     <div
-      className={`${admin ? "w-full min-w-0 max-w-full space-y-5" : "w-full min-w-0 max-w-full space-y-6"}`}
+      className={`${dean ? "w-full min-w-0 max-w-full space-y-5" : "w-full min-w-0 max-w-full space-y-6"}`}
     >
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div>
@@ -1248,7 +1248,7 @@ function CompactNotifications({
   );
 }
 
-function AdminNotificationsContent({
+function DeanNotificationsContent({
   notifications,
   unreadCount,
   loading,
@@ -1317,7 +1317,7 @@ function AdminNotificationsContent({
           ))}
         </div>
         <div className="order-1 w-full min-w-0 md:order-2 md:w-auto">
-          <AdminNotificationActions
+          <DeanNotificationActions
             notifications={notifications}
             unreadCount={unreadCount}
             onReadAll={readAll}
@@ -1346,7 +1346,7 @@ function AdminNotificationsContent({
         <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="grid min-w-0 gap-2 bg-slate-50/60 p-2 sm:p-3">
             {pageNotifications.map((notification) => (
-              <AdminNotificationRow
+              <DeanNotificationRow
                 key={notification._id}
                 notification={notification}
                 expanded={expandedNotificationId === notification._id}
@@ -1388,7 +1388,7 @@ function AdminNotificationsContent({
   );
 }
 
-function AdminNotificationRow({
+function DeanNotificationRow({
   notification,
   expanded,
   onToggle,
@@ -1399,7 +1399,7 @@ function AdminNotificationRow({
   typeLabel,
 }) {
   const title = notification.title || "SOCConsult Notification";
-  const detailsId = `admin-notification-details-${notification._id}`;
+  const detailsId = `dean-notification-details-${notification._id}`;
   const status = notification.isRead ? "Read" : "Unread";
   return (
     <article
@@ -1505,7 +1505,7 @@ function NotificationDetail({ label, value, className = "" }) {
   );
 }
 
-function AdminNotificationActions({
+function DeanNotificationActions({
   notifications,
   unreadCount,
   onReadAll,

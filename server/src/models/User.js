@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, select: false },
     role: {
       type: String,
-      enum: ["student", "faculty", "admin"],
+      enum: ["student", "faculty", "dean"],
       required: true,
       index: true,
     },
@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema(
     emailVerifiedAt: Date,
     approvalMethod: {
       type: String,
-      enum: ["admin", "email_verification", "system"],
+      enum: ["dean", "email_verification", "system"],
       default: null,
     },
     approvedAt: Date,

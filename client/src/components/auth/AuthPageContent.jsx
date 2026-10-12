@@ -12,7 +12,7 @@ import { validatePersonNameFields } from "../../utils/formatPersonName";
 const labels = {
   student: "Student",
   faculty: "Faculty Member",
-  admin: "Administrator",
+  dean: "Dean",
 };
 const studentPrograms = [
   "Bachelor of Science in Information Technology",
@@ -21,11 +21,11 @@ const studentPrograms = [
   "Bachelor of Science in Data Science",
 ];
 const pendingMessage =
-  "Your account has already been created. Please wait for an administrator to approve your registration before you can access SOCConsult. You do not need to register again.";
+  "Your account has already been created. Please wait for a Dean to approve your registration before you can access SOCConsult. You do not need to register again.";
 const rejectedMessage =
-  "Your registration was not approved. Please contact the system administrator if you believe this requires review.";
+  "Your registration was not approved. Please contact the Dean if you believe this requires review.";
 const inactiveMessage =
-  "Your account is currently inactive. Please contact the system administrator for assistance.";
+  "Your account is currently inactive. Please contact the Dean for assistance.";
 const errorTitle = (message) => {
   if (message === pendingMessage) return "Account Pending Approval";
   if (message === rejectedMessage) return "Registration Not Approved";
@@ -60,7 +60,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
     setError("");
     setFieldErrors({});
   }, [mode, role]);
-  if (!labels[role] || (role === "admin" && mode === "register"))
+  if (!labels[role] || (role === "dean" && mode === "register"))
     return <Navigate to="/get-started" replace />;
   const domain = role === "student" ? "student.hau.edu.ph" : "hau.edu.ph";
   const submit = async (e) => {
@@ -108,7 +108,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
           body: JSON.stringify(normalized),
         });
         setSuccess(
-          "Your account has been created and your registration has been submitted. Please wait for an administrator to approve your account before logging in.",
+          "Your account has been created and your registration has been submitted. Please wait for a Dean to approve your account before logging in.",
         );
       } else {
         const logged = await login(role, {
@@ -381,7 +381,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                 )}
                 <Field
                   label={
-                    role === "admin"
+                    role === "dean"
                       ? "Username"
                       : `Official HAU ${role === "student" ? "Student" : "Faculty"} Email`
                   }
@@ -390,7 +390,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                   <input
                     className="field"
                     required
-                    type={role === "admin" ? "text" : "email"}
+                    type={role === "dean" ? "text" : "email"}
                     value={mode === "login" ? form.identifier : form.email}
                     onChange={(e) =>
                       setForm({
@@ -400,8 +400,8 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                       })
                     }
                     placeholder={
-                      role === "admin"
-                        ? "Administrator username"
+                      role === "dean"
+                        ? "Dean username"
                         : `name@${domain}`
                     }
                     pattern={
@@ -455,7 +455,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                     : "Create Account"}
               </button>
               <p className="mt-5 text-center text-sm text-slate-500">
-                {mode === "login" && role !== "admin" ? (
+                {mode === "login" && role !== "dean" ? (
                   <>
                     New to SOCConsult?{" "}
                     <Link
@@ -476,7 +476,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                     </Link>
                   </>
                 ) : (
-                  <>Administrator accounts are issued privately.</>
+                  <>Dean accounts are issued privately.</>
                 )}
               </p>
             </form>

@@ -8,8 +8,8 @@ import {
   reportingTools,
   toSafeFacultyList,
 } from "../src/services/aiReportingService.js";
-import { answerAdminQuestion } from "../src/services/groqService.js";
-import { classifyAdminAiError } from "../src/controllers/aiController.js";
+import { answerDeanQuestion } from "../src/services/groqService.js";
+import { classifyDeanAiError } from "../src/controllers/aiController.js";
 import {
   getDeterministicPublicResponse,
   PUBLIC_GUIDE_SYSTEM_PROMPT,
@@ -32,7 +32,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
   });
 
   it("returns 401 for an unauthenticated AI request", async () => {
-    const response = await fetch(`${baseUrl}/api/admin/ai/chat`, {
+    const response = await fetch(`${baseUrl}/api/dean/ai/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Show current overview" }),
@@ -40,7 +40,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
     assert.equal(response.status, 401);
   });
 
-  it("keeps public database questions isolated from Admin reporting", async () => {
+  it("keeps public database questions isolated from Dean reporting", async () => {
     const response = await fetch(`${baseUrl}/api/public/ai/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -50,7 +50,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
     assert.equal(response.status, 200);
     assert.equal(body.success, true);
     assert.match(body.answer, /does not have access/i);
-    assert.match(body.answer, /administrators/i);
+    assert.match(body.answer, /deans/i);
   });
 
   it("validates public messages and history before calling Groq", async () => {
@@ -81,10 +81,10 @@ describe("SOCConsult AI security and reporting boundaries", () => {
     assert.equal(response.status, 429);
   });
 
-  it("rejects student and faculty roles and allows admin middleware", () => {
+  it("rejects student and faculty roles and allows dean middleware", () => {
     for (const role of ["student", "faculty"]) {
       let status;
-      authorize("admin")(
+      authorize("dean")(
         { user: { role } },
         {
           status(code) {
@@ -93,14 +93,14 @@ describe("SOCConsult AI security and reporting boundaries", () => {
           },
           json() {},
         },
-        () => assert.fail(`${role} should not pass admin authorization`),
+        () => assert.fail(`${role} should not pass dean authorization`),
       );
       assert.equal(status, 403);
     }
 
     let passed = false;
-    authorize("admin")(
-      { user: { role: "admin" } },
+    authorize("dean")(
+      { user: { role: "dean" } },
       {
         status() {
           return this;
@@ -147,7 +147,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
   });
 
   it("classifies upstream Groq rate limits separately with cooldown metadata", () => {
-    const result = classifyAdminAiError({
+    const result = classifyDeanAiError({
       status: 429,
       headers: { get: () => "18" },
     });
@@ -186,7 +186,7 @@ describe("SOCConsult AI security and reporting boundaries", () => {
       },
     };
     await assert.rejects(
-      answerAdminQuestion({
+      answerDeanQuestion({
         message: "How many faculty are registered?",
         client,
         toolHandlers: {

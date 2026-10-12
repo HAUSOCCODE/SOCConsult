@@ -26,7 +26,7 @@ router.put("/me", authenticate, updateProfile);
 router.patch(
   "/me/profile-picture",
   authenticate,
-  authorize("student", "faculty"),
+  authorize("student", "faculty", "dean"),
   limiter,
   profilePictureUpload,
   updateProfilePicture,
@@ -34,7 +34,7 @@ router.patch(
 router.delete(
   "/me/profile-picture",
   authenticate,
-  authorize("student", "faculty"),
+  authorize("student", "faculty", "dean"),
   limiter,
   removeProfilePicture,
 );

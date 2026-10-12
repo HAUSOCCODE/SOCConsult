@@ -24,7 +24,7 @@ afterEach(() => {
   while (restorations.length) restorations.pop()();
 });
 
-describe("Admin audit logs", () => {
+describe("Dean audit logs", () => {
   it("defines the required subject, role, action, and category indexes", () => {
     const indexes = AuditLog.schema
       .indexes()
@@ -132,12 +132,12 @@ describe("Admin audit logs", () => {
     assert.equal(created[0].changes.after.status, "Approved");
   });
 
-  it("rejects unauthenticated and non-admin access before audit data is queried", async () => {
+  it("rejects unauthenticated and non-dean access before audit data is queried", async () => {
     const server = app.listen(0, "127.0.0.1");
     await new Promise((resolve) => server.once("listening", resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     try {
-      let response = await fetch(`${base}/api/admin/audit-users?role=student`);
+      let response = await fetch(`${base}/api/dean/audit-users?role=student`);
       assert.equal(response.status, 401);
       const studentId = new mongoose.Types.ObjectId();
       patch(User, "findById", async () => ({
@@ -147,7 +147,7 @@ describe("Admin audit logs", () => {
         accountStatus: "Active",
         registrationStatus: "Approved",
       }));
-      response = await fetch(`${base}/api/admin/audit-users?role=student`, {
+      response = await fetch(`${base}/api/dean/audit-users?role=student`, {
         headers: {
           Authorization: `Bearer ${jwt.sign({ sub: String(studentId) }, env.jwtSecret)}`,
         },

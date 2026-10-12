@@ -119,7 +119,7 @@ const capacitySummary = async (facultyId) => {
   });
 };
 
-router.get("/mine", authorize("student", "faculty"), async (req, res) => {
+router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) => {
   const query =
     req.user.role === "student"
       ? { student: req.user.id }
@@ -152,7 +152,7 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       appointment.meetingPlatform =
         appointment.meetingPlatform || platformFor(availability);
       const canAccessLink =
-        req.user.role === "faculty" ||
+        ["faculty", "dean"].includes(req.user.role) ||
         ["Approved", "Rescheduled", "Completed"].includes(appointment.status);
       if (
         canAccessLink &&
@@ -173,7 +173,7 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
   res.json({
     appointments: safeAppointments,
     ...(studentViews && { studentViews }),
-    ...(req.user.role === "faculty" && {
+    ...(["faculty", "dean"].includes(req.user.role) && {
       availabilityCapacity: await capacitySummary(req.user.id),
     }),
   });
@@ -207,7 +207,7 @@ router.post(
       });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
-      role: "faculty",
+      role: { $in: ["faculty", "dean"] },
       registrationStatus: "Approved",
       accountStatus: "Active",
     });
@@ -341,9 +341,10 @@ router.post(
   },
 );
 
-router.get(
+export const appointmentDocumentRoutes = Router();
+appointmentDocumentRoutes.get(
   "/:id/documents/:documentId",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
     const appointment = await Appointment.findById(req.params.id).select(
       "student faculty supportingDocuments",
@@ -351,7 +352,7 @@ router.get(
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
     const allowed =
-      req.user.role === "admin" ||
+      req.deanManagementAccess === true ||
       String(appointment.student) === req.user.id ||
       String(appointment.faculty) === req.user.id;
     if (!allowed)
@@ -413,9 +414,9 @@ router.get(
     });
   },
 );
-router.delete(
+appointmentDocumentRoutes.delete(
   "/:id/documents/:documentId",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
     const appointment = await Appointment.findById(req.params.id).select(
       "student faculty supportingDocuments",
@@ -423,7 +424,7 @@ router.delete(
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
     const allowed =
-      req.user.role === "admin" ||
+      req.deanManagementAccess === true ||
       String(appointment.student) === req.user.id ||
       String(appointment.faculty) === req.user.id;
     if (!allowed)
@@ -470,9 +471,9 @@ router.delete(
     res.json({ message: "Supporting document removed." });
   },
 );
-router.get(
+appointmentDocumentRoutes.get(
   "/:id/document",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
     const appointment = await Appointment.findById(req.params.id).select(
       "+supportingDocument.data student faculty",
@@ -480,7 +481,7 @@ router.get(
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
     const allowed =
-      req.user.role === "admin" ||
+      req.deanManagementAccess === true ||
       String(appointment.student) === req.user.id ||
       String(appointment.faculty) === req.user.id;
     if (!allowed)
@@ -496,7 +497,8 @@ router.get(
     res.json({ supportingDocument });
   },
 );
-router.put("/:id/status", authorize("faculty"), async (req, res) => {
+router.use(appointmentDocumentRoutes);
+router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
   await processExpiredAvailability({ facultyId: req.user.id });
   const status = req.body.status;
   if (
@@ -718,7 +720,7 @@ router.put(
 );
 router.put(
   "/:id/reschedule-request",
-  authorize("faculty"),
+  authorize("faculty", "dean"),
   async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id))
       return res.status(400).json({ message: "Invalid appointment ID." });

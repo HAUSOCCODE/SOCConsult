@@ -22,7 +22,7 @@ const appointmentStatuses = [
   ["Rejected", "rejectedAppointments", "bg-red-600"],
 ];
 
-export default function AdminDashboard() {
+export default function DeanDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -30,7 +30,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     let active = true;
     const load = () =>
-      api("/dashboard/admin")
+      api("/dashboard/dean")
         .then((response) => {
           if (active) {
             setData(response);
@@ -56,8 +56,8 @@ export default function AdminDashboard() {
 
   const stats = data.stats || {};
   const displayName = formatPersonName(
-    user.name === "ConsultIO Administrator"
-      ? "SOCConsult Administrator"
+    user.name === "ConsultIO Dean"
+      ? "SOCConsult Dean"
       : user,
   );
   const summaries = [
@@ -272,10 +272,10 @@ function PendingRegistrations({ count }) {
         <p className={`mt-0.5 text-xl font-extrabold ${count ? "text-maroon-900" : "text-slate-700"}`}>{count}</p>
         <p className="break-words text-[11px] leading-4 text-slate-500">{subtitle}</p>
       </div>
-      <Link to="/admin/registrations" className="btn-secondary hidden shrink-0 sm:inline-flex md:hidden min-[900px]:inline-flex">
+      <Link to="/dean/registrations" className="btn-secondary hidden shrink-0 sm:inline-flex md:hidden min-[900px]:inline-flex">
         Review Users
       </Link>
-      <Link to="/admin/registrations" aria-label="Review pending users" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 sm:hidden md:grid min-[900px]:hidden">
+      <Link to="/dean/registrations" aria-label="Review pending users" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 sm:hidden md:grid min-[900px]:hidden">
         <ArrowRight size={18} aria-hidden="true" />
       </Link>
     </article>
@@ -307,7 +307,7 @@ function RecentRegistrations({ registrations, total }) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
         <Link
-          to="/admin/registrations"
+          to="/dean/registrations"
           className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-bold text-maroon-800 hover:text-maroon-900"
         >
           View all <ArrowRight size={15} aria-hidden="true" />

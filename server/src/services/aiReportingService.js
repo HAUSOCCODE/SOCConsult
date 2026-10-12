@@ -96,7 +96,7 @@ export async function getUserCounts({
   accountStatus,
   registrationStatus,
 } = {}) {
-  assertEnum(role, ["student", "faculty", "admin"], "role");
+  assertEnum(role, ["student", "faculty", "dean"], "role");
   assertEnum(accountStatus, ["Active", "Inactive"], "account status");
   assertEnum(
     registrationStatus,

@@ -1,4 +1,4 @@
-import { answerAdminQuestion } from "../services/groqService.js";
+import { answerDeanQuestion } from "../services/groqService.js";
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_HISTORY_MESSAGES = 8;
@@ -8,7 +8,7 @@ const retryAfterSeconds = (error) => {
   return Number.isFinite(value) && value > 0 ? Math.ceil(value) : 30;
 };
 
-export function classifyAdminAiError(error) {
+export function classifyDeanAiError(error) {
   if (error?.status === 429)
     return {
       status: 503,
@@ -102,15 +102,15 @@ export async function chatWithAi(req, res) {
     });
 
   try {
-    const answer = await answerAdminQuestion({ message, history });
+    const answer = await answerDeanQuestion({ message, history });
     return res.json({
       success: true,
       answer,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    const classified = classifyAdminAiError(error);
-    console.warn(`[Admin AI] ${classified.code}`);
+    const classified = classifyDeanAiError(error);
+    console.warn(`[Dean AI] ${classified.code}`);
     if (classified.retryAfter)
       res.set("Retry-After", String(classified.retryAfter));
     return res.status(classified.status).json({

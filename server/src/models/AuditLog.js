@@ -6,11 +6,11 @@ const schema = new mongoose.Schema(
       ref: "User",
       index: true,
     },
-    subjectRole: { type: String, enum: ["student", "faculty"] },
+    subjectRole: { type: String, enum: ["student", "faculty", "dean"] },
     actorUser: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     actorRole: {
       type: String,
-      enum: ["student", "faculty", "admin", "system"],
+      enum: ["student", "faculty", "dean", "system"],
       default: "system",
     },
     actor: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

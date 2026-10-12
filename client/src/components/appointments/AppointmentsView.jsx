@@ -275,7 +275,7 @@ export default function AppointmentsPage({ filter }) {
       return historySort === "oldest" ? difference : -difference;
     });
   }
-  if (user.role === "faculty" && !filter) {
+  if (["faculty", "dean"].includes(user.role) && !filter) {
     const now = new Date();
     const today = now.toDateString();
     shown = items.filter((item) => {
@@ -381,7 +381,7 @@ export default function AppointmentsPage({ filter }) {
   );
   return (
     <div
-      className={`w-full min-w-0 max-w-full space-y-6 ${user.role === "student" && filter === "history" ? "student-history space-y-4 pb-16 md:space-y-6 md:pb-0" : ""} ${user.role === "faculty" && filter === "history" ? "pb-16 md:pb-20" : ""}`}
+      className={`w-full min-w-0 max-w-full space-y-6 ${user.role === "student" && filter === "history" ? "student-history space-y-4 pb-16 md:space-y-6 md:pb-0" : ""} ${["faculty", "dean"].includes(user.role) && filter === "history" ? "pb-16 md:pb-20" : ""}`}
     >
       <ConfirmDialog
         open={Boolean(rejectTarget)}
@@ -440,7 +440,7 @@ export default function AppointmentsPage({ filter }) {
             Review your completed, rejected, and cancelled consultation records.
           </p>
         </div>
-      ) : user.role === "faculty" && !filter ? (
+      ) : ["faculty", "dean"].includes(user.role) && !filter ? (
         <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
           <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 md:block" />
           <div className="relative flex min-w-0 items-center justify-between gap-5">
@@ -463,7 +463,7 @@ export default function AppointmentsPage({ filter }) {
       ) : (
         <div>
           <h1
-            className={`font-bold tracking-tight text-maroon-900 ${user.role === "faculty" && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}
+            className={`font-bold tracking-tight text-maroon-900 ${["faculty", "dean"].includes(user.role) && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}
           >
             {filter === "requests"
               ? "Appointment Requests"
@@ -520,7 +520,7 @@ export default function AppointmentsPage({ filter }) {
           </label>
         </div>
       )}
-      {user.role === "faculty" && filter === "history" && (
+      {["faculty", "dean"].includes(user.role) && filter === "history" && (
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div
             className="grid min-w-0 grid-cols-2 gap-2 min-[480px]:flex min-[480px]:flex-wrap"
@@ -562,7 +562,7 @@ export default function AppointmentsPage({ filter }) {
           </label>
         </div>
       )}
-      {user.role === "faculty" &&
+      {["faculty", "dean"].includes(user.role) &&
         filter === "requests" &&
         availabilityCapacity.length > 0 && (
           <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4">
@@ -636,7 +636,7 @@ export default function AppointmentsPage({ filter }) {
           onClose={() => setDetails(null)}
         />
       )}
-      {details && user.role === "faculty" && filter !== "requests" && (
+      {details && ["faculty", "dean"].includes(user.role) && filter !== "requests" && (
         <FacultyAppointmentDetailsModal
           appointment={details}
           onClose={() => setDetails(null)}
@@ -952,7 +952,7 @@ export default function AppointmentsPage({ filter }) {
           </div>,
           document.body,
         )}
-      {rescheduleTarget && user.role === "faculty" && (
+      {rescheduleTarget && ["faculty", "dean"].includes(user.role) && (
         <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-4">
           <div className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="flex justify-between gap-4">
@@ -1009,7 +1009,7 @@ export default function AppointmentsPage({ filter }) {
           onPageChange={setAppointmentsPage}
           renderActions={renderStudentAppointmentActions}
         />
-      ) : user.role === "faculty" && !filter ? (
+      ) : ["faculty", "dean"].includes(user.role) && !filter ? (
         <FacultyCurrentAppointments
           appointments={shown}
           activeFilter={appointmentTab}
@@ -1096,7 +1096,7 @@ export default function AppointmentsPage({ filter }) {
             >
               <div
                 className={`flex min-w-0 flex-col gap-4 ${
-                  user.role === "faculty" && filter !== "requests"
+                  ["faculty", "dean"].includes(user.role) && filter !== "requests"
                     ? "xl:flex-row xl:items-center xl:justify-between xl:gap-5"
                     : "lg:flex-row lg:items-start lg:justify-between lg:gap-6"
                 }`}
@@ -1144,7 +1144,7 @@ export default function AppointmentsPage({ filter }) {
                       </dl>
                     </>
                   )}
-                  {filter !== "requests" && user.role !== "faculty" && (
+                  {filter !== "requests" && !["faculty", "dean"].includes(user.role) && (
                     <>
                       <div className="flex flex-wrap items-center gap-3">
                         <h2 className="min-w-0 break-words font-bold">
@@ -1198,7 +1198,7 @@ export default function AppointmentsPage({ filter }) {
                         {x.consultationMode || "Online"} ·{" "}
                         {x.location || "Location to be confirmed"}
                       </p>
-                      {user.role === "faculty" && x.student?.program && (
+                      {["faculty", "dean"].includes(user.role) && x.student?.program && (
                         <p className="mt-1 break-words text-sm text-slate-500">
                           Program: {x.student.program}
                         </p>
@@ -1217,7 +1217,7 @@ export default function AppointmentsPage({ filter }) {
                           </p>
                         </div>
                       )}
-                      {user.role === "faculty" && x.rescheduleRequested && (
+                      {["faculty", "dean"].includes(user.role) && x.rescheduleRequested && (
                         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                           <p className="font-bold">
                             Pending Reschedule Request
@@ -1262,7 +1262,7 @@ export default function AppointmentsPage({ filter }) {
                   className={`flex w-full min-w-0 flex-wrap gap-2 ${
                     filter === "requests"
                       ? "lg:w-52 lg:shrink-0 lg:flex-col"
-                      : user.role === "faculty"
+                      : ["faculty", "dean"].includes(user.role)
                         ? "border-t border-slate-200 pt-3 xl:w-[22rem] xl:shrink-0 xl:justify-end xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
                         : "lg:w-auto lg:shrink-0"
                   }`}
@@ -1274,7 +1274,7 @@ export default function AppointmentsPage({ filter }) {
                   >
                     View Details
                   </button>
-                  {user.role === "faculty" && x.status === "Pending" && (
+                  {["faculty", "dean"].includes(user.role) && x.status === "Pending" && (
                     <>
                       <button
                         disabled={updatingIds.has(x._id)}
@@ -1301,7 +1301,7 @@ export default function AppointmentsPage({ filter }) {
                       </button>
                     </>
                   )}
-                  {user.role === "faculty" &&
+                  {["faculty", "dean"].includes(user.role) &&
                     !x.rescheduleRequested &&
                     ["Approved", "Rescheduled"].includes(x.status) && (
                       <>
@@ -1335,7 +1335,7 @@ export default function AppointmentsPage({ filter }) {
                         Choose New Schedule
                       </button>
                     )}
-                  {user.role === "faculty" &&
+                  {["faculty", "dean"].includes(user.role) &&
                     x.rescheduleRequestStatus === "Pending" && (
                       <>
                         <button
@@ -2236,12 +2236,12 @@ function ConsultationHistoryTable({
     safePage * HISTORY_ITEMS_PER_PAGE,
   );
   const facultyEmptySlots =
-    role === "faculty" && appointments.length > 0
+    ["faculty", "dean"].includes(role) && appointments.length > 0
       ? Math.max(0, HISTORY_ITEMS_PER_PAGE - pageAppointments.length)
       : 0;
-  const personLabel = role === "faculty" ? "Student" : "Faculty";
+  const personLabel = ["faculty", "dean"].includes(role) ? "Student" : "Faculty";
   const personFor = (appointment) =>
-    role === "faculty" ? appointment.student : appointment.faculty;
+    ["faculty", "dean"].includes(role) ? appointment.student : appointment.faculty;
   useEffect(() => {
     if (currentPage > totalPages) onPageChange(totalPages);
   }, [currentPage, onPageChange, totalPages]);
@@ -2335,7 +2335,7 @@ function ConsultationHistoryTable({
                 {pageAppointments.map((appointment) => (
                   <tr
                     key={appointment._id}
-                    className={`${role === "faculty" ? "h-14" : ""} align-middle hover:bg-slate-50`}
+                    className={`${["faculty", "dean"].includes(role) ? "h-14" : ""} align-middle hover:bg-slate-50`}
                   >
                     <td className="px-2.5 py-2 whitespace-nowrap text-slate-600 2xl:px-3">
                       {date(appointment.startAt)}

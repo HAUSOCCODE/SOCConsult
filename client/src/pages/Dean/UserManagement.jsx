@@ -35,8 +35,8 @@ export default function UserManagement({ initialTab = "All Users" }) {
     setError("");
     setLoading(true);
     return Promise.all([
-      api("/admin/users"),
-      api("/admin/registrations?status=Pending"),
+      api("/dean/users"),
+      api("/dean/registrations?status=Pending"),
     ])
       .then(([accountsResponse, registrationsResponse]) => {
         const accounts = Array.isArray(accountsResponse?.users)
@@ -66,7 +66,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
     setSelected(user);
     setDetailLoading(true);
     try {
-      const data = await api(`/admin/users/${user._id}`);
+      const data = await api(`/dean/users/${user._id}`);
       setSelected(data.user);
     } catch (requestError) {
       toast.error(requestError.message || "Unable to load user details.");
@@ -80,11 +80,11 @@ export default function UserManagement({ initialTab = "All Users" }) {
     try {
       const data =
         type === "approve" || type === "reject"
-          ? await api(`/admin/registrations/${user._id}/${type}`, {
+          ? await api(`/dean/registrations/${user._id}/${type}`, {
               method: "PUT",
               body: "{}",
             })
-          : await api(`/admin/users/${user._id}/status`, {
+          : await api(`/dean/users/${user._id}/status`, {
               method: "PUT",
               body: JSON.stringify({ accountStatus: type }),
             });
@@ -665,7 +665,7 @@ function ResetPassword({ user, onClose, onSuccess }) {
       return setError(passwordRule);
     setBusy(true);
     try {
-      const data = await api(`/admin/users/${user._id}/reset-password`, {
+      const data = await api(`/dean/users/${user._id}/reset-password`, {
         method: "PUT",
         body: JSON.stringify(form),
       });

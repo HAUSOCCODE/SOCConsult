@@ -43,7 +43,7 @@ const timeLabel = (value) => {
     : "Not available";
 };
 
-export default function AdminRecordsList({ title }) {
+export default function DeanRecordsList({ title }) {
   const [appointments, setAppointments] = useState(null);
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -54,7 +54,7 @@ export default function AdminRecordsList({ title }) {
 
   const load = () => {
     setError("");
-    return api("/admin/appointments")
+    return api("/dean/appointments")
       .then((data) =>
         setAppointments(
           Array.isArray(data?.appointments) ? data.appointments : [],
@@ -179,7 +179,7 @@ export default function AdminRecordsList({ title }) {
           <div className="grid grid-cols-1 gap-3 min-[900px]:hidden">
             {pageAppointments.map((appointment) => {
               const expanded = expandedAppointmentId === appointment._id;
-              const detailsId = `admin-appointment-details-${appointment._id}`;
+              const detailsId = `dean-appointment-details-${appointment._id}`;
               const subject = appointment.subject || "Consultation";
               return (
                 <article

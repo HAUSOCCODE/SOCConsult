@@ -264,7 +264,7 @@ export async function rescheduleFacultyAppointment(req, res) {
         subjectUser: updated.student._id,
         subjectRole: "student",
         actorUser: req.user.id,
-        actorRole: "faculty",
+        actorRole: req.user.role,
         actor: req.user.id,
         action: "appointment_rescheduled",
         category: "Appointment",
@@ -286,7 +286,7 @@ export async function rescheduleFacultyAppointment(req, res) {
         targetId: updated._id,
       };
       await AuditLog.create(
-        [audit, { ...audit, subjectUser: req.user.id, subjectRole: "faculty" }],
+        [audit, { ...audit, subjectUser: req.user.id, subjectRole: req.user.role }],
         { session },
       );
     });

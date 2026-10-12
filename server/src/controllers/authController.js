@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import AuditLog from "../models/AuditLog.js";
+import { migrateDeanAccount } from "../services/deanAccountMigrationService.js";
 import { env } from "../config/env.js";
 import { STUDENT_PROGRAMS } from "../config/programs.js";
 import {
@@ -83,7 +85,7 @@ export async function register(req, res) {
   if (existing?.registrationStatus === "Pending")
     return res.status(409).json({
       message:
-        "An account with this email has already been created and is awaiting administrator approval. You do not need to register again.",
+        "An account with this email has already been created and is awaiting dean approval. You do not need to register again.",
     });
   if (existing?.registrationStatus === "Approved")
     return res.status(409).json({
@@ -92,7 +94,7 @@ export async function register(req, res) {
   if (existing)
     return res.status(409).json({
       message:
-        "A registration with this email already exists. Please contact the School of Computing administrator.",
+        "A registration with this email already exists. Please contact the School of Computing dean.",
     });
   const idField = role === "student" ? "studentId" : "employeeId";
   const idValue = (req.body[idField] || "").trim();
@@ -125,14 +127,14 @@ export async function register(req, res) {
     accountStatus: "Inactive",
   });
   await logActivity(`${role}_registered`, user.id, "User", user.id, { role });
-  const admins = await User.find({
-    role: "admin",
+  const deans = await User.find({
+    role: "dean",
     accountStatus: "Active",
   }).select("_id");
   await Promise.all(
-    admins.map((admin) =>
+    deans.map((dean) =>
       notify(
-        admin.id,
+        dean.id,
         "registration",
         `New ${role} registration`,
         `${name} is awaiting approval.`,
@@ -141,14 +143,14 @@ export async function register(req, res) {
     ),
   );
   res.status(201).json({
-    message: "Registration submitted and awaiting administrator approval.",
+    message: "Registration submitted and awaiting dean approval.",
     user: publicUser(user),
   });
 }
 
 export async function login(req, res) {
   const requestedRole = req.params.role;
-  if (!["student", "faculty", "admin"].includes(requestedRole))
+  if (!["student", "faculty", "dean"].includes(requestedRole))
     return res.status(404).json({ message: "Unknown role." });
   const password = req.body.password || "";
   if (!validPassword(password))
@@ -157,7 +159,7 @@ export async function login(req, res) {
     req.body.identifier || req.body.email || req.body.username,
   );
   const user = await User.findOne(
-    requestedRole === "admin"
+    requestedRole === "dean"
       ? { username: identifier }
       : { email: identifier },
   ).select("+password +profilePicture");
@@ -169,20 +171,20 @@ export async function login(req, res) {
     return res
       .status(403)
       .json({ message: "This account cannot access the selected portal." });
-  if (user.role !== "admin" && user.registrationStatus === "Pending")
+  if (user.role !== "dean" && user.registrationStatus === "Pending")
     return res.status(403).json({
       message:
-        "Your account has already been created. Please wait for an administrator to approve your registration before you can access SOCConsult. You do not need to register again.",
+        "Your account has already been created. Please wait for a Dean to approve your registration before you can access SOCConsult. You do not need to register again.",
     });
-  if (user.role !== "admin" && user.registrationStatus === "Rejected")
+  if (user.role !== "dean" && user.registrationStatus === "Rejected")
     return res.status(403).json({
       message:
-        "Your registration was not approved. Please contact the system administrator if you believe this requires review.",
+        "Your registration was not approved. Please contact the Dean if you believe this requires review.",
     });
   if (user.accountStatus !== "Active")
     return res.status(403).json({
       message:
-        "Your account is currently inactive. Please contact the system administrator for assistance.",
+        "Your account is currently inactive. Please contact the Dean for assistance.",
     });
   await logActivity("login", user.id, "User", user.id, { role: user.role });
   res.json({ token: tokenFor(user), user: publicUser(user) });
@@ -230,9 +232,9 @@ export async function updateProfile(req, res) {
       name: formatFullName(nameValidation.values),
     });
   }
-  if (req.user.role !== "faculty") delete updates.position;
+  if (!["faculty", "dean"].includes(req.user.role)) delete updates.position;
   if (
-    req.user.role === "faculty" &&
+    ["faculty", "dean"].includes(req.user.role) &&
     req.body.position !== undefined &&
     !updates.position
   )
@@ -355,14 +357,14 @@ export async function changePassword(req, res) {
   res.json({ message: "Password changed successfully." });
 }
 
-export async function ensureAdmin() {
-  const existing = await User.findOne({ role: "admin" });
-  if (existing) return;
+export async function ensureDean() {
+  const result = await migrateDeanAccount({ users: User.collection, auditLogs: AuditLog.collection, username: env.deanUsername });
+  if (result.status !== "missing") return;
   await User.create({
-    name: "SOCConsult Administrator",
-    username: env.adminUsername,
-    password: await bcrypt.hash(env.adminPassword, 12),
-    role: "admin",
+    name: "SOCConsult Dean",
+    username: env.deanUsername,
+    password: await bcrypt.hash(env.deanPassword, 12),
+    role: "dean",
     registrationStatus: "Approved",
     accountStatus: "Active",
   });

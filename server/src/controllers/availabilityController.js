@@ -66,11 +66,11 @@ export const getAvailableFaculty = async (_req, res) => {
   await processExpiredAvailability();
   const now = new Date();
   const faculty = await User.find({
-    role: "faculty",
+    role: { $in: ["faculty", "dean"] },
     registrationStatus: "Approved",
     accountStatus: "Active",
   }).select(
-    "name email employeeId position specialization office +profilePicture",
+    "name email role employeeId position specialization office +profilePicture",
   );
   const ids = faculty.map((item) => item.id);
   const availability = await Availability.find({
@@ -98,10 +98,11 @@ export const getAvailableFaculty = async (_req, res) => {
 };
 
 export const getFacultyAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.params.facultyId });
+  const facultyId = req.user.role === "student" ? req.params.facultyId : req.user.id;
+  await processExpiredAvailability({ facultyId });
   const now = new Date();
   const schedules = await Availability.find({
-    faculty: req.params.facultyId,
+    faculty: facultyId,
     isActive: true,
     endAt: { $gt: now },
   }).sort({ startAt: 1 });
@@ -478,6 +479,7 @@ export const deleteAvailability = async (req, res) => {
   if (
     await Appointment.exists({
       availability: req.params.id,
+      faculty: req.user.id,
       status: { $in: ["Pending", "Approved", "Rescheduled"] },
     })
   )

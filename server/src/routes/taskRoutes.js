@@ -6,8 +6,8 @@ import {
   getTasks,
 } from "../controllers/taskController.js";
 const router = Router();
-router.use(authenticate, authorize("student", "faculty"));
+router.use(authenticate, authorize("student", "faculty", "dean"));
 router.get("/", getTasks);
-router.post("/", authorize("faculty"), createTask);
+router.post("/", authorize("faculty", "dean"), createTask);
 router.put("/:id/complete", authorize("student"), completeTask);
 export default router;
