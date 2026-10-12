@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import {
   changePassword,
   login,
+  logout,
   me,
   register,
   removeProfilePicture,
@@ -18,9 +19,11 @@ const limiter = rateLimit({
   limit: 50,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  message: { message: "Too many authentication attempts. Please try again later." },
 });
 router.post("/register/:role", limiter, register);
 router.post("/login/:role", limiter, login);
+router.post("/logout", authenticate, logout);
 router.get("/me", authenticate, me);
 router.put("/me", authenticate, updateProfile);
 router.patch(

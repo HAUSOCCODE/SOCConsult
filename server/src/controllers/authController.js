@@ -30,7 +30,7 @@ const validPassword = (password) =>
   /[0-9]/.test(password);
 const passwordValidationMessage =
   "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed.";
-import { logActivity, notify } from "../services/activityService.js";
+import { logActivity, notify, recordAuditEvent } from "../services/activityService.js";
 const publicUser = (user) => ({
   id: user.id,
   firstName: user.firstName || "",
@@ -152,20 +152,35 @@ export async function login(req, res) {
   const requestedRole = req.params.role;
   if (!["student", "faculty", "dean"].includes(requestedRole))
     return res.status(404).json({ message: "Unknown role." });
-  const password = req.body.password || "";
-  if (!validPassword(password))
-    return res.status(400).json({ message: passwordValidationMessage });
-  const identifier = normalize(
-    req.body.identifier || req.body.email || req.body.username,
-  );
+  const fail = async (user) => {
+    if (requestedRole === "dean") {
+      await recordAuditEvent({
+        subjectUser: user?.id,
+        actorRole: "system",
+        action: "login_failed",
+        category: "Authentication",
+        description: "Failed sign-in",
+        metadata: { role: requestedRole },
+      });
+    }
+    return res.status(401).json({ message: "Invalid credentials." });
+  };
+  const password = req.body?.password;
+  const rawIdentifier = req.body?.identifier ?? req.body?.email ?? req.body?.username;
+  if (typeof rawIdentifier !== "string" || typeof password !== "string")
+    return fail();
+  const identifier = normalize(rawIdentifier);
+  if (!identifier || !password) return fail();
   const user = await User.findOne(
     requestedRole === "dean"
       ? { username: identifier }
       : { email: identifier },
   ).select("+password +profilePicture");
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message: "Invalid credentials." });
-  }
+  if (!user || !(await bcrypt.compare(password, user.password)))
+    return fail(user);
+  if (requestedRole === "dean" &&
+      (user.role !== "dean" || user.accountStatus !== "Active"))
+    return fail(user);
   // The stored database role—not the selected frontend role—is authoritative.
   if (user.role !== requestedRole)
     return res
@@ -188,6 +203,12 @@ export async function login(req, res) {
     });
   await logActivity("login", user.id, "User", user.id, { role: user.role });
   res.json({ token: tokenFor(user), user: publicUser(user) });
+}
+
+// Logout records activity; JWT expiry remains the existing session boundary.
+export async function logout(req, res) {
+  await logActivity("logout", req.user.id, "User", req.user.id, { role: req.user.role });
+  res.json({ message: "Signed out successfully." });
 }
 
 export async function me(req, res) {
