@@ -8,6 +8,8 @@ import {
   UserRound,
   LockKeyhole,
 } from "lucide-react";
+import { Navigate, useLocation } from "react-router-dom";
+import { legacyFacultyDestination } from "../utils/deanWorkspace";
 import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
 import SOCConsultFacultyAIAssistant from "../components/faculty/SOCConsultFacultyAIAssistant";
@@ -40,10 +42,21 @@ const navigation = [
 ];
 export default function FacultyLayout() {
   const { user } = useAuth();
-  const links = user?.role === "dean" ? [...navigation, { icon: LayoutDashboard, label: "Dean Management", path: "/dean/dashboard" }] : navigation;
+  const location = useLocation();
+  if (user?.role === "dean")
+    return (
+      <Navigate
+        to={legacyFacultyDestination(
+          location.pathname,
+          location.search,
+          location.hash,
+        )}
+        replace
+      />
+    );
   return (
     <>
-      <RoleLayout role="faculty" navigation={links} />
+      <RoleLayout role="faculty" navigation={navigation} />
       <SOCConsultFacultyAIAssistant />
     </>
   );

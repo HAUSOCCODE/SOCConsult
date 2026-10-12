@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import WorkspaceSwitcher from "./navigation/WorkspaceSwitcher";
 import Brand from "./Brand";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/apiClient";
@@ -53,7 +54,7 @@ function SidebarTooltip({ label, enabled, children, className = "" }) {
   );
 }
 
-export default function RoleLayout({ role, navigation }) {
+export default function RoleLayout({ role, navigation, workspaceLabel, notificationsPath }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -72,8 +73,8 @@ export default function RoleLayout({ role, navigation }) {
     );
   const navigate = useNavigate();
   const currentPage =
-    navigation.find(({ path }) => location.pathname === path)?.label ||
-    "Dashboard";
+    navigation.find(({ path }) => location.pathname === path.split("?")[0])?.label ||
+    ({ "/dean/appointments": "Appointments Management", "/dean/audit-logs": "Audit Logs", "/dean/faculty/calendar": "Consultation Calendar" }[location.pathname] || "Dashboard");
   const displayName =
     user.role === "dean" && ["ConsultIO Administrator", "SOCConsult Administrator", "ConsultIO Dean"].includes(user.name)
       ? "SOCConsult Dean"
@@ -240,7 +241,7 @@ export default function RoleLayout({ role, navigation }) {
         className={`box-border w-full min-w-0 max-w-full flex-1 transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-20" : "lg:pl-72"}`}
       >
         <header
-          className={`sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white shadow-sm md:min-h-20 md:px-6 md:py-3 xl:px-7 ${compactStudentHeader ? "min-h-16 px-4 py-2" : "min-h-20 px-3 py-3 min-[360px]:px-4 sm:px-5"}`}
+          className={`sticky top-0 z-30 flex items-center gap-3 ${role === "dean" ? "flex-wrap" : ""} border-b border-slate-200 bg-white shadow-sm md:min-h-20 md:px-6 md:py-3 xl:px-7 ${compactStudentHeader ? "min-h-16 px-4 py-2" : "min-h-20 px-3 py-3 min-[360px]:px-4 sm:px-5"}`}
         >
           <button
             onClick={() => setOpen(true)}
@@ -254,7 +255,7 @@ export default function RoleLayout({ role, navigation }) {
               SOCConsult
             </p>
             <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.14em] text-gold-600 sm:text-xs sm:tracking-[0.18em]">
-              {role} workspace
+              {workspaceLabel || `${role} workspace`}
             </p>
             <h1
               className={`mt-0.5 whitespace-normal text-sm font-bold leading-5 text-slate-900 sm:text-base ${compactStudentHeader ? "hidden md:block" : ""}`}
@@ -262,9 +263,10 @@ export default function RoleLayout({ role, navigation }) {
               {currentPage}
             </h1>
           </div>
+          {role === "dean" && <div className="order-last w-full sm:order-none sm:w-auto sm:max-w-56"><WorkspaceSwitcher /></div>}
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <NavLink
-              to={`/${role}/notifications`}
+              to={notificationsPath || `/${role}/notifications`}
               className={`relative grid place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-maroon-200 hover:bg-maroon-50 hover:text-maroon-800 ${compactStudentHeader ? "h-10 w-10 md:h-11 md:w-11" : "h-11 w-11"}`}
             >
               <Bell size={19} />

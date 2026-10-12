@@ -25,6 +25,7 @@ import ManageAvailability from "./pages/Faculty/ManageAvailability";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyProfile from "./pages/Faculty/FacultyProfile";
 import FacultySecuritySettings from "./pages/Faculty/FacultySecuritySettings";
+import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
 import DeanLayout from "./layouts/DeanLayout";
 import DeanDashboard from "./pages/Dean/DeanDashboard";
 import UserManagement from "./pages/Dean/UserManagement";
@@ -36,9 +37,18 @@ import DeanNotifications from "./pages/Dean/DeanNotifications";
 import AuditLogs from "./pages/Dean/AuditLogs";
 import NotFoundPage from "./pages/Public/NotFoundPage";
 import RouteDocumentTitle from "./components/RouteDocumentTitle";
+function DeanRouteRedirect({ to }) {
+  const location = useLocation();
+  return <Navigate to={to + location.search + location.hash} replace />;
+}
 function LegacyManagementRedirect() {
   const location = useLocation();
-  return <Navigate to={`${location.pathname.replace(/^\/admin(?=\/|$)/, "/dean")}${location.search}${location.hash}`} replace />;
+  return (
+    <Navigate
+      to={`${location.pathname.replace(/^\/admin(?=\/|$)/, "/dean")}${location.search}${location.hash}`}
+      replace
+    />
+  );
 }
 export default function App() {
   return (
@@ -98,7 +108,7 @@ export default function App() {
             <Route path="users" element={<UserManagement />} />
             <Route
               path="registrations"
-              element={<UserManagement initialTab="Pending Registrations" />}
+              element={<DeanRouteRedirect to="/dean/users" />}
             />
             <Route path="consultations" element={<ConsultationOverview />} />
             <Route path="appointments" element={<AppointmentsManagement />} />
@@ -109,7 +119,61 @@ export default function App() {
               path="logs"
               element={<Navigate to="/dean/dashboard" replace />}
             />
-            <Route path="settings" element={<SystemSettings />} />
+            <Route
+              path="settings"
+              element={<DeanRouteRedirect to="/dean/account" />}
+            />
+            <Route path="account" element={<SystemSettings />} />
+            <Route
+              path="import"
+              element={<DeferredFeaturePage title="CSV Import" />}
+            />
+            <Route
+              path="attendance-review"
+              element={<DeferredFeaturePage title="Attendance Review" />}
+            />
+            <Route path="faculty">
+              <Route
+                index
+                element={<DeanRouteRedirect to="/dean/faculty/dashboard" />}
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <FacultyDashboard
+                    routeBase="/dean/faculty"
+                    consultationsPath="/dean/faculty/consultations"
+                  />
+                }
+              />
+              <Route path="requests" element={<AppointmentRequests />} />
+              <Route path="availability" element={<ManageAvailability />} />
+              <Route path="consultations" element={<FacultyAppointments />} />
+              <Route path="history" element={<FacultyHistory />} />
+              <Route
+                path="reports"
+                element={
+                  <DeferredFeaturePage
+                    title="My Faculty PDF Reports"
+                    personal
+                  />
+                }
+              />
+              <Route
+                path="calendar"
+                element={
+                  <FacultyConsultationCalendar consultationsPath="/dean/faculty/consultations" />
+                }
+              />
+              <Route
+                path="appointments"
+                element={<DeanRouteRedirect to="/dean/faculty/consultations" />}
+              />
+              <Route
+                path="*"
+                element={<NotFoundPage dashboard="/dean/faculty/dashboard" />}
+              />
+            </Route>
             <Route
               path="*"
               element={<NotFoundPage dashboard="/dean/dashboard" />}

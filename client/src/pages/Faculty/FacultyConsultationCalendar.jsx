@@ -93,7 +93,7 @@ const range = (count, start) =>
   Array.from({ length: count }, (_, index) => addDays(start, index));
 const eventStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Approved;
 
-export default function FacultyConsultationCalendar() {
+export default function FacultyConsultationCalendar({ consultationsPath = "/faculty/appointments" }) {
   const today = manilaDateKey();
   const [view, setView] = useState("month");
   const [anchor, setAnchor] = useState(today);
@@ -649,7 +649,7 @@ function UpcomingPanel({ items, loading, onOpenEvent }) {
         </div>
       )}
       <Link
-        to="/faculty/appointments"
+        to={consultationsPath}
         className="btn-secondary mt-4 flex h-11 w-full"
       >
         View all appointments

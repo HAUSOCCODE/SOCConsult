@@ -1,3 +1,4 @@
+import { isDeanManagementPath } from "../../utils/deanWorkspace";
 import { useLocation } from "react-router-dom";
 import { Download, Eye, FileText, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -71,7 +72,7 @@ export default function SupportingDocumentViewer({
 }) {
   const toast = useToast();
   const { pathname } = useLocation();
-  const management = pathname.startsWith("/dean/");
+  const management = isDeanManagementPath(pathname);
   const documents = useMemo(() => metadataFor(appointment, management), [appointment, management]);
   const cache = useRef(new Map());
   const [previewTarget, setPreviewTarget] = useState(null);
