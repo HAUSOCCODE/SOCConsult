@@ -422,15 +422,15 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                     <input
                       className="field pr-12"
                       required
-                      minLength="8"
-                      pattern="(?=.*[A-Z])(?=.*[0-9])\S{8,}"
-                      title="Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed."
+                      minLength={mode === "register" ? 8 : undefined}
+                      pattern={mode === "register" ? "(?=.*[A-Z])(?=.*[0-9])\\S{8,}" : undefined}
+                      title={mode === "register" ? "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed." : undefined}
                       type={show ? "text" : "password"}
                       value={form.password}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          password: e.target.value.replace(/\s/g, ""),
+                          password: mode === "login" ? e.target.value : e.target.value.replace(/\s/g, ""),
                         })
                       }
                     />

@@ -32,10 +32,19 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     return data.user;
   };
-  const logout = () => {
-    sessionStorage.removeItem("consultio_token");
-    sessionStorage.removeItem("consultio_user");
-    setUser(null);
+  const logout = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      await api("/auth/logout", { method: "POST", signal: controller.signal });
+    } catch {
+      // Local sign-out must complete even when the audit endpoint is unavailable.
+    } finally {
+      clearTimeout(timeout);
+      sessionStorage.removeItem("consultio_token");
+      sessionStorage.removeItem("consultio_user");
+      setUser(null);
+    }
   };
   const updateUser = (nextUser) => {
     sessionStorage.setItem("consultio_user", JSON.stringify(nextUser));

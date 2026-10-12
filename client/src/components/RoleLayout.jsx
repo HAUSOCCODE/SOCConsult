@@ -119,8 +119,8 @@ export default function RoleLayout({ role, navigation }) {
       window.removeEventListener("focus", load);
     };
   }, []);
-  const signOut = () => {
-    logout();
+  const signOut = async () => {
+    await logout();
     navigate("/", { replace: true });
   };
   return (

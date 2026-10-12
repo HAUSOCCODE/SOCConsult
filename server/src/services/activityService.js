@@ -15,6 +15,7 @@ const ACTIONS = {
   dean_password_reset: ["Password reset by dean", "Account"],
   password_changed: ["Password changed", "Account"],
   login: ["Successful sign-in", "Authentication"],
+  logout: ["Signed out", "Authentication"],
   profile_updated: ["Profile information updated", "Profile"],
   profile_picture_updated: ["Profile picture updated", "Profile"],
   profile_picture_removed: ["Profile picture removed", "Profile"],
@@ -109,7 +110,10 @@ export async function recordAuditEvent({
         [subjectUser, ...(subjectUsers || [])].filter(Boolean).map(String),
       ),
     ];
-    if (!ids.length) return;
+    // The schema permits subjectless system events. Keep this exception narrow.
+    const subjectlessFailure = !ids.length && action === "login_failed" &&
+      category === "Authentication" && actorRole === "system" && !actorUser;
+    if (!ids.length && !subjectlessFailure) return;
     const records = await Promise.all(ids.map((id) => User.findById(id)));
     const subjects = records.filter((user) =>
       ["student", "faculty", "dean"].includes(user?.role),
@@ -126,10 +130,10 @@ export async function recordAuditEvent({
     };
     const safeMetadata = sanitizeObject(metadata);
     await Promise.all(
-      subjects.map((subject) =>
+      (subjectlessFailure ? [null] : subjects).map((subject) =>
         AuditLog.create({
-          subjectUser: subject._id,
-          subjectRole: subject.role,
+          subjectUser: subject?._id,
+          subjectRole: subject?.role,
           actorUser: actorUser || undefined,
           actorRole: actorRole || actor?.role || "system",
           actor: actorUser || undefined,
