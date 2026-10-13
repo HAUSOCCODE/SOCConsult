@@ -6,75 +6,15 @@ import Task from "../models/Task.js";
 import Availability from "../models/Availability.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
-import { getDateRangeFilter } from "../services/aiReportingService.js";
+import { getDateRangeFilter } from "../services/calendarRangeService.js";
+import { getDeanDashboard } from "../controllers/deanDashboardController.js";
 const router = Router();
-router.use(authenticate);
-router.get("/dean", authorize("dean"), async (_req, res) => {
-  const statuses = [
-    "Pending",
-    "Approved",
-    "Rescheduled",
-    "Completed",
-    "Cancelled",
-    "Rejected",
-  ];
-  const [
-    students,
-    faculty,
-    users,
-    appointments,
-    pendingRegistrations,
-    statusCounts,
-    recentRegistrations,
-    recentAppointments,
-  ] = await Promise.all([
-    User.countDocuments({ role: "student", registrationStatus: "Approved" }),
-    User.countDocuments({ role: "faculty", registrationStatus: "Approved" }),
-    User.countDocuments({ role: { $in: ["student", "faculty"] } }),
-    Appointment.countDocuments(),
-    User.countDocuments({
-      role: { $in: ["student", "faculty"] },
-      registrationStatus: "Pending",
-    }),
-    Promise.all(
-      statuses.map((status) =>
-        Appointment.countDocuments(
-          status === "Pending"
-            ? { status: { $in: ["Pending", "Awaiting Faculty Schedule"] } }
-            : { status },
-        ),
-      ),
-    ),
-    User.find({
-      role: { $in: ["student", "faculty"] },
-      registrationStatus: "Pending",
-    })
-      .select("name email role createdAt")
-      .sort({ createdAt: -1 })
-      .limit(5),
-    Appointment.find()
-      .populate("student faculty", "name")
-      .sort({ createdAt: -1 })
-      .limit(5),
-  ]);
-  res.json({
-    stats: {
-      totalStudents: students,
-      totalFaculty: faculty,
-      totalUsers: users,
-      totalAppointments: appointments,
-      pendingRegistrations,
-      pendingAppointments: statusCounts[0],
-      approvedAppointments: statusCounts[1],
-      rescheduledAppointments: statusCounts[2],
-      completedConsultations: statusCounts[3],
-      cancelledAppointments: statusCounts[4],
-      rejectedAppointments: statusCounts[5],
-    },
-    recentRegistrations,
-    recentAppointments,
-  });
+router.use("/dean", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
 });
+router.use(authenticate);
+router.get("/dean", authorize("dean"), getDeanDashboard);
 router.get("/student", authorize("student"), async (req, res) => {
   const now = new Date();
   const weekRange = getDateRangeFilter("this_week", now);
