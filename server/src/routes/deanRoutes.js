@@ -1,4 +1,5 @@
 import { Router } from "express";
+import accountImportRoutes from "./accountImportRoutes.js";
 import { appointmentDocumentRoutes } from "./appointmentRoutes.js";
 import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
@@ -24,7 +25,9 @@ import {
 } from "../controllers/deanController.js";
 
 const router = Router();
+router.use("/account-imports", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+router.use("/account-imports", accountImportRoutes);
 router.use("/appointments", (req, _res, next) => { req.deanManagementAccess = true; next(); }, appointmentDocumentRoutes);
 const aiRateLimit = rateLimit({
   windowMs: 60 * 1000,

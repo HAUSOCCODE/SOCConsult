@@ -33,9 +33,15 @@ async function loadComponent(path, imports) {
   )(React, ...Object.values(imports));
 }
 
-test("Dean Import renders template guidance and download without upload behavior", async () => {
+test("Dean Import preserves template guidance and includes upload and preview", async () => {
   const CsvImport = await loadComponent("pages/Dean/CsvImport.jsx", {
     Link: router.Link,
+    useSearchParams: router.useSearchParams,
+    useState: React.useState,
+    useEffect: React.useEffect,
+    api: () => { throw new Error("Unexpected request during rendering"); },
+    CSVUploadPanel: () => React.createElement("input", { type: "file" }),
+    CSVValidationPreview: () => null,
   });
   const html = renderToString(
     React.createElement(
@@ -66,11 +72,11 @@ test("Dean Import renders template guidance and download without upload behavior
   assert.match(html, /Optional value/);
   assert.match(html, /student or faculty only/);
   assert.match(html, /Dean is not allowed/);
-  assert.match(html, /DEA-06/);
   assert.match(html, /DEA-07/);
-  assert.doesNotMatch(html, /<input|<form|<button/);
+  assert.match(html, /type="file"/);
   const page = await source("pages/Dean/CsvImport.jsx");
-  assert.doesNotMatch(page, /fetch\(|\bapi\b|FormData|onSubmit|onChange/);
+  assert.match(page, /FormData/);
+  assert.match(page, /account-imports\/validate/);
 });
 
 test("URL workspace selection survives refresh and validates shared-page context", () => {
