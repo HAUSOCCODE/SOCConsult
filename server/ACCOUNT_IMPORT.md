@@ -94,6 +94,12 @@ coverage, and replica-set/sharded topology prerequisites are established. It nev
 creates indexes or backfills records. Future external writers must preserve canonical
 IDs; supported app creation paths populate them.
 
+Identity coverage/indexes and transaction topology are checked by the shared
+account-provisioning prerequisite. CSV confirmation additionally checks its own
+AccountImport retention indexes. Shared validation, duplicate queries, bcrypt
+hashing, and User construction also serve manual provisioning; CSV retains its
+bounded hashing concurrency, source `csv`, and existing batch lifecycle.
+
 ## Lifecycle, atomicity, and recovery
 
 States: validated, processing, completed, invalidated, failed. Confirmation atomically

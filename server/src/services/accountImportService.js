@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import AccountImport from "../models/AccountImport.js";
-import { env } from "../config/env.js";
 import { accountImportConfig as config } from "../config/accountImport.js";
-import { validateAccountRows, CsvValidationError } from "./csvValidationService.js";
-import { formatFullName } from "./personNameService.js";
+import { CsvValidationError } from "./csvValidationService.js";
+import { findAccountConflicts, validateProvisioningRows as revalidate, provisionedUser } from "./accountProvisioningService.js";
+export { findAccountConflicts };
 import { assertImportPrerequisites } from "./accountImportMigrationService.js";
 import { recordAccountImportAudit } from "./activityService.js";
 
@@ -42,19 +41,6 @@ export function publicAccountImport(preview) {
       new Date(preview.expiresAt).getTime() > Date.now(),
   };
 }
-export function findAccountConflicts(ids, emails, session) {
-  const query = User.find({ $or: [
-    { studentId: { $in: ids } }, { employeeId: { $in: ids } },
-    { institutionalId: { $in: ids } }, { email: { $in: emails } }, { username: { $in: emails } },
-  ] }).select("institutionalId studentId employeeId email username -_id");
-  if (session) query.session(session);
-  return query.lean();
-}
-const revalidate = (rows, session) => validateAccountRows(rows, {
-  studentDomain: env.studentDomain,
-  facultyDomain: env.facultyDomain,
-  findUsers: (ids, emails) => findAccountConflicts(ids, emails, session),
-});
 const unavailable = () => ({ statusCode: 404, body: { code: "PREVIEW_UNAVAILABLE", message: "Preview is unavailable." } });
 const serviceUnavailable = () => ({ statusCode: 503, body: { code: "SERVICE_UNAVAILABLE", message: "Account creation is temporarily unavailable. Please try again later." } });
 const owned = (previewId, owner) => ({ previewId, owner });
@@ -79,15 +65,7 @@ async function hashUsers(rows) {
       try {
         const index = next++;
         const row = rows[index];
-        const hash = await bcrypt.hash(row.institutional_id, 12);
-        users[index] = new User({
-          firstName: row.first_name, middleName: row.middle_name, lastName: row.last_name,
-          name: formatFullName({ firstName: row.first_name, middleName: row.middle_name, lastName: row.last_name }),
-          institutionalId: row.institutional_id,
-          [row.role === "student" ? "studentId" : "employeeId"]: row.institutional_id,
-          email: row.official_email, username: row.official_email, role: row.role,
-          password: hash, registrationStatus: "Approved", accountStatus: "Active", accountSource: "csv",
-        });
+        users[index] = await provisionedUser(row, { source: "csv" });
       } catch (error) {
         failure = error;
       }

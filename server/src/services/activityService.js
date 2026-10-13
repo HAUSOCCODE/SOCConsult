@@ -204,6 +204,18 @@ export const notify = (recipient, type, title, message, relatedEntityId) =>
     relatedEntityId,
   }).catch(console.error);
 
+// Strict provisioning audit: failure must abort the enclosing transaction.
+export async function recordManualAccountAudit({ user, actor, session }) {
+  await AuditLog.create([{
+    subjectUser: user._id, subjectRole: user.role,
+    actorUser: actor, actorRole: "dean", actor,
+    action: "account_created_manually", category: "Account",
+    description: "User account created manually",
+    relatedEntityType: "User", relatedEntityId: user._id,
+    metadata: { role: user.role, accountSource: "manual" },
+  }], { session });
+}
+
 // Strict, transaction-aware batch audit. Never pass row data or generic metadata here.
 export async function recordAccountImportAudit({ batch, actor, session }) {
   await AuditLog.create([{
