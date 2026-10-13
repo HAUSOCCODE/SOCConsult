@@ -808,7 +808,7 @@ test("HTTP routes enforce authentication and Dean role, remove four registration
     );
     assert.equal(
       (await call(`/users/${original._id}/reset-password`, "PUT", {})).status,
-      400,
+      404,
     );
     // Reason is retrievable only through the existing Dean-authorized audit routes.
     assert.doesNotMatch(

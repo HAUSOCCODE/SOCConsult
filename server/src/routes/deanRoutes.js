@@ -81,7 +81,7 @@ router.post(
 );
 router.get("/reports/user-registrations", getUserRegistrationReport);
 router.get("/users/:id", getUser);
-router.put("/users/:id/reset-password", resetUserPassword);
+router.post("/users/:id/reset-password", resetUserPassword);
 router.patch("/users/:id/status", updateUserStatus);
 router.get("/appointments", getDeanAppointments);
 router.get("/audit-users", getAuditUsers);

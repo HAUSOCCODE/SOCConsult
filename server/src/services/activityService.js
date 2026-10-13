@@ -254,3 +254,13 @@ export async function recordAccountImportAudit({ batch, actor, session }) {
     },
   }], { session });
 }
+
+// Security-sensitive audit failures must abort the enclosing transaction.
+export async function recordPasswordResetAudit({ user, actor, timestamp, session }) {
+  await AuditLog.create([{
+    subjectUser: user._id, subjectRole: user.role, actorUser: actor, actorRole: "dean", actor,
+    action: "dean_password_reset", category: "Account", description: "Password reset by dean",
+    relatedEntityType: "User", relatedEntityId: user._id,
+    metadata: { role: user.role, context: "dean_user_management" }, createdAt: timestamp,
+  }], { session });
+}

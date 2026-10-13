@@ -104,3 +104,28 @@ Old `/api/admin/*` paths return 404, including mutations; no API redirects are
 installed. Old frontend `/admin/*` links redirect to the matching Dean path.
 School-wide document access lives under `/api/dean/appointments/*`; personal
 `/api/appointments/*` document access requires consultation ownership.
+
+### Dean password reset (DEA-10)
+
+An authenticated Dean can POST `/api/dean/users/:id/reset-password` with no body
+(or an empty JSON object) and `If-Match: "<version>"`, using the neutral `version`
+from the user list. A missing legacy version is sent as `If-Match: "null"`.
+The version is for concurrency checks only and is not displayed. Refresh after
+conflicts or uncertain commits; do not automatically resubmit a reset.
+
+Only Active or Inactive Student/Faculty accounts with Approved registration or
+missing legacy registration state qualify. Registration and account status are
+preserved. Inactive accounts remain unable to sign in. The canonical institutional
+ID is used exactly as stored; only an absent canonical field permits the matching
+legacy studentId/employeeId fallback. Invalid canonical IDs are rejected.
+
+Passwords use bcrypt cost 12 with a maximum of 72 UTF-8 bytes. The reset updates
+passwordResetAt and passwordChangedAt together and records a credential-free Dean
+audit in the same required MongoDB transaction. There is no standalone fallback,
+credential response, email, or forced password change.
+
+Existing JWTs remain valid until their normal eight-hour expiry, subject to the
+existing account checks. New sign-ins immediately require the reset password.
+Future session revocation should be implemented as a separate authentication task.
+Transaction rollback and concurrency should also be verified on an isolated test
+replica set; the automated tests simulate transactions without database access.

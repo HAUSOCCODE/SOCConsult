@@ -50,6 +50,7 @@ export default function UserManagement() {
   const [target, setTarget] = useState(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
   const inFlight = useRef(false);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
@@ -177,6 +178,32 @@ export default function UserManagement() {
       setBusy(false);
     }
   };
+  const confirmReset = async () => {
+    if (inFlight.current || !resetTarget) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await api(`/dean/users/${resetTarget._id}/reset-password`, {
+        method: "POST", headers: { "If-Match": JSON.stringify(resetTarget.version ?? "null") },
+      });
+      toast.success("Password reset successfully.");
+    } catch (error) {
+      const messages = {
+        PASSWORD_RESET_CONFLICT: "This account has changed. Refresh the user list before trying again.",
+        PASSWORD_RESET_INELIGIBLE: "This account is not eligible for password reset.",
+        INVALID_INSTITUTIONAL_ID: "This account does not have a valid institutional ID.",
+        PASSWORD_RESET_UNCERTAIN: "Unable to confirm the password reset. Refresh the user list before trying again.",
+      };
+      toast.error(messages[error.code] || "Unable to reset the password. Refresh the user list before trying again.");
+    } finally {
+      setResetTarget(null);
+      setSelected(null);
+      ++detailRequest.current;
+      await latestLoad.current();
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
   const requestStatus = (user) => {
     setReason("");
     setTarget(user);
@@ -191,6 +218,12 @@ export default function UserManagement() {
       >
         View Details
       </button>
+      {["student", "faculty"].includes(user.role) && ["Active", "Inactive"].includes(user.accountStatus) && (
+        <button type="button" className="btn-action-sm" disabled={busy}
+          onClick={() => { if (!inFlight.current) setResetTarget(user); }}>
+          Reset Password
+        </button>
+      )}
       {["Active", "Inactive"].includes(user.accountStatus) && (
         <button
           type="button"
@@ -376,6 +409,16 @@ export default function UserManagement() {
           }}
         />
       )}
+      <ConfirmDialog
+        open={Boolean(resetTarget)}
+        title="Reset password"
+        message="This will reset the user's password to their institutional ID. The user may change it later from Account Settings."
+        confirmLabel="Reset Password"
+        loadingLabel="Resetting..."
+        loading={busy}
+        onConfirm={confirmReset}
+        onCancel={() => { if (!inFlight.current) setResetTarget(null); }}
+      />
       <ConfirmDialog
         open={Boolean(target)}
         title={

@@ -119,7 +119,7 @@ async function harness() {
     return Component();
   };
   h.dialog = () =>
-    elements(h.render(), (element) => element.type === h.ConfirmDialog)[0];
+    elements(h.render(), (element) => element.type === h.ConfirmDialog)[1];
   h.resolve = (value = { users: [user], pagination: { page: 2, total: 41 } }) =>
     h.pending.shift().resolve(value);
   h.reject = (error) => h.pending.shift().reject(error);
@@ -156,7 +156,7 @@ test("render shows server-backed controls and all required account details witho
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(
     html,
-    /internal-reference|Reset Password|Pending Registrations|Approved Registrations|Rejected Registrations|Approve|Reject|Delete|Edit Role|Permissions/i,
+    /internal-reference|Pending Registrations|Approved Registrations|Rejected Registrations|Approve|Reject|Delete|Edit Role|Permissions/i,
   );
   const pagination = elements(
     tree,
@@ -167,7 +167,7 @@ test("render shows server-backed controls and all required account details witho
   assert.equal(pagination.props.itemsPerPage, 20);
   assert.doesNotMatch(
     h.raw,
-    /\.slice\(|registrations|reset-password|newPassword/,
+    /\.slice\(|registrations|newPassword/,
   );
 });
 
