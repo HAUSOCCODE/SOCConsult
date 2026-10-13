@@ -6,7 +6,7 @@ import {
   normalizeCsvAccountValue,
 } from "../config/csvAccountFields.js";
 import { accountImportConfig } from "../config/accountImport.js";
-import { validatePersonName } from "./personNameService.js";
+import { validatePersonName, formatFullName } from "./personNameService.js";
 
 export class CsvValidationError extends Error {}
 const fail = (message) => {
@@ -15,8 +15,9 @@ const fail = (message) => {
 
 export async function validateCsv(
   buffer,
-  { findUsers, studentDomain, facultyDomain, config = accountImportConfig },
+  options,
 ) {
+  const { config = accountImportConfig } = options;
   if (!buffer.length) fail("CSV file is empty.");
   if (buffer.length > config.maxBytes)
     fail("CSV file exceeds the upload size limit.");
@@ -67,78 +68,8 @@ export async function validateCsv(
           index < 0 ? "" : (record[index] ?? ""),
         );
       }
-      const add = (field, code, message) =>
-        row.errors.push({ field, code, message });
       if (record.length !== headers.length)
-        add(
-          "row",
-          "COLUMN_COUNT",
-          "Row must have the same number of fields as the header.",
-        );
-      for (const field of CSV_ACCOUNT_REQUIRED_FIELDS)
-        if (!row[field]) add(field, "REQUIRED", `${field} is required.`);
-      const names = validatePersonName({
-        firstName: row.first_name,
-        middleName: row.middle_name,
-        lastName: row.last_name,
-      });
-      for (const [key, message] of Object.entries(names.errors)) {
-        const field = {
-          firstName: "first_name",
-          middleName: "middle_name",
-          lastName: "last_name",
-        }[key];
-        if (row[field]) add(field, "INVALID_NAME", message);
-      }
-      row.fullName = [row.first_name, row.middle_name, row.last_name]
-        .filter(Boolean)
-        .join(" ");
-      if (row.fullName.length > 100)
-        add(
-          "name",
-          "NAME_LENGTH",
-          "Full name must be 100 characters or fewer.",
-        );
-      if (!["student", "faculty"].includes(row.role))
-        add("role", "INVALID_ROLE", "Role must be student or faculty.");
-      const email = row.official_email;
-      const [local, emailDomain] = email.split("@");
-      const validDomainLabels =
-        emailDomain &&
-        emailDomain
-          .split(".")
-          .every((label) =>
-            /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
-          );
-      if (
-        email &&
-        (local.length > 64 ||
-          !validDomainLabels ||
-          email.length > 254 ||
-          !/^[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/.test(
-            email,
-          ) ||
-          email.startsWith(".") ||
-          email.includes("..") ||
-          email.includes(".@"))
-      )
-        add(
-          "official_email",
-          "INVALID_EMAIL",
-          "Enter a valid official email address.",
-        );
-      const domain =
-        row.role === "student"
-          ? studentDomain
-          : row.role === "faculty"
-            ? facultyDomain
-            : null;
-      if (email && domain && email.slice(email.lastIndexOf("@") + 1) !== domain)
-        add(
-          "official_email",
-          "EMAIL_DOMAIN",
-          "Use the official email domain for this role.",
-        );
+        row.errors.push({ field: "row", code: "COLUMN_COUNT", message: "Row must have the same number of fields as the header." });
       rows.push(row);
     }
   } catch (error) {
@@ -146,15 +77,111 @@ export async function validateCsv(
     fail("CSV is malformed or exceeds the record size limit.");
   }
   if (!rows.length) fail("CSV must contain at least one data row.");
+  return validateAccountRows(rows, options);
+}
+
+// Reuses exactly the upload rules at confirmation, without trusting stored valid/summary.
+export async function validateAccountRows(input, { findUsers, studentDomain, facultyDomain, config = accountImportConfig }) {
+  if (!Array.isArray(input) || !input.length || input.length > config.maxRows)
+    fail("Preview must contain between 1 and 200 accounts.");
+  const rows = input.map((value, index) => {
+    const row = {
+      rowNumber: value.rowNumber,
+      endLineNumber: value.endLineNumber,
+      dataRowNumber: index + 1,
+      errors: [],
+    };
+    for (const field of CSV_ACCOUNT_COLUMNS) {
+      if (typeof value[field] !== "string") fail("Preview contains invalid account data.");
+      row[field] = normalizeCsvAccountValue(field, value[field]);
+    }
+    // A structural upload error cannot be repaired by discarding extra columns.
+    if (value.errors?.some((error) => error.code === "COLUMN_COUNT"))
+      row.errors.push({ field: "row", code: "COLUMN_COUNT", message: "Row must have the same number of fields as the header." });
+    const add = (field, code, message) => row.errors.push({ field, code, message });
+    for (const field of CSV_ACCOUNT_REQUIRED_FIELDS)
+      if (!row[field]) add(field, "REQUIRED", `${field} is required.`);
+    if (Buffer.byteLength(row.institutional_id, "utf8") > 72)
+      add("institutional_id", "ID_LENGTH", "Institutional ID must be 72 UTF-8 bytes or fewer.");
+    for (const field of CSV_ACCOUNT_COLUMNS)
+      if (/[\x00-\x1f\x7f-\x9f]/.test(row[field]))
+        add(field, "CONTROL_CONTENT", "Control content is not supported.");
+    const names = validatePersonName({
+      firstName: row.first_name,
+      middleName: row.middle_name,
+      lastName: row.last_name,
+    });
+    for (const [key, message] of Object.entries(names.errors)) {
+      const field = {
+        firstName: "first_name",
+        middleName: "middle_name",
+        lastName: "last_name",
+      }[key];
+      if (row[field]) add(field, "INVALID_NAME", message);
+    }
+    if (names.valid && !row.errors.some((error) => error.code === "CONTROL_CONTENT")) {
+      row.first_name = names.values.firstName;
+      row.middle_name = names.values.middleName;
+      row.last_name = names.values.lastName;
+    }
+    row.fullName = formatFullName(names.values);
+    if (row.fullName.length > 100)
+      add(
+        "name",
+        "NAME_LENGTH",
+        "Full name must be 100 characters or fewer.",
+      );
+    if (!["student", "faculty"].includes(row.role))
+      add("role", "INVALID_ROLE", "Role must be student or faculty.");
+    const email = row.official_email;
+    const [local, emailDomain] = email.split("@");
+    const validDomainLabels =
+      emailDomain &&
+      emailDomain
+        .split(".")
+        .every((label) =>
+          /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
+        );
+    if (
+      email &&
+      (local.length > 64 ||
+        !validDomainLabels ||
+        email.length > 254 ||
+        !/^[A-Za-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/.test(
+          email,
+        ) ||
+        email.startsWith(".") ||
+        email.includes("..") ||
+        email.includes(".@"))
+    )
+      add(
+        "official_email",
+        "INVALID_EMAIL",
+        "Enter a valid official email address.",
+      );
+    const domain =
+      row.role === "student"
+        ? studentDomain
+        : row.role === "faculty"
+          ? facultyDomain
+          : null;
+    if (email && domain && email.slice(email.lastIndexOf("@") + 1) !== domain)
+      add(
+        "official_email",
+        "EMAIL_DOMAIN",
+        "Use the official email domain for this role.",
+      );
+    return row;
+  });
   const ids = [...new Set(rows.map((r) => r.institutional_id).filter(Boolean))];
   const emails = [
     ...new Set(rows.map((r) => r.official_email).filter(Boolean)),
   ];
   const users = await findUsers(ids, emails);
   const usedIds = new Set(
-    users.flatMap((u) => [u.studentId, u.employeeId]).filter(Boolean),
+    users.flatMap((u) => [u.institutionalId, u.studentId, u.employeeId]).filter(Boolean),
   );
-  const usedEmails = new Set(users.map((u) => u.email).filter(Boolean));
+  const usedEmails = new Set(users.flatMap((u) => [u.email, u.username]).filter(Boolean));
   for (const [field, used] of [
     ["institutional_id", usedIds],
     ["official_email", usedEmails],

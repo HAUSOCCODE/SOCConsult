@@ -203,3 +203,29 @@ export const notify = (recipient, type, title, message, relatedEntityId) =>
     message,
     relatedEntityId,
   }).catch(console.error);
+
+// Strict, transaction-aware batch audit. Never pass row data or generic metadata here.
+export async function recordAccountImportAudit({ batch, actor, session }) {
+  await AuditLog.create([{
+    subjectUser: actor,
+    subjectRole: "dean",
+    actorUser: actor,
+    actorRole: "dean",
+    actor,
+    action: "accounts_imported",
+    category: "Account",
+    description: "CSV account batch completed",
+    relatedEntityType: "AccountImport",
+    relatedEntityId: batch._id,
+    metadata: {
+      importId: batch.previewId,
+      totalRows: batch.summary.totalRows,
+      successfulRows: batch.successfulRows,
+      failedRows: batch.failedRows,
+      studentCount: batch.studentCount,
+      facultyCount: batch.facultyCount,
+      importedAt: batch.importedAt.toISOString(),
+      status: batch.status,
+    },
+  }], { session });
+}

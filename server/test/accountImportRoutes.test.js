@@ -31,7 +31,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     assert.deepEqual(Object.keys(query.$or[1]), ["employeeId"]);
     return {
       select(fields) {
-        assert.equal(fields, "studentId employeeId email -_id");
+        assert.equal(fields, "institutionalId studentId employeeId email username -_id");
         return this;
       },
       lean: async () => [],
@@ -68,7 +68,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
         (p) =>
           p.previewId === query.previewId &&
           String(p.owner) === String(query.owner) &&
-          p.expiresAt > query.expiresAt.$gt,
+          p.expiresAt > query.$or[1].expiresAt.$gt,
       ) || null,
   }));
   const server = await new Promise((resolve) => {
@@ -166,7 +166,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
         .indexes()
         .some(
           ([fields, settings]) =>
-            fields.expiresAt === 1 && settings.expireAfterSeconds === 0,
+            fields.purgeAt === 1 && settings.expireAfterSeconds === 0,
         ),
     );
   } finally {

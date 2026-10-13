@@ -24,6 +24,17 @@ const rowSchema = new mongoose.Schema(
 const schema = new mongoose.Schema({
   previewId: { type: String, required: true, unique: true },
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  displayFilename: { type: String, maxlength: 120 },
+  status: { type: String, enum: ["validated", "processing", "completed", "invalidated", "failed"], default: "validated" },
+  attemptToken: { type: String, select: false },
+  processingStartedAt: Date,
+  transactionStartedAt: Date,
+  importedAt: Date,
+  successfulRows: { type: Number, default: 0 },
+  failedRows: { type: Number, default: 0 },
+  studentCount: { type: Number, default: 0 },
+  facultyCount: { type: Number, default: 0 },
+  failureCode: { type: String, enum: ["REVALIDATION_FAILED", "ACCOUNT_CONFLICT", "IMPORT_FAILED", "SERVICE_UNAVAILABLE"] },
   rows: [rowSchema],
   summary: {
     totalRows: Number,
@@ -34,6 +45,7 @@ const schema = new mongoose.Schema({
   schemaVersion: { type: Number, default: 1 },
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
+  purgeAt: Date,
 });
-schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+schema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 export default mongoose.model("AccountImport", schema);

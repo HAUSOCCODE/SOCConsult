@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/apiClient";
 import CSVUploadPanel from "../../components/accounts/CSVUploadPanel";
 import CSVValidationPreview from "../../components/accounts/CSVValidationPreview";
+import CSVImportResult from "../../components/accounts/CSVImportResult";
+import ConfirmDialog from "../../components/ConfirmDialog";
 
 export default function CsvImport() {
   const [search, setSearch] = useSearchParams();
@@ -12,6 +14,9 @@ export default function CsvImport() {
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const inFlight = useRef(false);
   useEffect(() => {
     if (!previewId) return;
     const controller = new AbortController();
@@ -33,16 +38,37 @@ export default function CsvImport() {
     return () => controller.abort();
   }, [previewId]);
   useEffect(() => {
-    if (!preview) return;
+    if (!preview?.expiresAt || preview.status === "processing" || confirming) return;
     const timeout = setTimeout(
       () => {
         setPreview(null);
+        setDialogOpen(false);
         setError("Preview has expired. Upload your CSV again.");
       },
       Math.max(0, new Date(preview.expiresAt).getTime() - Date.now()),
     );
     return () => clearTimeout(timeout);
-  }, [preview]);
+  }, [preview, confirming]);
+  useEffect(() => {
+    if (preview?.status !== "processing" || !previewId || confirming) return;
+    const controller = new AbortController();
+    let timeout;
+    const check = async () => {
+      try {
+        const value = await api(`/dean/account-imports/${encodeURIComponent(previewId)}`, { signal: controller.signal });
+        if (!controller.signal.aborted) { setPreview(value); setError(""); }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setError(err.message);
+          if (err.status === 404) setPreview(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) timeout = setTimeout(check, 3000);
+      }
+    };
+    timeout = setTimeout(check, 3000);
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [preview, previewId, confirming]);
   const selectFile = (value) => {
     setFile(value);
     setPreview(null);
@@ -51,7 +77,7 @@ export default function CsvImport() {
   };
   const submit = async (event) => {
     event.preventDefault();
-    if (!file || busy) return;
+    if (!file || busy || inFlight.current) return;
     setBusy(true);
     setPreview(null);
     setError("");
@@ -70,6 +96,35 @@ export default function CsvImport() {
       setBusy(false);
     }
   };
+  const confirm = async () => {
+    if (inFlight.current || busy || !preview?.canConfirm || preview.status !== "validated" ||
+      preview.summary.invalidRows !== 0 || new Date(preview.expiresAt).getTime() <= Date.now()) return;
+    inFlight.current = true;
+    setConfirming(true);
+    setError("");
+    try {
+      const result = await api(`/dean/account-imports/${encodeURIComponent(preview.previewId)}/confirm`, { method: "POST" });
+      setPreview(result);
+    } catch (err) {
+      setError(err.message);
+      if (err.data?.preview) setPreview(err.data.preview);
+      // The server may have committed even when the response was lost. GET never creates accounts.
+      try {
+        const recovered = await api(`/dean/account-imports/${encodeURIComponent(preview.previewId)}`);
+        setPreview(recovered);
+        if (recovered.status === "completed") setError("");
+      } catch (recoveryError) {
+        if (recoveryError.status === 404) setPreview(null);
+        else setError("Unable to check the import status. Refresh this page before trying again.");
+      }
+    } finally {
+      setDialogOpen(false);
+      setConfirming(false);
+      inFlight.current = false;
+    }
+  };
+  const studentCount = preview?.rows?.filter((row) => row.role === "student").length || 0;
+  const facultyCount = preview?.rows?.filter((row) => row.role === "faculty").length || 0;
   const columns = [
     [
       "institutional_id",
@@ -96,8 +151,8 @@ export default function CsvImport() {
       <h2 className="text-xl font-bold text-maroon-900">CSV Import</h2>
       <p className="mt-3 text-sm text-slate-600">
         Download the project-defined sample template for development and
-        testing. Upload a CSV to validate and review every row before account
-        creation becomes available in DEA-07.
+        testing. Upload a CSV of up to 200 accounts, review every row, then confirm
+        account creation. Use multiple batches for larger populations.
       </p>
       <a
         className="btn-primary mt-5 inline-flex"
@@ -132,7 +187,7 @@ export default function CsvImport() {
         </table>
       </div>
       <CSVUploadPanel
-        busy={busy}
+        busy={busy || confirming || preview?.status === "processing"}
         onSelect={selectFile}
         onSubmit={submit}
         file={file}
@@ -142,7 +197,24 @@ export default function CsvImport() {
           {error}
         </p>
       )}
-      {preview && <CSVValidationPreview preview={preview} />}
+      {preview && (["completed", "failed"].includes(preview.status) ?
+        <CSVImportResult result={preview} onNewImport={() => selectFile(null)} /> :
+        <CSVValidationPreview preview={preview} busy={busy || confirming} onConfirm={() => setDialogOpen(true)} />)}
+      {preview?.status === "processing" && !confirming && (
+        <button className="btn-secondary mt-4" onClick={() => selectFile(null)}>Start New Import</button>
+      )}
+      <ConfirmDialog
+        open={dialogOpen}
+        title="Confirm Account Creation"
+        message={`Create ${preview?.summary?.totalRows || 0} accounts: ${studentCount} Students and ${facultyCount} Faculty?`}
+        supportingText="Official email is the login. Each user's institutional ID is their initial password. Passwords will not appear in results. Users may change their password later."
+        confirmLabel="Create accounts"
+        loadingLabel="Creating accounts…"
+        variant="primary"
+        loading={confirming}
+        onConfirm={confirm}
+        onCancel={() => setDialogOpen(false)}
+      />
       <Link className="btn-secondary mt-5 inline-flex" to="/dean/dashboard">
         Back to Dean Management
       </Link>

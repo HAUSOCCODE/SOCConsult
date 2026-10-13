@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import User from "../models/User.js";
 import AccountImport from "../models/AccountImport.js";
 import { env } from "../config/env.js";
 import { accountImportConfig as config } from "../config/accountImport.js";
@@ -7,39 +6,27 @@ import {
   validateCsv,
   CsvValidationError,
 } from "../services/csvValidationService.js";
+import { publicAccountImport, validPreviewId, sanitizeFilename, findAccountConflicts, confirmAccountImport } from "../services/accountImportService.js";
 
-const publicPreview = (preview) => ({
-  previewId: preview.previewId,
-  expiresAt: preview.expiresAt,
-  summary: preview.summary,
-  rows: preview.rows,
-  canConfirm: preview.summary.invalidRows === 0,
-});
 export async function validateAccountImport(req, res) {
   try {
     const result = await validateCsv(req.file.buffer, {
       studentDomain: env.studentDomain,
       facultyDomain: env.facultyDomain,
-      findUsers: (ids, emails) =>
-        User.find({
-          $or: [
-            { studentId: { $in: ids } },
-            { employeeId: { $in: ids } },
-            { email: { $in: emails } },
-          ],
-        })
-          .select("studentId employeeId email -_id")
-          .lean(),
+      findUsers: findAccountConflicts,
     });
     const preview = await AccountImport.create({
       previewId: randomUUID(),
       owner: req.user._id,
       rows: result.rows,
       summary: result.summary,
-      schemaVersion: 1,
+      displayFilename: sanitizeFilename(req.file.originalname),
+      schemaVersion: 2,
+      status: "validated",
       expiresAt: new Date(Date.now() + config.lifetimeMs),
+      purgeAt: new Date(Date.now() + config.lifetimeMs + config.temporaryRetentionMs),
     });
-    return res.json(publicPreview(preview));
+    return res.json(publicAccountImport(preview));
   } catch (error) {
     return res
       .status(error instanceof CsvValidationError ? 400 : 500)
@@ -56,24 +43,28 @@ export async function validateAccountImport(req, res) {
 export async function getAccountImport(req, res) {
   const missing = () =>
     res.status(404).json({ message: "Preview is unavailable." });
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      req.params.previewId,
-    )
-  )
+  if (!validPreviewId(req.params.previewId))
     return missing();
   try {
     const preview = await AccountImport.findOne({
       previewId: req.params.previewId,
       owner: req.user._id,
-      expiresAt: { $gt: new Date() },
+      $or: [{ status: "completed" }, { expiresAt: { $gt: new Date() } }],
     })
-      .select("previewId expiresAt summary rows -_id")
       .lean();
-    return preview ? res.json(publicPreview(preview)) : missing();
+    return preview ? res.json(publicAccountImport(preview)) : missing();
   } catch {
     return res
       .status(500)
       .json({ message: "Unable to retrieve preview. Please try again." });
   }
+}
+
+export async function confirmImport(req, res) {
+  const body = req.body;
+  if ((body !== undefined && (body === null || Array.isArray(body) || typeof body !== "object" || Object.keys(body).length)) ||
+    (body === undefined && (Number(req.headers["content-length"]) > 0 || req.headers["transfer-encoding"])))
+    return res.status(400).json({ code: "EMPTY_BODY_REQUIRED", message: "Confirmation accepts no account data." });
+  const result = await confirmAccountImport(req.params.previewId, req.user._id);
+  return res.status(result.statusCode).json(result.body);
 }

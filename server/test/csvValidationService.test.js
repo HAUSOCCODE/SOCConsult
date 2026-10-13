@@ -106,3 +106,13 @@ test("required fields, invalid emails, domains, names and forbidden roles", asyn
     assert.ok(result.rows[0].errors.length);
   }
 });
+
+test("200-account ceiling and bcrypt UTF-8 boundary", async () => {
+  const records = Array.from({ length: 200 }, (_, i) => `${i},Juan,Santos,j${i}@student.hau.edu.ph,student`);
+  assert.equal((await run(`${header}\n${records.join("\n")}`)).summary.validRows, 200);
+  await assert.rejects(run(`${header}\n${records.join("\n")}\n${student}`), /data row limit/);
+  for (const id of ["x".repeat(72), "界".repeat(24)])
+    assert.equal((await run(`${header}\n${id},Juan,Santos,j@student.hau.edu.ph,student`)).canConfirm, true);
+  for (const id of ["x".repeat(73), "界".repeat(25)])
+    assert.ok((await run(`${header}\n${id},Juan,Santos,j@student.hau.edu.ph,student`)).rows[0].errors.some((e) => e.code === "ID_LENGTH"));
+});

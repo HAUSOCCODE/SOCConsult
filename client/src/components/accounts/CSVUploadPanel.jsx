@@ -12,7 +12,7 @@ export default function CSVUploadPanel({ busy, onSelect, onSubmit, file }) {
         onChange={(event) => onSelect(event.target.files?.[0] || null)}
       />
       <p className="text-sm text-slate-600">
-        Default limits: 1 MiB, 1,000 data rows, 16 KiB per record. Validation
+        Default limits: 1 MiB, 200 accounts per batch, 16 KiB per record. Validation
         previews expire after 30 minutes.
       </p>
       <button className="btn-primary block" disabled={busy || !file}>
