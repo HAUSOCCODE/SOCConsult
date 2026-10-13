@@ -129,3 +129,25 @@ existing account checks. New sign-ins immediately require the reset password.
 Future session revocation should be implemented as a separate authentication task.
 Transaction rollback and concurrency should also be verified on an isolated test
 replica set; the automated tests simulate transactions without database access.
+
+## Dean Management Dashboard (DEA-04)
+
+`GET /api/dashboard/dean` is a read-only, active-Dean-authorized, no-store summary.
+This deployment is exclusively for authorized School of Computing users and
+records; the connected SOCConsult database defines that dataset. Optional program
+fields are not a reliable school boundary. DEA-04 does not add tenant isolation.
+
+The default period is the current Asia/Manila calendar month. Optional `start`
+and `end` must both be valid YYYY-MM-DD dates spanning at most 366 inclusive days.
+Appointment totals and exact Pending/Completed counts use request `createdAt`,
+including unscheduled requests, with inclusive Manila dates and an exclusive UTC
+upper boundary. Confirmed, Awaiting Attendance Update, Attendance Review, and
+Expired statistics remain deferred until the revised workflow supports them.
+
+Current account totals require the exact student/faculty role, Active status,
+and Approved or missing/null legacy registration status. Pending, Rejected, and
+unknown registration statuses are excluded; Dean accounts never count as Faculty.
+Recent consultations are the five latest updated records requested within the
+period. Recent imports are the five latest completed batches across all dates.
+Both lists expose only explicit summary fields, without credentials, uploaded
+rows/documents, meeting links, private availability, or preview metadata.
