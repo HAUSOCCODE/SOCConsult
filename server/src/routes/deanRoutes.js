@@ -10,30 +10,36 @@ import {
   getAuditUsers,
 } from "../controllers/auditController.js";
 import {
-  approveRegistration,
   createUser,
   changeDeanPassword,
   getDeanAppointments,
   getAiConsultationSummary,
-  getRegistration,
-  getRegistrations,
   getUser,
   getUsers,
   getUserRegistrationReport,
-  rejectRegistration,
   resetUserPassword,
   updateUserStatus,
 } from "../controllers/deanController.js";
 
 const router = Router();
 router.use("/users", (req, res, next) => {
-  if (req.method === "POST" && req.path === "/") res.set("Cache-Control", "no-store");
+  res.set("Cache-Control", "no-store");
   next();
 });
-router.use("/account-imports", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+router.use("/account-imports", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 router.use(authenticate, authorize("dean"));
 router.use("/account-imports", accountImportRoutes);
-router.use("/appointments", (req, _res, next) => { req.deanManagementAccess = true; next(); }, appointmentDocumentRoutes);
+router.use(
+  "/appointments",
+  (req, _res, next) => {
+    req.deanManagementAccess = true;
+    next();
+  },
+  appointmentDocumentRoutes,
+);
 const aiRateLimit = rateLimit({
   windowMs: 60 * 1000,
   limit: 8,
@@ -54,21 +60,29 @@ const aiRateLimit = rateLimit({
   },
 });
 router.post("/ai/chat", aiRateLimit, chatWithAi);
-router.get("/registrations", getRegistrations);
-router.get("/registrations/:id", getRegistration);
-router.put("/registrations/:id/approve", approveRegistration);
-router.put("/registrations/:id/reject", rejectRegistration);
 router.get("/users", getUsers);
-router.post("/users", rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 10,
-  keyGenerator: (req) => String(req.user.id),
-  standardHeaders: "draft-7", legacyHeaders: false,
-  handler: (_req, res) => res.status(429).json({ message: "Too many account creation attempts. Please try again later." }),
-}), createUser);
+router.post(
+  "/users",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    keyGenerator: (req) => String(req.user.id),
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: (_req, res) =>
+      res
+        .status(429)
+        .json({
+          message:
+            "Too many account creation attempts. Please try again later.",
+        }),
+  }),
+  createUser,
+);
 router.get("/reports/user-registrations", getUserRegistrationReport);
 router.get("/users/:id", getUser);
 router.put("/users/:id/reset-password", resetUserPassword);
-router.put("/users/:id/status", updateUserStatus);
+router.patch("/users/:id/status", updateUserStatus);
 router.get("/appointments", getDeanAppointments);
 router.get("/audit-users", getAuditUsers);
 router.get("/audit-users/:userId/logs", getAuditUserLogs);

@@ -133,29 +133,35 @@ test("form distinguishes provisioning setup, uncertain commit and generic unavai
   }
 });
 
-test("User Management manual success refreshes accounts while keeping filters, page and existing actions", async () => {
-  const users = Array.from({ length: 14 }, (_, n) => ({ _id: `user-${n}`, name: `Person ${n}`, role: "faculty", accountStatus: "Active", registrationStatus: "Approved", email: `person${n}@hau.edu.ph` }));
-  const state = [users, false, "Faculty", "", null, false, null, 2, null, true];
+test("User Management manual success refreshes server accounts while preserving filters and page", async () => {
+  const users = [{ _id: "user-1", name: "Person One", institutionalId: "000123", role: "faculty", accountStatus: "Active", accountSource: "manual", email: "person@hau.edu.ph" }];
+  const filters = { search: "Person", role: "faculty", status: "Active", source: "manual" };
+  const state = [users, { page: 2, total: 25 }, "Person", filters, 2, false, "", true, null, false, null, "", false];
   let index = 0;
   const calls = [], toasts = [];
   const ManualAccountForm = () => null, Pagination = () => null;
   const Component = await component("pages/Dean/UserManagement", {
-    useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], (value) => { state[slot] = value; }]; },
-    useEffect: () => {}, createPortal: (value) => value, ChevronRight: () => null, ChevronUp: () => null, X: () => null,
-    api: async (path) => { calls.push(path); return path.includes("registrations") ? { registrations: [] } : { users }; },
-    EmptyState: () => null, ErrorState: () => null, StatusBadge: () => null, Pagination, ManualAccountForm,
-    useToast: () => ({ success: (message) => toasts.push(message) }), formatPersonName: (user) => user.name,
+    useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], (value) => { state[slot] = typeof value === "function" ? value(state[slot]) : value; }]; },
+    useRef: () => ({ current: 0 }), useId: () => "search-id", useCallback: (fn) => fn,
+    useEffect: () => {}, createPortal: (value) => value, X: () => null,
+    api: async (path) => { calls.push(path); return { users, pagination: { page: 2, total: 25 } }; },
+    EmptyState: () => null, ErrorState: () => null, Loading: () => null, StatusBadge: () => null,
+    ConfirmDialog: () => null, Pagination, ManualAccountForm,
+    useToast: () => ({ success: (message) => toasts.push(message) }),
   });
-  const tree = Component({});
+  const tree = Component();
   assert.ok(elements(tree, (e) => e.type === "button" && e.props.children === "Create User Manually").length);
   assert.equal(elements(tree, (e) => e.type === Pagination)[0].props.currentPage, 2);
-  assert.equal(elements(tree, (e) => e.type === Pagination)[0].props.totalItems, 14);
+  assert.equal(elements(tree, (e) => e.type === Pagination)[0].props.totalItems, 25);
   const html = renderToString(tree);
-  for (const text of ["User Management", "Faculty", "View", "Reset Password", "Deactivate"])
+  for (const text of ["User Accounts", "Faculty", "View Details", "Deactivate", "000123"])
     assert.ok(html.includes(text), text);
+  assert.doesNotMatch(html, /Reset Password|Pending Registrations|Approve|Reject/);
   const form = elements(tree, (e) => e.type === ManualAccountForm)[0];
   form.props.onSuccess(); await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(state[9], false); assert.equal(state[2], "Faculty"); assert.equal(state[7], 2);
-  assert.deepEqual(calls, ["/dean/users", "/dean/registrations?status=Pending"]);
+  assert.equal(state[7], false); assert.deepEqual(state[3], filters); assert.equal(state[4], 2);
+  assert.equal(calls.length, 1);
+  const query = new URL(calls[0], "http://test.local").searchParams;
+  for (const [key, value] of Object.entries({ ...filters, page: "2", limit: "20" })) assert.equal(query.get(key), value);
   assert.deepEqual(toasts, ["User account created successfully."]);
 });

@@ -2,129 +2,23 @@ import bcrypt from "bcryptjs";
 import { createManualAccount } from "../services/manualAccountService.js";
 import User from "../models/User.js";
 import Appointment from "../models/Appointment.js";
-import { logActivity, notify } from "../services/activityService.js";
+import { logActivity } from "../services/activityService.js";
 import { createConsultationSummary } from "../services/consultationSummaryService.js";
+
+import {
+  listManagedUsers,
+  readManagedUser,
+  changeManagedUserStatus,
+} from "../services/userManagementService.js";
 
 const managedRoles = ["student", "faculty"];
 export async function createUser(req, res) {
   const result = await createManualAccount(req.body, req.user.id);
   return res.status(result.statusCode).json(result.body);
 }
-const withProfileUrl = (user) => ({
-  ...user,
-  profilePicture:
-    typeof user.profilePicture === "string"
-      ? user.profilePicture
-      : user.profilePicture?.url,
-});
-
-export async function getRegistrations(req, res) {
-  const registrations = await User.find({
-    role: { $in: managedRoles },
-    registrationStatus: req.query.status || "Pending",
-  })
-    .select("-password")
-    .sort({ createdAt: -1 });
-  res.json({ registrations });
-}
-export async function getRegistration(req, res) {
-  const registration = await User.findOne({
-    _id: req.params.id,
-    role: { $in: managedRoles },
-  }).select("-password");
-  if (!registration)
-    return res.status(404).json({ message: "Registration not found." });
-  res.json({ registration });
-}
-export async function approveRegistration(req, res) {
-  const user = await User.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      role: { $in: managedRoles },
-      registrationStatus: "Pending",
-    },
-    {
-      $set: {
-        registrationStatus: "Approved",
-        accountStatus: "Active",
-        approvalMethod: "dean",
-        approvedAt: new Date(),
-        approvedBy: req.user.id,
-      },
-      $unset: { rejectedAt: 1, rejectedBy: 1, rejectionReason: 1 },
-    },
-    { new: true },
-  ).select("-password");
-  if (!user)
-    return res
-      .status(409)
-      .json({ message: "This registration is no longer pending." });
-  await Promise.all([
-    logActivity("registration_approved", req.user.id, "User", user.id, {
-      role: user.role,
-      previousStatus: "Pending",
-      newStatus: "Active",
-    }),
-    notify(
-      user.id,
-      "registration",
-      "Registration approved",
-      "Your SOCConsult account has been approved. You may now log in.",
-      user.id,
-    ),
-  ]);
-  res.json({
-    message: "Registration approved successfully.",
-    registration: user,
-  });
-}
-export async function rejectRegistration(req, res) {
-  const reason = (req.body.reason || "").trim();
-  const user = await User.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      role: { $in: managedRoles },
-      registrationStatus: "Pending",
-    },
-    {
-      $set: {
-        registrationStatus: "Rejected",
-        accountStatus: "Inactive",
-        rejectedAt: new Date(),
-        rejectedBy: req.user.id,
-        rejectionReason: reason,
-      },
-    },
-    { new: true },
-  ).select("-password");
-  if (!user)
-    return res
-      .status(409)
-      .json({ message: "This registration is no longer pending." });
-  await Promise.all([
-    logActivity("registration_rejected", req.user.id, "User", user.id, {
-      role: user.role,
-      previousStatus: "Pending",
-      newStatus: "Rejected",
-    }),
-    notify(
-      user.id,
-      "registration",
-      "Registration rejected",
-      reason || "Please contact the School of Computing dean.",
-      user.id,
-    ),
-  ]);
-  res.json({ message: "Registration rejected.", registration: user });
-}
-export async function getUsers(_req, res) {
-  const users = await User.find({ role: { $ne: "dean" } })
-    .select("-password +profilePicture")
-    .sort({ createdAt: -1 })
-    .lean();
-  res.json({
-    users: users.map(withProfileUrl),
-  });
+export async function getUsers(req, res) {
+  const result = await listManagedUsers(req.query);
+  return res.status(result.statusCode).json(result.body);
 }
 export async function getUserRegistrationReport(_req, res) {
   const users = await User.find({ role: { $in: managedRoles } })
@@ -138,14 +32,8 @@ export async function getUserRegistrationReport(_req, res) {
   res.json({ users });
 }
 export async function getUser(req, res) {
-  const user = await User.findOne({
-    _id: req.params.id,
-    role: { $in: managedRoles },
-  })
-    .select("-password +profilePicture")
-    .lean();
-  if (!user) return res.status(404).json({ message: "User not found." });
-  res.json({ user: withProfileUrl(user) });
+  const result = await readManagedUser(req.params.id);
+  return res.status(result.statusCode).json(result.body);
 }
 export async function resetUserPassword(req, res) {
   const newPassword = req.body.newPassword || "";
@@ -180,34 +68,12 @@ export async function resetUserPassword(req, res) {
   res.json({ message: "Password reset successfully." });
 }
 export async function updateUserStatus(req, res) {
-  if (!["Active", "Inactive"].includes(req.body.accountStatus))
-    return res.status(400).json({ message: "Invalid account status." });
-  const previous = await User.findOne({
-    _id: req.params.id,
-    role: { $ne: "dean" },
-  }).select("accountStatus");
-  const user = await User.findOneAndUpdate(
-    { _id: req.params.id, role: { $ne: "dean" } },
-    { accountStatus: req.body.accountStatus },
-    { new: true },
-  ).select("-password");
-  if (!user) return res.status(404).json({ message: "User not found." });
-  await logActivity(
-    req.body.accountStatus === "Active"
-      ? "account_activated"
-      : "account_deactivated",
+  const result = await changeManagedUserStatus(
+    req.params.id,
+    req.body,
     req.user.id,
-    "User",
-    user.id,
-    {
-      previousStatus: previous?.accountStatus,
-      newStatus: req.body.accountStatus,
-    },
   );
-  res.json({
-    message: `Account ${req.body.accountStatus.toLowerCase()}.`,
-    user,
-  });
+  return res.status(result.statusCode).json(result.body);
 }
 export async function getDeanAppointments(_req, res) {
   const records = await Appointment.find()

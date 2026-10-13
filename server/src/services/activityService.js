@@ -204,6 +204,19 @@ export const notify = (recipient, type, title, message, relatedEntityId) =>
     relatedEntityId,
   }).catch(console.error);
 
+// Status and audit must commit together. Reason stays in authorized audit history.
+export async function recordUserStatusAudit({ user, actor, previousStatus, previousRegistrationStatus, normalizedRegistration, reason, session }) {
+  await AuditLog.create([{
+    subjectUser: user._id, subjectRole: user.role, actorUser: actor, actorRole: "dean", actor,
+    action: user.accountStatus === "Active" ? "account_activated" : "account_deactivated",
+    category: "Account", description: user.accountStatus === "Active" ? "Account activated" : "Account deactivated",
+    relatedEntityType: "User", relatedEntityId: user._id,
+    changes: { before: { status: previousStatus }, after: { status: user.accountStatus } },
+    metadata: { role: user.role, previousStatus, newStatus: user.accountStatus,
+      ...(reason && { reason }), ...(normalizedRegistration && { previousRegistrationStatus: previousRegistrationStatus ?? "Not recorded", newRegistrationStatus: "Approved" }) },
+  }], { session });
+}
+
 // Strict provisioning audit: failure must abort the enclosing transaction.
 export async function recordManualAccountAudit({ user, actor, session }) {
   await AuditLog.create([{
