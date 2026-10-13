@@ -39,9 +39,12 @@ test("Dean Import preserves template guidance and includes upload and preview", 
     useSearchParams: router.useSearchParams,
     useState: React.useState,
     useEffect: React.useEffect,
+    useRef: React.useRef,
     api: () => { throw new Error("Unexpected request during rendering"); },
     CSVUploadPanel: () => React.createElement("input", { type: "file" }),
     CSVValidationPreview: () => null,
+    CSVImportResult: () => null,
+    ConfirmDialog: () => null,
   });
   const html = renderToString(
     React.createElement(
@@ -72,7 +75,7 @@ test("Dean Import preserves template guidance and includes upload and preview", 
   assert.match(html, /Optional value/);
   assert.match(html, /student or faculty only/);
   assert.match(html, /Dean is not allowed/);
-  assert.match(html, /DEA-07/);
+  assert.match(html, /200 accounts/);
   assert.match(html, /type="file"/);
   const page = await source("pages/Dean/CsvImport.jsx");
   assert.match(page, /FormData/);

@@ -102,6 +102,10 @@ export async function register(req, res) {
     return res.status(400).json({
       message: `${role === "student" ? "Student" : "Employee"} ID is required.`,
     });
+  if (Buffer.byteLength(idValue, "utf8") > 72)
+    return res.status(400).json({ message: "Institutional ID must be 72 UTF-8 bytes or fewer." });
+  if (await User.findOne({ $or: [{ institutionalId: idValue }, { studentId: idValue }, { employeeId: idValue }] }))
+    return res.status(409).json({ message: "An account with this institutional ID already exists." });
   const program =
     role === "student" ? (req.body.program || "").trim() : undefined;
   if (role === "student" && !STUDENT_PROGRAMS.includes(program))
@@ -112,20 +116,29 @@ export async function register(req, res) {
     return res
       .status(400)
       .json({ message: "Position / Designation is required." });
-  const user = await User.create({
-    name,
-    firstName,
-    middleName,
-    lastName,
-    email,
-    password: await bcrypt.hash(password, 12),
-    role,
-    [idField]: idValue,
-    program,
-    position,
-    registrationStatus: "Pending",
-    accountStatus: "Inactive",
-  });
+  let user;
+  try {
+    user = await User.create({
+      name,
+      firstName,
+      middleName,
+      lastName,
+      email,
+      password: await bcrypt.hash(password, 12),
+      role,
+      [idField]: idValue,
+      institutionalId: idValue,
+      accountSource: "self_registration",
+      program,
+      position,
+      registrationStatus: "Pending",
+      accountStatus: "Inactive",
+    });
+  } catch (error) {
+    if (error.code === 11000)
+      return res.status(409).json({ message: "An account with this email or institutional ID already exists." });
+    throw error;
+  }
   await logActivity(`${role}_registered`, user.id, "User", user.id, { role });
   const deans = await User.find({
     role: "dean",

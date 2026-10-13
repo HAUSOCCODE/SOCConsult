@@ -2,6 +2,11 @@ export const notFound = (_req, res) =>
   res.status(404).json({ message: "Route not found." });
 
 export const errorHandler = (err, _req, res, _next) => {
+  // Body-parser errors carry the raw body. Never log them for import requests.
+  if (/^\/api\/dean\/account-imports(?:\/|$)/.test(_req.originalUrl || "")) {
+    const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 500;
+    return res.status(status).json({ message: status === 500 ? "Account import is temporarily unavailable." : "Invalid account import request." });
+  }
   console.error(err);
   if (err?.code === 11000)
     return res

@@ -1,5 +1,7 @@
 import CSVErrorTable from "./CSVErrorTable";
-export default function CSVValidationPreview({ preview }) {
+export default function CSVValidationPreview({ preview, busy = false, onConfirm }) {
+  const eligible = preview.canConfirm && preview.summary.invalidRows === 0 &&
+    preview.status === "validated" && new Date(preview.expiresAt).getTime() > Date.now();
   return (
     <section className="mt-6" aria-label="CSV validation preview">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -16,21 +18,21 @@ export default function CSVValidationPreview({ preview }) {
         ))}
       </div>
       <p className="mt-3 text-sm">
+        {preview.displayFilename && <span>File: {preview.displayFilename}. </span>}
         Preview expires: {new Date(preview.expiresAt).toLocaleString()}
       </p>
       <CSVErrorTable rows={preview.rows} />
-      {preview.canConfirm && preview.summary.invalidRows === 0 ? (
-        <button className="btn-secondary mt-4" disabled>
-          Confirm Account Creation — available in DEA-07
-        </button>
-      ) : (
+      <button className="btn-primary mt-4" disabled={!eligible || busy || !onConfirm} onClick={onConfirm}>
+        {busy || preview.status === "processing" ? "Creating accounts…" : "Confirm Account Creation"}
+      </button>
+      {!eligible && (
         <p className="mt-4 text-red-700">
-          Correct all invalid rows and upload again before confirmation.
+          {preview.status === "processing" ? "This import is processing. Its status will be checked automatically." :
+            "Correct invalid rows or upload a new CSV before confirmation."}
         </p>
       )}
       <p className="mt-3 text-sm text-slate-600">
-        Validation creates no accounts. Eligibility will be checked again when
-        account creation becomes available.
+        Validation creates no accounts. Eligibility and conflicts are checked again during confirmation.
       </p>
     </section>
   );

@@ -15,6 +15,8 @@ export async function api(path, options = {}) {
     const error = new Error(data.message || "Request failed.");
     error.status = response.status;
     error.errors = data.errors || null;
+    error.code = data.code || null;
+    error.data = data;
     const retryAfter = Number(
       data.retryAfter || response.headers.get("Retry-After"),
     );

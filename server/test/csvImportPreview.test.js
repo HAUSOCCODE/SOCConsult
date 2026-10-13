@@ -26,13 +26,14 @@ async function load(name, imports = {}) {
     `${compiled.code}; return ${name};`,
   )(React, ...Object.values(imports));
 }
-test("preview renders counts and errors and never enables creation", async () => {
+test("preview confirmation requires a valid eligible lifecycle and renders errors", async () => {
   const CSVErrorTable = await load("CSVErrorTable");
   const Component = await load("CSVValidationPreview", { CSVErrorTable });
   for (const valid of [true, false]) {
     const preview = {
       expiresAt: new Date(Date.now() + 60000).toISOString(),
       canConfirm: valid,
+      status: "validated",
       summary: {
         totalRows: 1,
         validRows: valid ? 1 : 0,
@@ -53,16 +54,21 @@ test("preview renders counts and errors and never enables creation", async () =>
         },
       ],
     };
-    const html = renderToString(React.createElement(Component, { preview }));
+    const html = renderToString(React.createElement(Component, { preview, onConfirm: () => {} }));
     assert.match(html, /Duplicate\/conflict rows/);
     assert.match(html, /0001/);
     if (valid) {
-      assert.match(html, /disabled=""/);
-      assert.match(html, /available in DEA-07/);
+      assert.doesNotMatch(html, /disabled=""/);
+      assert.match(html, /Confirm Account Creation/);
     } else {
       assert.match(html, /ID conflict/);
-      assert.doesNotMatch(html, /<button/);
+      assert.match(html, /disabled=""/);
     }
     assert.doesNotMatch(html, /password/i);
+    for (const status of ["processing", "completed", "invalidated", "failed"])
+      assert.match(renderToString(React.createElement(Component, { preview: { ...preview, status }, onConfirm: () => {} })), /disabled=""/);
+    for (const extra of [{ expiresAt: new Date(0).toISOString() }, { canConfirm: false }])
+      assert.match(renderToString(React.createElement(Component, { preview: { ...preview, ...extra }, onConfirm: () => {} })), /disabled=""/);
+    assert.match(renderToString(React.createElement(Component, { preview, busy: true, onConfirm: () => {} })), /disabled=""/);
   }
 });

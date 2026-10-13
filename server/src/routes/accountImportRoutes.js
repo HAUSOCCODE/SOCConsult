@@ -5,6 +5,7 @@ import { accountImportConfig as config } from "../config/accountImport.js";
 import {
   validateAccountImport,
   getAccountImport,
+  confirmImport,
 } from "../controllers/accountImportController.js";
 
 const router = Router();
@@ -39,4 +40,5 @@ const limiter = rateLimit({
 });
 router.post("/validate", limiter, csvUpload, validateAccountImport);
 router.get("/:previewId", getAccountImport);
+router.post("/:previewId/confirm", confirmImport);
 export default router;

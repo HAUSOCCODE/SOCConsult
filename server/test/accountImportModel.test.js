@@ -16,7 +16,7 @@ test("preview schema restricts stored fields and declares expiration index", () 
       .indexes()
       .some(
         ([keys, options]) =>
-          keys.expiresAt === 1 && options.expireAfterSeconds === 0,
+          keys.purgeAt === 1 && options.expireAfterSeconds === 0,
       ),
   );
   assert.ok(
