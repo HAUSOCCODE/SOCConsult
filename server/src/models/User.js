@@ -45,7 +45,8 @@ const userSchema = new mongoose.Schema(
     employeeId: { type: String, trim: true },
     // Unique index is deployed explicitly by the account-import preflight, never startup.
     institutionalId: { type: String, trim: true },
-    accountSource: { type: String, enum: ["csv", "self_registration"] },
+    accountSource: { type: String, enum: ["csv", "manual", "self_registration"] },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     program: { type: String, trim: true },
     position: { type: String, trim: true, maxlength: 100 },
     // Legacy Faculty data may still contain department. New Faculty flows use position.

@@ -1,10 +1,15 @@
 import bcrypt from "bcryptjs";
+import { createManualAccount } from "../services/manualAccountService.js";
 import User from "../models/User.js";
 import Appointment from "../models/Appointment.js";
 import { logActivity, notify } from "../services/activityService.js";
 import { createConsultationSummary } from "../services/consultationSummaryService.js";
 
 const managedRoles = ["student", "faculty"];
+export async function createUser(req, res) {
+  const result = await createManualAccount(req.body, req.user.id);
+  return res.status(result.statusCode).json(result.body);
+}
 const withProfileUrl = (user) => ({
   ...user,
   profilePicture:

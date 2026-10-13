@@ -5,6 +5,7 @@ import { api } from "../../api/apiClient";
 import { EmptyState, ErrorState, StatusBadge } from "../../components/UI";
 import { useToast } from "../../context/ToastContext";
 import Pagination from "../../components/Pagination";
+import ManualAccountForm from "../../components/accounts/ManualAccountForm";
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const tabs = [
@@ -30,6 +31,7 @@ export default function UserManagement({ initialTab = "All Users" }) {
   const [resetTarget, setResetTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedUserId, setExpandedUserId] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const load = () => {
     setError("");
@@ -138,6 +140,9 @@ export default function UserManagement({ initialTab = "All Users" }) {
         <p className="mt-2 text-sm text-slate-500">
           Review registrations and manage Student and Faculty accounts.
         </p>
+        <button type="button" className="btn-primary mt-4 w-full sm:w-auto" onClick={() => setManualOpen(true)}>
+          Create User Manually
+        </button>
       </div>
       <div className="flex max-w-full gap-2 overflow-x-auto pb-1 min-[900px]:flex-wrap min-[900px]:overflow-visible">
         {tabs.map((name) => (
@@ -355,6 +360,11 @@ export default function UserManagement({ initialTab = "All Users" }) {
           </div>
         </>
       )}
+      {manualOpen && <ManualAccountForm onClose={() => setManualOpen(false)} onSuccess={() => {
+        setManualOpen(false);
+        toast.success("User account created successfully.");
+        void load();
+      }} />}
       {selected && (
         <UserDetails
           user={selected}

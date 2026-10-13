@@ -2,6 +2,11 @@ export const notFound = (_req, res) =>
   res.status(404).json({ message: "Route not found." });
 
 export const errorHandler = (err, _req, res, _next) => {
+  if (_req.method === "POST" && /^\/api\/dean\/users\/?(?:\?|$)/i.test(_req.originalUrl || "")) {
+    res.set("Cache-Control", "no-store");
+    const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 503;
+    return res.status(status).json({ message: status === 503 ? "Account creation is temporarily unavailable." : "Invalid account creation request." });
+  }
   // Body-parser errors carry the raw body. Never log them for import requests.
   if (/^\/api\/dean\/account-imports(?:\/|$)/.test(_req.originalUrl || "")) {
     const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 500;

@@ -38,15 +38,19 @@ export const identityAnomalyQuery = {
     { $and: [ { $eq: ["$role", "faculty"] }, { $eq: [trimmed("employeeId"), ""] } ] },
   ] },
 };
-export async function assertImportPrerequisites({ users, imports, db }) {
+export async function assertProvisioningPrerequisites({ users, db }) {
   const userIndexes = await users.indexes();
-  const importIndexes = await imports.indexes();
-  if (!hasIdentityIndexes(userIndexes) || !hasRetentionIndex(importIndexes) ||
+  if (!hasIdentityIndexes(userIndexes) ||
       await users.findOne(identityAnomalyQuery, { projection: { _id: 1 } }))
-    throw Object.assign(new Error("Import prerequisites unavailable."), { code: "SERVICE_UNAVAILABLE" });
+    throw Object.assign(new Error("Account provisioning setup unavailable."), { code: "PROVISIONING_SETUP_UNAVAILABLE" });
   const topology = await db.admin().command({ hello: 1 });
   if (!topology.setName && topology.msg !== "isdbgrid")
-    throw Object.assign(new Error("Transactions unavailable."), { code: "SERVICE_UNAVAILABLE" });
+    throw Object.assign(new Error("Account provisioning setup unavailable."), { code: "PROVISIONING_SETUP_UNAVAILABLE" });
+}
+export async function assertImportPrerequisites({ users, imports, db }) {
+  await assertProvisioningPrerequisites({ users, db });
+  if (!hasRetentionIndex(await imports.indexes()))
+    throw Object.assign(new Error("Import prerequisites unavailable."), { code: "SERVICE_UNAVAILABLE" });
 }
 
 export async function migrateAccountImport({ users, imports, apply = false, now = new Date() }) {
