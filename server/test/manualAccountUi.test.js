@@ -156,7 +156,7 @@ test("User Management manual success refreshes server accounts while preserving 
   const html = renderToString(tree);
   for (const text of ["User Accounts", "Faculty", "View Details", "Deactivate", "000123"])
     assert.ok(html.includes(text), text);
-  assert.doesNotMatch(html, /Reset Password|Pending Registrations|Approve|Reject/);
+  assert.doesNotMatch(html, /Pending Registrations|Approve|Reject/);
   const form = elements(tree, (e) => e.type === ManualAccountForm)[0];
   form.props.onSuccess(); await new Promise((resolve) => setImmediate(resolve));
   assert.equal(state[7], false); assert.deepEqual(state[3], filters); assert.equal(state[4], 2);

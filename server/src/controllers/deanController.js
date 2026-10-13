@@ -9,6 +9,7 @@ import {
   listManagedUsers,
   readManagedUser,
   changeManagedUserStatus,
+  resetManagedUserPassword,
 } from "../services/userManagementService.js";
 
 const managedRoles = ["student", "faculty"];
@@ -36,36 +37,10 @@ export async function getUser(req, res) {
   return res.status(result.statusCode).json(result.body);
 }
 export async function resetUserPassword(req, res) {
-  const newPassword = req.body.newPassword || "";
-  const confirmPassword = req.body.confirmPassword || "";
-  if (!newPassword || !confirmPassword)
-    return res
-      .status(400)
-      .json({ message: "New password and confirmation are required." });
-  if (newPassword !== confirmPassword)
-    return res.status(400).json({ message: "Passwords do not match." });
-  if (
-    newPassword.length < 8 ||
-    /\s/.test(newPassword) ||
-    !/[A-Z]/.test(newPassword) ||
-    !/[0-9]/.test(newPassword)
-  )
-    return res.status(400).json({
-      message:
-        "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed.",
-    });
-  const user = await User.findOne({
-    _id: req.params.id,
-    role: { $in: managedRoles },
-  });
-  if (!user) return res.status(404).json({ message: "User not found." });
-  user.password = await bcrypt.hash(newPassword, 12);
-  user.passwordChangedAt = new Date();
-  await user.save();
-  await logActivity("dean_password_reset", req.user.id, "User", user.id, {
-    role: user.role,
-  });
-  res.json({ message: "Password reset successfully." });
+  if (req.body === undefined && (Number(req.get("Content-Length")) > 0 || req.get("Transfer-Encoding")))
+    return res.status(400).json({ message: "Password reset requires an empty request body." });
+  const result = await resetManagedUserPassword(req.params.id, req.body, req.user.id, req.get("If-Match"));
+  return res.status(result.statusCode).json(result.body);
 }
 export async function updateUserStatus(req, res) {
   const result = await changeManagedUserStatus(

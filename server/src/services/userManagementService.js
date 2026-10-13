@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import { formatFullName } from "./personNameService.js";
-import { recordUserStatusAudit } from "./activityService.js";
+import { recordUserStatusAudit, recordPasswordResetAudit } from "./activityService.js";
 
 export const managedRoles = ["student", "faculty"];
 const fields =
@@ -286,6 +287,62 @@ export async function changeManagedUserStatus(id, body, actor) {
         "Unable to confirm the status change. Refresh the user list before trying again.",
         "STATUS_CHANGE_UNCERTAIN",
       );
+    return error instanceof ManagementError ? error.response : unavailable();
+  } finally {
+    if (session) await session.endSession().catch(() => {});
+  }
+}
+
+// Preserve exact credentials. An invalid canonical value cannot use a legacy fallback.
+export function resolveResetInstitutionalId(user) {
+  const value = user.institutionalId !== undefined
+    ? user.institutionalId : user.role === "student" ? user.studentId : user.employeeId;
+  return typeof value === "string" && value.trim().length > 0 && value === value.trim() &&
+    !/[\x00-\x1f\x7f-\x9f]/.test(value) && Buffer.byteLength(value, "utf8") <= 72 ? value : null;
+}
+export async function resetManagedUserPassword(id, body, actor, expectedVersion) {
+  if (!validId(id)) return fail(400, "Invalid user reference.");
+  if (String(id) === String(actor)) return fail(403, "You cannot reset your own password here.");
+  if (body !== undefined && (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length))
+    return fail(400, "Password reset requires an empty request body.");
+  if (typeof expectedVersion !== "string" || !/^"(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z|null)"$/.test(expectedVersion))
+    return fail(428, "Refresh the user list before resetting the password.");
+  const version = JSON.parse(expectedVersion);
+  const conflict = () => fail(409, "This account has changed. Refresh the user list before trying again.", "PASSWORD_RESET_CONFLICT");
+  let session;
+  try {
+    session = await mongoose.startSession();
+    let updated;
+    await session.withTransaction(async () => {
+      const current = await User.findOne({ _id: id, role: { $in: managedRoles } })
+        .select(`${fields} registrationStatus`).session(session).lean();
+      if (!current) throw new ManagementError(fail(404, "User not found."));
+      if (publicManagedUser(current).version !== (version === "null" ? null : version))
+        throw new ManagementError(conflict());
+      if (!["Active", "Inactive"].includes(current.accountStatus) ||
+          (current.registrationStatus !== undefined && current.registrationStatus !== "Approved"))
+        throw new ManagementError(fail(409, "This account is not eligible for password reset.", "PASSWORD_RESET_INELIGIBLE"));
+      const institutionalId = resolveResetInstitutionalId(current);
+      if (!institutionalId) throw new ManagementError(fail(422, "This account does not have a valid institutional ID.", "INVALID_INSTITUTIONAL_ID"));
+      const timestamp = new Date(Math.max(Date.now(), new Date(current.updatedAt || 0).getTime() + 1));
+      const password = await bcrypt.hash(institutionalId, 12);
+      const exact = (value) => value === undefined ? { $exists: false } : value;
+      updated = await User.findOneAndUpdate({
+        _id: id, role: current.role, accountStatus: current.accountStatus,
+        registrationStatus: exact(current.registrationStatus), updatedAt: exact(current.updatedAt),
+        institutionalId: exact(current.institutionalId), studentId: exact(current.studentId), employeeId: exact(current.employeeId),
+      }, { $set: { password, passwordResetAt: timestamp, passwordChangedAt: timestamp, updatedAt: timestamp } },
+      { new: true, runValidators: true, timestamps: false, session }).select("name firstName middleName lastName email role").lean();
+      if (!updated) throw new ManagementError(conflict());
+      await recordPasswordResetAudit({ user: updated, actor, timestamp, session });
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
+    // Existing JWTs retain normal expiry; authentication has no password-based revocation.
+    return { statusCode: 200, body: { message: "Password reset successfully.", user: {
+      _id: String(updated._id), name: formatFullName(updated), email: updated.email || "", role: updated.role,
+    } } };
+  } catch (error) {
+    if (error.hasErrorLabel?.("UnknownTransactionCommitResult"))
+      return fail(503, "Unable to confirm the password reset. Refresh the user list before trying again.", "PASSWORD_RESET_UNCERTAIN");
     return error instanceof ManagementError ? error.response : unavailable();
   } finally {
     if (session) await session.endSession().catch(() => {});

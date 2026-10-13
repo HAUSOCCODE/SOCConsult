@@ -84,6 +84,7 @@ const userSchema = new mongoose.Schema(
     rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     rejectionReason: { type: String, trim: true, maxlength: 500 },
     passwordChangedAt: Date,
+    passwordResetAt: Date,
     // Kept temporarily for safe migration of records created by the initial version.
     isActive: Boolean,
     isApproved: Boolean,
