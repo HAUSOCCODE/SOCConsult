@@ -17,7 +17,7 @@ import { migrateDeanAccount } from "../src/services/deanAccountMigrationService.
 const response = () => ({ statusCode: 200, status(value) { this.statusCode = value; return this; }, json(body) { this.body = body; return this; } });
 const chain = (value) => {
   const result = { then: (yes, no) => Promise.resolve(value).then(yes, no) };
-  for (const method of ["select", "populate", "sort", "limit", "lean"]) result[method] = () => result;
+  for (const method of ["select", "populate", "sort", "skip", "limit", "lean"]) result[method] = () => result;
   return result;
 };
 function patch(object, key, value, restores) {
@@ -79,6 +79,7 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
   const other = new mongoose.Types.ObjectId().toString();
   patch(User, "findById", async id => ({ id: String(id), _id: new mongoose.Types.ObjectId(id), role: Object.keys(ids).find(role => ids[role] === String(id)), name: "Caller", accountStatus: "Active", registrationStatus: "Approved" }), restores);
   patch(User, "find", query => { queries.push(["users", query]); return chain([]); }, restores);
+  patch(User, "countDocuments", async () => 0, restores);
   patch(Appointment, "find", query => { queries.push(["appointments", query]); return chain([]); }, restores);
   patch(Appointment, "countDocuments", async query => { queries.push(["appointments", query]); return 0; }, restores);
   patch(Appointment, "aggregate", async pipeline => { queries.push(["appointments", pipeline[0].$match]); return []; }, restores);
