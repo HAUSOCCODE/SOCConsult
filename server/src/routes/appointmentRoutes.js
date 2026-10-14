@@ -186,6 +186,7 @@ router.post(
     const slot = await Availability.findOne({
       _id: req.body.availabilityId,
       isActive: true,
+      startAt: { $gt: new Date() },
     });
     const requestedStart = slot?.startAt;
     const requestedEnd = slot?.endAt;
@@ -208,8 +209,11 @@ router.post(
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
       role: { $in: ["faculty", "dean"] },
-      registrationStatus: "Approved",
       accountStatus: "Active",
+      $or: [
+        { registrationStatus: "Approved" },
+        { role: "dean" },
+      ],
     });
     if (!facultyIsAvailable)
       return res.status(400).json({
@@ -224,6 +228,25 @@ router.post(
       return res.status(409).json({
         message:
           "You already have an active consultation request for this faculty schedule.",
+      });
+    const [studentConflict, facultyConflict] = await Promise.all([
+      Appointment.exists({
+        student: req.user.id,
+        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        startAt: { $lt: requestedEnd },
+        endAt: { $gt: requestedStart },
+      }),
+      Appointment.exists({
+        faculty: slot.faculty,
+        status: { $in: ["Approved", "Rescheduled"] },
+        startAt: { $lt: requestedEnd },
+        endAt: { $gt: requestedStart },
+      }),
+    ]);
+    if (studentConflict || facultyConflict)
+      return res.status(409).json({
+        message:
+          "This schedule conflicts with an active consultation and is no longer available.",
       });
     const subject = (req.body.subject || "").trim();
     const reason = (req.body.reason || "").trim();
@@ -810,12 +833,34 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
     _id: req.body.availabilityId,
     faculty: appointment.faculty,
     isActive: true,
+    startAt: { $gt: new Date() },
     endAt: { $gt: new Date() },
   });
   if (!slot)
     return res.status(400).json({
       message:
         "Select a valid future availability schedule for this faculty member.",
+    });
+  const [studentConflict, facultyConflict] = await Promise.all([
+    Appointment.exists({
+      _id: { $ne: appointment.id },
+      student: req.user.id,
+      status: { $in: ["Pending", "Approved", "Rescheduled"] },
+      startAt: { $lt: slot.endAt },
+      endAt: { $gt: slot.startAt },
+    }),
+    Appointment.exists({
+      _id: { $ne: appointment.id },
+      faculty: appointment.faculty,
+      status: { $in: ["Approved", "Rescheduled"] },
+      startAt: { $lt: slot.endAt },
+      endAt: { $gt: slot.startAt },
+    }),
+  ]);
+  if (studentConflict || facultyConflict)
+    return res.status(409).json({
+      message:
+        "This schedule conflicts with an active consultation and is no longer available.",
     });
   const windowMinutes = Math.round((slot.endAt - slot.startAt) / 60000);
   const scheduled = await Appointment.find({
