@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
     // Remove the legacy persistent ConsultIO token without touching unrelated storage.
     localStorage.removeItem("consultio_token");
     const token = sessionStorage.getItem("consultio_token");
+    const storedUser = sessionStorage.getItem("consultio_user");
     if (!token) {
       setUser(null);
       setLoading(false);
@@ -15,7 +16,18 @@ export function AuthProvider({ children }) {
     }
     api("/auth/me")
       .then(({ user }) => setUser(user))
-      .catch(() => {
+      .catch((error) => {
+        if (error.status === 401 && storedUser) {
+          try {
+            if (JSON.parse(storedUser).role === "student")
+              sessionStorage.setItem(
+                "socconsult_student_session_message",
+                "Your session has expired. Please log in again.",
+              );
+          } catch {
+            // Invalid cached user data is cleared with the expired session.
+          }
+        }
         sessionStorage.removeItem("consultio_token");
         sessionStorage.removeItem("consultio_user");
         setUser(null);
