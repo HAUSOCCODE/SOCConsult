@@ -189,8 +189,18 @@ export async function login(req, res) {
       ? { username: identifier }
       : { email: identifier },
   ).select("+password +profilePicture");
-  if (!user || !(await bcrypt.compare(password, user.password)))
+  if (!user) {
+    if (requestedRole === "student")
+      return res.status(404).json({
+        message: "No Student account was found for this email.",
+      });
+    return fail();
+  }
+  if (!(await bcrypt.compare(password, user.password))) {
+    if (requestedRole === "student")
+      return res.status(401).json({ message: "Incorrect email or password." });
     return fail(user);
+  }
   if (requestedRole === "dean" &&
       (user.role !== "dean" || user.accountStatus !== "Active"))
     return fail(user);
@@ -199,12 +209,12 @@ export async function login(req, res) {
     return res
       .status(403)
       .json({ message: "This account cannot access the selected portal." });
-  if (user.role !== "dean" && user.registrationStatus === "Pending")
+  if (user.role === "faculty" && user.registrationStatus === "Pending")
     return res.status(403).json({
       message:
         "Your account has already been created. Please wait for a Dean to approve your registration before you can access SOCConsult. You do not need to register again.",
     });
-  if (user.role !== "dean" && user.registrationStatus === "Rejected")
+  if (user.role === "faculty" && user.registrationStatus === "Rejected")
     return res.status(403).json({
       message:
         "Your registration was not approved. Please contact the Dean if you believe this requires review.",

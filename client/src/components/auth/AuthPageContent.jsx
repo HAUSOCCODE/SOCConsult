@@ -26,10 +26,13 @@ const rejectedMessage =
   "Your registration was not approved. Please contact the Dean if you believe this requires review.";
 const inactiveMessage =
   "Your account is currently inactive. Please contact the Dean for assistance.";
+const expiredSessionMessage =
+  "Your session has expired. Please log in again.";
 const errorTitle = (message) => {
   if (message === pendingMessage) return "Account Pending Approval";
   if (message === rejectedMessage) return "Registration Not Approved";
   if (message === inactiveMessage) return "Account Inactive";
+  if (message === expiredSessionMessage) return "Session Expired";
   return "Unable to Continue";
 };
 export default function AuthPageContent({ mode, role: fixedRole }) {
@@ -57,7 +60,13 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setSuccess("");
-    setError("");
+    let sessionMessage = "";
+    if (mode === "login" && role === "student") {
+      sessionMessage =
+        sessionStorage.getItem("socconsult_student_session_message") || "";
+      sessionStorage.removeItem("socconsult_student_session_message");
+    }
+    setError(sessionMessage);
     setFieldErrors({});
   }, [mode, role]);
   if (!labels[role] || (role === "dean" && mode === "register"))

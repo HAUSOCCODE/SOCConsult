@@ -14,7 +14,7 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ message: "Account no longer exists." });
     if (user.accountStatus !== "Active")
       return res.status(403).json({ message: "This account is inactive." });
-    if (user.role !== "dean" && user.registrationStatus !== "Approved")
+    if (user.role === "faculty" && user.registrationStatus !== "Approved")
       return res.status(403).json({
         message:
           user.registrationStatus === "Rejected"
