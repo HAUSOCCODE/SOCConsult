@@ -1,6 +1,7 @@
 import Availability from "../models/Availability.js";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
+import StudentAvailability from "../models/StudentAvailability.js";
 import mongoose from "mongoose";
 import { logActivity, notify } from "../services/activityService.js";
 import {
@@ -104,6 +105,20 @@ export const getAvailableFaculty = async (_req, res) => {
 
 export const getFacultyAvailability = async (req, res) => {
   const facultyId = req.user.role === "student" ? req.params.facultyId : req.user.id;
+  if (req.user.role === "student") {
+    if (!mongoose.isValidObjectId(facultyId))
+      return res.status(404).json({ message: "Consultation provider not found." });
+    const provider = await User.exists({
+      _id: facultyId,
+      accountStatus: "Active",
+      $or: [
+        { role: "faculty", registrationStatus: "Approved" },
+        { role: "dean" },
+      ],
+    });
+    if (!provider)
+      return res.status(404).json({ message: "Consultation provider not found." });
+  }
   await processExpiredAvailability({ facultyId });
   const now = new Date();
   const schedules = await Availability.find({
@@ -112,30 +127,63 @@ export const getFacultyAvailability = async (req, res) => {
     ...(req.user.role === "student" && { startAt: { $gt: now } }),
     endAt: { $gt: now },
   }).sort({ startAt: 1 });
-  const activeRequests =
-    req.user.role === "student"
-      ? await Appointment.find({
-          student: req.user.id,
-          availability: { $in: schedules.map((schedule) => schedule.id) },
-          status: { $in: ["Pending", "Approved", "Rescheduled"] },
-        }).select("availability status")
-      : [];
-  const requestByAvailability = new Map(
-    activeRequests.map((appointment) => [
-      String(appointment.availability),
-      appointment,
-    ]),
-  );
-  res.json({
-    schedules: schedules.map((schedule) => {
-      const activeRequest = requestByAvailability.get(schedule.id);
-      return {
+  if (req.user.role === "student") {
+    const studentAvailability = await StudentAvailability.find({
+      student: req.user.id,
+      isActive: true,
+      endAt: { $gt: now },
+    })
+      .select("startAt endAt")
+      .lean();
+    const hasActiveStudentAvailability = studentAvailability.length > 0;
+    const [studentAppointments, providerAppointments] = await Promise.all([
+      Appointment.find({
+        student: req.user.id,
+        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        startAt: { $exists: true },
+        endAt: { $gt: now },
+      }).select("startAt endAt"),
+      Appointment.find({
+        faculty: facultyId,
+        status: { $in: ["Approved", "Rescheduled"] },
+        startAt: { $exists: true },
+        endAt: { $gt: now },
+      }).select("startAt endAt"),
+    ]);
+    const overlaps = (slot, appointment) =>
+      slot.startAt < appointment.endAt && slot.endAt > appointment.startAt;
+    const matchedSchedules = schedules.filter((schedule) => {
+      if (
+        hasActiveStudentAvailability &&
+        !studentAvailability.some(
+          (period) =>
+            period.startAt <= schedule.startAt &&
+            period.endAt >= schedule.endAt,
+        )
+      )
+        return false;
+      return (
+        !studentAppointments.some((appointment) =>
+          overlaps(schedule, appointment),
+        ) &&
+        !providerAppointments.some((appointment) =>
+          overlaps(schedule, appointment),
+        )
+      );
+    });
+    return res.json({
+      hasActiveStudentAvailability,
+      schedules: matchedSchedules.map((schedule) => ({
         ...scheduleShape(schedule),
-        hasActiveRequest: Boolean(activeRequest),
-        requestStatus: activeRequest?.status || null,
-        appointmentId: activeRequest?.id || null,
-      };
-    }),
+        matchingType: hasActiveStudentAvailability
+          ? "Matched with your availability"
+          : "Based on Faculty availability only",
+        bookable: true,
+      })),
+    });
+  }
+  res.json({
+    schedules: schedules.map(scheduleShape),
   });
 };
 

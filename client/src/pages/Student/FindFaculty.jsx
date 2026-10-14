@@ -76,6 +76,8 @@ export default function FindFaculty() {
   const [selected, setSelected] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [hasActiveStudentAvailability, setHasActiveStudentAvailability] =
+    useState(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [chosenSchedule, setChosenSchedule] = useState(null);
   const [search, setSearch] = useState("");
@@ -86,6 +88,7 @@ export default function FindFaculty() {
 
   const loadFaculty = () => {
     setError("");
+    scheduleCache.current.clear();
     return api("/availability/faculty")
       .then((data) =>
         setFaculty(Array.isArray(data?.faculty) ? data.faculty : []),
@@ -124,11 +127,13 @@ export default function FindFaculty() {
     setFormError("");
     const cached = scheduleCache.current.get(String(member._id));
     if (cached) {
-      setSchedules(cached);
+      setSchedules(cached.schedules);
+      setHasActiveStudentAvailability(cached.hasActiveStudentAvailability);
       setScheduleLoading(false);
       return;
     }
     setSchedules([]);
+    setHasActiveStudentAvailability(null);
     setScheduleLoading(true);
     try {
       const data = await api(`/availability/faculty/${member._id}`);
@@ -141,8 +146,17 @@ export default function FindFaculty() {
                 String(reschedule.currentAvailabilityId),
             )
           : loaded;
-        scheduleCache.current.set(String(member._id), validSchedules);
+        const cacheEntry = {
+          schedules: validSchedules,
+          hasActiveStudentAvailability: Boolean(
+            data?.hasActiveStudentAvailability,
+          ),
+        };
+        scheduleCache.current.set(String(member._id), cacheEntry);
         setSchedules(validSchedules);
+        setHasActiveStudentAvailability(
+          cacheEntry.hasActiveStudentAvailability,
+        );
       }
     } catch {
       if (requestId === availabilityRequest.current)
@@ -490,14 +504,34 @@ export default function FindFaculty() {
                     )}
                   </dl>
                 )}
+                {!scheduleLoading &&
+                  hasActiveStudentAvailability === false && (
+                    <div className="mb-5 rounded-xl border border-gold-200 bg-gold-50 p-3 text-sm text-slate-700">
+                      <p>
+                        No active availability added. These schedules are based
+                        on Faculty availability only.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/student/availability")}
+                        className="mt-2 font-bold text-maroon-800 hover:underline"
+                      >
+                        Manage My Availability
+                      </button>
+                    </div>
+                  )}
                 {scheduleLoading ? (
                   <p className="py-10 text-center text-sm font-semibold text-maroon-800">
                     Loading consultation schedules...
                   </p>
                 ) : schedules.length === 0 ? (
                   <EmptyState
-                    title="No available consultation schedules."
-                    text="This Faculty member has not published an available schedule yet."
+                    title="No compatible schedules are currently available."
+                    text={
+                      hasActiveStudentAvailability
+                        ? "You may adjust My Availability or check another Faculty provider."
+                        : "This provider has no currently bookable Faculty schedules."
+                    }
                   />
                 ) : (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -528,6 +562,9 @@ export default function FindFaculty() {
                               "Meeting platform not provided"
                             : schedule.location || "Location not provided"}
                         </p>
+                        <p className="mt-3 inline-flex max-w-full rounded-full bg-maroon-50 px-2.5 py-1 text-xs font-bold text-maroon-800">
+                          {schedule.matchingType}
+                        </p>
                         {schedule.hasActiveRequest ? (
                           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-center">
                             <p className="font-bold text-green-800">
@@ -544,6 +581,7 @@ export default function FindFaculty() {
                         ) : (
                           <button
                             type="button"
+                            disabled={!schedule.bookable}
                             onClick={() => {
                               setAvailabilityOpen(false);
                               setChosenSchedule(schedule);
@@ -565,7 +603,7 @@ export default function FindFaculty() {
                                   : "5",
                               });
                             }}
-                            className="btn-primary mt-4 w-full py-2"
+                            className="btn-primary mt-4 w-full py-2 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Select Schedule
                           </button>
