@@ -3,7 +3,6 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/Public/LandingPage";
 import RoleSelectionPage from "./pages/Public/RoleSelectionPage";
 import StudentLogin from "./pages/Auth/StudentLogin";
-import StudentRegister from "./pages/Auth/StudentRegister";
 import FacultyLogin from "./pages/Auth/FacultyLogin";
 import FacultyRegister from "./pages/Auth/FacultyRegister";
 import DeanLogin from "./pages/Auth/DeanLogin";
@@ -13,8 +12,9 @@ import BookConsultation from "./pages/Student/BookConsultation";
 import StudentAppointments from "./pages/Student/StudentAppointments";
 import StudentHistory from "./pages/Student/StudentConsultationHistory";
 import StudentNotifications from "./pages/Student/StudentNotifications";
-import StudentProfile from "./pages/Student/StudentProfile";
-import StudentSecuritySettings from "./pages/Student/StudentSecuritySettings";
+import StudentAvailability from "./pages/Student/StudentAvailability";
+import StudentCalendar from "./pages/Student/StudentCalendar";
+import StudentAccountSettings from "./pages/Student/StudentAccountSettings";
 import FacultyLayout from "./layouts/FacultyLayout";
 import FacultyDashboard from "./pages/Faculty/FacultyDashboard";
 import FacultyAppointments from "./pages/Faculty/FacultyAppointments";
@@ -60,7 +60,6 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/get-started" element={<RoleSelectionPage />} />
         <Route path="/student/login" element={<StudentLogin />} />
-        <Route path="/student/register" element={<StudentRegister />} />
         <Route path="/faculty/login" element={<FacultyLogin />} />
         <Route path="/faculty/register" element={<FacultyRegister />} />
         <Route path="/dean/login" element={<DeanLogin />} />
@@ -72,12 +71,17 @@ export default function App() {
           <Route path="student" element={<StudentLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<StudentDashboard />} />
-            <Route path="book" element={<BookConsultation />} />
-            <Route path="appointments" element={<StudentAppointments />} />
+            <Route path="faculty" element={<BookConsultation />} />
+            <Route path="availability" element={<StudentAvailability />} />
+            <Route path="consultations" element={<StudentAppointments />} />
+            <Route path="calendar" element={<StudentCalendar />} />
             <Route path="history" element={<StudentHistory />} />
             <Route path="notifications" element={<StudentNotifications />} />
-            <Route path="profile" element={<StudentProfile />} />
-            <Route path="security" element={<StudentSecuritySettings />} />
+            <Route path="account" element={<StudentAccountSettings />} />
+            <Route path="book" element={<Navigate to="/student/faculty" replace />} />
+            <Route path="appointments" element={<Navigate to="/student/consultations" replace />} />
+            <Route path="profile" element={<Navigate to="/student/account" replace />} />
+            <Route path="security" element={<Navigate to="/student/account" replace />} />
             <Route
               path="*"
               element={<NotFoundPage dashboard="/student/dashboard" />}

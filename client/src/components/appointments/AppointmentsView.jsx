@@ -132,7 +132,7 @@ export default function AppointmentsPage({ filter }) {
     }
   };
   const chooseNewSchedule = (appointment) =>
-    navigate("/student/book", {
+    navigate("/student/faculty", {
       state: {
         rescheduleAppointment: {
           appointmentId: appointment._id,
