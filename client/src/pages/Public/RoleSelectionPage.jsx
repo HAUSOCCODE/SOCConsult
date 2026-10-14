@@ -13,7 +13,6 @@ const roles = [
     text: "Book consultations, view faculty availability, manage appointments, and track consultation activities.",
     base: "/student",
     button: "Continue as Student",
-    register: true,
   },
   {
     name: "Faculty Member",

@@ -68,7 +68,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
   const location = useLocation();
   const compactStudentHeader =
     role === "student" &&
-    ["/student/profile", "/student/notifications", "/student/history"].includes(
+    ["/student/account", "/student/notifications", "/student/history"].includes(
       location.pathname,
     );
   const navigate = useNavigate();

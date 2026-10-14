@@ -455,7 +455,7 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                     : "Create Account"}
               </button>
               <p className="mt-5 text-center text-sm text-slate-500">
-                {mode === "login" && role !== "dean" ? (
+                {mode === "login" && role === "faculty" ? (
                   <>
                     New to SOCConsult?{" "}
                     <Link

@@ -254,7 +254,7 @@ export default function BookPage() {
           : await api("/appointments", { method: "POST", body: request });
       if (reschedule) {
         toast.success(data.message || "New schedule submitted successfully.");
-        navigate("/student/appointments", { replace: true, state: {} });
+        navigate("/student/consultations", { replace: true, state: {} });
         return;
       }
       setChosenSchedule(null);
@@ -264,7 +264,7 @@ export default function BookPage() {
       toast.success(
         data.message || "Consultation request submitted successfully.",
       );
-      if (chosenSchedule.onDemand) navigate("/student/appointments");
+      if (chosenSchedule.onDemand) navigate("/student/consultations");
     } catch (requestError) {
       if (
         requestError.message ===
@@ -315,7 +315,7 @@ export default function BookPage() {
             {reschedule && (
               <button
                 type="button"
-                onClick={() => navigate("/student/appointments")}
+                onClick={() => navigate("/student/consultations")}
                 className="mt-3 text-sm font-bold text-maroon-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300"
               >
                 Back to My Appointments

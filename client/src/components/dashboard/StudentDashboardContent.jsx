@@ -45,14 +45,14 @@ const STAT_CARDS = [
     label: "Upcoming Appointments",
     helper: "Scheduled consultations ahead",
     icon: CalendarCheck2,
-    to: "/student/appointments",
+    to: "/student/consultations",
   },
   {
     key: "pendingAppointments",
     label: "Pending Appointments",
     helper: "Awaiting Faculty review",
     icon: Clock3,
-    to: "/student/appointments",
+    to: "/student/consultations",
   },
   {
     key: "completedConsultations",
@@ -71,15 +71,15 @@ const STAT_CARDS = [
 ];
 
 const QUICK_ACTIONS = [
-  [CalendarPlus2, "Book a Consultation", "/student/book"],
-  [CalendarDays, "View My Appointments", "/student/appointments"],
+  [CalendarPlus2, "Book a Consultation", "/student/faculty"],
+  [CalendarDays, "View My Appointments", "/student/consultations"],
   [History, "Consultation History", "/student/history"],
-  [UserRound, "Update Profile", "/student/profile"],
+  [UserRound, "Update Profile", "/student/account"],
 ];
 
 const RESOURCES = [
   [Bell, "Notifications Center", "/student/notifications"],
-  [LockKeyhole, "Security Settings", "/student/security"],
+  [LockKeyhole, "Security Settings", "/student/account"],
 ];
 
 const WEEK_ITEMS = [
@@ -167,7 +167,7 @@ export default function StudentDashboardContent() {
               We&apos;re here to support your academic journey.
             </p>
             <Link
-              to="/student/book"
+              to="/student/faculty"
               className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gold-400 px-4 text-sm font-bold text-maroon-950 transition-colors hover:bg-gold-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 focus-visible:ring-offset-2 focus-visible:ring-offset-maroon-800"
             >
               <CalendarPlus2 size={17} aria-hidden="true" />
@@ -222,7 +222,7 @@ export default function StudentDashboardContent() {
               Upcoming &amp; Recent Appointments
             </h2>
             <Link
-              to="/student/appointments"
+              to="/student/consultations"
               className="shrink-0 text-sm font-bold text-maroon-800 hover:text-maroon-950 focus-visible:outline-none focus-visible:underline"
             >
               View all
@@ -287,7 +287,7 @@ function DashboardAppointment({ appointment }) {
     historicalStatuses.includes(appointment.status) ||
     new Date(appointment.endAt) <= new Date()
       ? "/student/history"
-      : "/student/appointments";
+      : "/student/consultations";
   const duration = appointment.estimatedDurationMinutes
     ? `${appointment.estimatedDurationMinutes} min`
     : "Duration not provided";
