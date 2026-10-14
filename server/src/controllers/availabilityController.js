@@ -66,16 +66,19 @@ export const getAvailableFaculty = async (_req, res) => {
   await processExpiredAvailability();
   const now = new Date();
   const faculty = await User.find({
-    role: { $in: ["faculty", "dean"] },
-    registrationStatus: "Approved",
     accountStatus: "Active",
+    $or: [
+      { role: "faculty", registrationStatus: "Approved" },
+      { role: "dean" },
+    ],
   }).select(
-    "name email role employeeId position specialization office +profilePicture",
+    "name role position specialization office +profilePicture",
   );
   const ids = faculty.map((item) => item.id);
   const availability = await Availability.find({
     faculty: { $in: ids },
     isActive: true,
+    startAt: { $gt: now },
     endAt: { $gt: now },
   });
   const counts = Object.fromEntries(faculty.map((item) => [item.id, 0]));
@@ -85,15 +88,17 @@ export const getAvailableFaculty = async (_req, res) => {
     modes[item.faculty].add(item.mode || "Online");
   });
   res.json({
-    faculty: faculty.map((item) => ({
-      ...item.toObject(),
-      profilePicture:
-        typeof item.profilePicture === "string"
-          ? item.profilePicture
-          : item.profilePicture?.url,
-      availableScheduleCount: counts[item.id],
-      consultationModes: [...modes[item.id]],
-    })),
+    faculty: faculty
+      .filter((item) => item.role === "faculty" || counts[item.id] > 0)
+      .map((item) => ({
+        ...item.toObject(),
+        profilePicture:
+          typeof item.profilePicture === "string"
+            ? item.profilePicture
+            : item.profilePicture?.url,
+        availableScheduleCount: counts[item.id],
+        consultationModes: [...modes[item.id]],
+      })),
   });
 };
 
@@ -104,6 +109,7 @@ export const getFacultyAvailability = async (req, res) => {
   const schedules = await Availability.find({
     faculty: facultyId,
     isActive: true,
+    ...(req.user.role === "student" && { startAt: { $gt: now } }),
     endAt: { $gt: now },
   }).sort({ startAt: 1 });
   const activeRequests =

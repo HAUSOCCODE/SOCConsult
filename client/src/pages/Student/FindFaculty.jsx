@@ -1,6 +1,5 @@
 import {
   CalendarDays,
-  ChevronRight,
   FileText,
   Info,
   Search,
@@ -14,6 +13,7 @@ import { EmptyState, ErrorState } from "../../components/UI";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../../components/profile/ProfileImagePreview";
+import FacultyCard from "../../components/student/FacultyCard";
 import { useLocation, useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 
@@ -57,12 +57,13 @@ const formatSize = (bytes) =>
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
     : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 const time = (value) =>
-  new Date(value).toLocaleTimeString([], {
+  new Date(value).toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
     hour: "2-digit",
     minute: "2-digit",
   });
 
-export default function BookPage() {
+export default function FindFaculty() {
   const { user } = useAuth();
   const toast = useToast();
   const location = useLocation();
@@ -305,12 +306,12 @@ export default function BookPage() {
               Student Consultation
             </p>
             <h1 className="mt-1.5 break-words text-xl font-bold tracking-tight text-maroon-900 sm:text-[26px]">
-              {reschedule ? "Choose a New Schedule" : "Book a Consultation"}
+              {reschedule ? "Choose a New Schedule" : "Find Faculty"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-5 text-slate-600 sm:text-[15px] sm:leading-6">
               {reschedule
                 ? "Select a new schedule for your existing consultation."
-                : "Find and connect with a Faculty Member for guidance and support."}
+                : "Browse consultation providers and review their available schedules."}
             </p>
             {reschedule && (
               <button
@@ -348,16 +349,16 @@ export default function BookPage() {
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-slate-900">
-            Available Faculty
+            Consultation Providers
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Select a Faculty Member to review published schedules.
+            Select a provider to review published schedules.
           </p>
         </div>
         {faculty !== null && (
           <p className="max-w-28 break-words text-right text-xs font-semibold leading-4 text-slate-500 sm:max-w-none">
             {visibleFaculty.length}{" "}
-            {visibleFaculty.length === 1 ? "Faculty Member" : "Faculty Members"}
+            {visibleFaculty.length === 1 ? "Provider" : "Providers"}
           </p>
         )}
       </div>
@@ -381,87 +382,14 @@ export default function BookPage() {
       ) : (
         <div className="space-y-3">
           {visibleFaculty.map((member) => (
-            <article
+            <FacultyCard
               key={member._id}
-              role="button"
-              tabIndex={0}
-              aria-pressed={selected?._id === member._id}
-              onClick={() => void viewAvailability(member)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  void viewAvailability(member);
-                }
-              }}
-              className={`min-h-[104px] w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-xl border shadow-sm transition-colors duration-150 hover:border-maroon-300 focus:outline-none focus:ring-2 focus:ring-maroon-400 md:min-h-[112px] ${selected?._id === member._id ? "border-maroon-400 bg-maroon-50/40" : "border-slate-200 bg-white"}`}
-            >
-              <div className="grid min-h-[inherit] min-w-0 grid-cols-[minmax(0,1fr)_8rem] items-stretch min-[360px]:grid-cols-[minmax(0,1fr)_9rem] md:grid-cols-[minmax(0,1fr)_12rem]">
-                <div className="flex min-w-0 items-center gap-2.5 p-3 sm:gap-3 sm:p-4 md:gap-4 md:px-5">
-                  <span
-                    className="shrink-0"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                  >
-                    <ProfileImagePreview
-                      user={member}
-                      className="h-11 w-11 rounded-full bg-maroon-800 text-base font-bold text-white min-[360px]:h-12 min-[360px]:w-12 md:h-16 md:w-16 md:text-lg"
-                      buttonClassName="rounded-full"
-                    />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="min-w-0">
-                      <h3 className="min-w-0 break-words text-sm font-bold leading-5 text-slate-900 sm:text-base md:text-lg">
-                        {formatPersonName(member.name)}
-                      </h3>
-                    </div>
-                    <p className="mt-0.5 break-words text-xs font-medium leading-4 text-slate-600 sm:text-sm">
-                      {member.position || "Position not provided"}
-                    </p>
-                    {selected?._id === member._id && (
-                      <span className="mt-2 inline-flex w-auto shrink-0 rounded-md bg-maroon-100 px-2 py-1 text-[10px] font-bold leading-none text-maroon-800 sm:text-xs">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex min-w-0 flex-col justify-center border-l border-slate-200 p-2.5 min-[360px]:p-3 md:px-5 md:py-4">
-                  <p className="text-center text-xl font-extrabold leading-none text-maroon-900 md:text-2xl">
-                    {member.availableScheduleCount || 0}
-                  </p>
-                  <p className="mt-1 break-words text-center text-[10px] font-medium leading-3.5 text-slate-600 sm:text-xs sm:leading-4">
-                    available{" "}
-                    {(member.availableScheduleCount || 0) === 1
-                      ? "schedule"
-                      : "schedules"}
-                  </p>
-                  <div className="mt-2.5 flex flex-col gap-2 md:mt-3">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void viewAvailability(member);
-                      }}
-                      className="inline-flex h-9 w-full items-center justify-center gap-0.5 whitespace-nowrap rounded-md bg-maroon-800 px-1.5 text-[10px] font-bold text-white transition-colors hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 focus-visible:ring-offset-2 min-[360px]:gap-1 min-[360px]:px-2 min-[360px]:text-xs md:gap-1.5 md:px-3 md:text-sm"
-                    >
-                      View Schedule
-                      <ChevronRight size={16} aria-hidden="true" />
-                    </button>
-                    {!reschedule && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          requestSchedule(member);
-                        }}
-                        className="btn-secondary inline-flex h-9 w-full items-center justify-center whitespace-nowrap px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:px-3 md:text-sm"
-                      >
-                        Request a Schedule
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </article>
+              provider={member}
+              selected={selected?._id === member._id}
+              allowScheduleRequest={!reschedule}
+              onViewAvailability={(provider) => void viewAvailability(provider)}
+              onRequestSchedule={requestSchedule}
+            />
           ))}
           <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600 shadow-sm">
             <Info
@@ -580,8 +508,9 @@ export default function BookPage() {
                       >
                         <p className="font-bold">
                           {new Date(schedule.startAt).toLocaleDateString(
-                            undefined,
+                            "en-PH",
                             {
+                              timeZone: "Asia/Manila",
                               weekday: "long",
                               month: "long",
                               day: "numeric",
@@ -702,8 +631,9 @@ export default function BookPage() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
                     <p className="font-semibold">
                       {new Date(chosenSchedule.startAt).toLocaleDateString(
-                        undefined,
+                        "en-PH",
                         {
+                          timeZone: "Asia/Manila",
                           weekday: "long",
                           month: "long",
                           day: "numeric",

@@ -137,7 +137,13 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
     }
     queries.length = 0;
     assert.equal((await request("/availability/faculty", "student")).status, 200);
-    assert.deepEqual(queries.find(([model]) => model === "users")[1].role, { $in: ["faculty", "dean"] });
+    const providerQuery = queries.find(([model]) => model === "users")[1];
+    assert.equal(providerQuery.accountStatus, "Active");
+    assert.deepEqual(providerQuery.$or, [
+      { role: "faculty", registrationStatus: "Approved" },
+      { role: "dean" },
+    ]);
+    assert.ok(providerQuery.$or.every(({ role }) => role !== "student"));
     queries.length = 0;
     assert.equal((await request(`/availability/faculty/${other}`, "dean")).status, 200);
     for (const [model, query] of queries) if (model === "availability") assert.equal(String(query.faculty), ids.dean);
