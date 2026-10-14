@@ -8,7 +8,7 @@ import FacultyRegister from "./pages/Auth/FacultyRegister";
 import DeanLogin from "./pages/Auth/DeanLogin";
 import StudentLayout from "./layouts/StudentLayout";
 import StudentDashboard from "./pages/Student/StudentDashboard";
-import BookConsultation from "./pages/Student/BookConsultation";
+import FindFaculty from "./pages/Student/FindFaculty";
 import StudentAppointments from "./pages/Student/StudentAppointments";
 import StudentHistory from "./pages/Student/StudentConsultationHistory";
 import StudentNotifications from "./pages/Student/StudentNotifications";
@@ -71,7 +71,7 @@ export default function App() {
           <Route path="student" element={<StudentLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<StudentDashboard />} />
-            <Route path="faculty" element={<BookConsultation />} />
+            <Route path="faculty" element={<FindFaculty />} />
             <Route path="availability" element={<StudentAvailability />} />
             <Route path="consultations" element={<StudentAppointments />} />
             <Route path="calendar" element={<StudentCalendar />} />
