@@ -5,14 +5,14 @@ import User from "../models/User.js";
 
 export const APPOINTMENT_STATUSES = [
   "Pending",
-  "Awaiting Faculty Schedule",
-  "Approved",
+  "Reschedule Proposed",
+  "Confirmed",
   "Rejected",
-  "Needs Reschedule",
-  "Rescheduled",
-  "Completed",
-  "No Show",
   "Cancelled",
+  "Expired",
+  "Awaiting Attendance Update",
+  "Completed",
+  "Attendance Review",
 ];
 
 export const CONSULTATION_MODES = ["Online", "Face-to-Face"];
@@ -71,7 +71,7 @@ export async function getUserCounts({
   assertEnum(accountStatus, ["Active", "Inactive"], "account status");
   assertEnum(
     registrationStatus,
-    ["Pending", "Approved", "Rejected"],
+    ["Pending", "Confirmed", "Rejected"],
     "registration status",
   );
   const filter = {

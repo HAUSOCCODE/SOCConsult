@@ -150,7 +150,7 @@ test("Student schedule matching is backend-owned, private, conflict-safe, and op
       { student: ids.otherStudent, isActive: true, startAt: date(1), endAt: date(9), privateNote: "never expose" },
     ];
     appointments = [
-      { student: ids.student, faculty: ids.otherFaculty, status: "Approved", startAt: date(1), endAt: date(2) },
+      { student: ids.student, faculty: ids.otherFaculty, status: "Confirmed", startAt: date(1), endAt: date(2) },
     ];
     const matched = await call(ids.faculty);
     assert.equal(matched.data.hasActiveStudentAvailability, true);
@@ -166,7 +166,7 @@ test("Student schedule matching is backend-owned, private, conflict-safe, and op
     });
     assert.deepEqual((await call(ids.faculty)).data.schedules.map((item) => item._id), ["back-to-back"]);
     appointments = [
-      { student: ids.otherStudent, faculty: ids.faculty, status: "Approved", startAt: date(3), endAt: date(4) },
+      { student: ids.otherStudent, faculty: ids.faculty, status: "Confirmed", startAt: date(3), endAt: date(4) },
     ];
     assert.deepEqual((await call(ids.faculty)).data.schedules.map((item) => item._id), ["matched"]);
 

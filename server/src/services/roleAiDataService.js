@@ -8,12 +8,11 @@ import {
 } from "./aiReportingService.js";
 import { STUDENT_TERMINAL_STATUSES } from "./appointmentClassificationService.js";
 
-const ACTIVE_STATUSES = ["Approved", "Rescheduled"];
+const ACTIVE_STATUSES = ["Confirmed"];
 const UPCOMING_STATUSES = [
   "Pending",
-  "Approved",
-  "Rescheduled",
-  "Needs Reschedule",
+  "Confirmed",
+  "Reschedule Proposed",
 ];
 const MANILA_FORMAT = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
@@ -56,7 +55,7 @@ const safeAppointment = (
   status: appointment.status,
   dateTime: appointment.startAt
     ? MANILA_FORMAT.format(appointment.startAt)
-    : "Awaiting Faculty Schedule",
+    : "Pending",
   time: appointment.startAt
     ? `${TIME_FORMAT.format(appointment.startAt)} – ${TIME_FORMAT.format(appointment.endAt)}`
     : "Not scheduled",
@@ -149,7 +148,7 @@ export async function getMyNeedsRescheduleAppointments(
   const student = safeId(context.userId);
   const appointments = await safeAppointments({
     student,
-    status: "Needs Reschedule",
+    status: "Reschedule Proposed",
     endAt: { $gt: context.now || new Date() },
   });
   return { count: appointments.length, appointments };
@@ -246,13 +245,13 @@ export async function getMyPendingAppointmentRequests(
 ) {
   const faculty = safeId(context.userId);
   const appointments = await safeAppointments(
-    { faculty, status: { $in: ["Pending", "Awaiting Faculty Schedule"] } },
+    { faculty, status: "Pending" },
     { includeStudent: true },
   );
   return {
     count: await Appointment.countDocuments({
       faculty,
-      status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
+      status: "Pending",
     }),
     requests: appointments,
     limited: appointments.length === 10,

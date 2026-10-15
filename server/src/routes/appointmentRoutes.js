@@ -81,7 +81,7 @@ const conflictsWithOneTimeSchedule = (appointment, startAt, endAt) =>
 const capacitySummary = async (facultyId) => {
   const appointments = await Appointment.find({
     faculty: facultyId,
-    status: { $in: ["Pending", "Approved", "Rescheduled"] },
+    status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
   }).select("availability status estimatedDurationMinutes");
   const availabilityIds = [
     ...new Set(
@@ -99,7 +99,7 @@ const capacitySummary = async (facultyId) => {
     );
     const pending = related.filter((item) => item.status === "Pending");
     const approved = related.filter((item) =>
-      ["Approved", "Rescheduled"].includes(item.status),
+      item.status === "Confirmed",
     );
     const sum = (items) =>
       items.reduce(
@@ -153,7 +153,7 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
         appointment.meetingPlatform || platformFor(availability);
       const canAccessLink =
         ["faculty", "dean"].includes(req.user.role) ||
-        ["Approved", "Rescheduled", "Completed"].includes(appointment.status);
+        ["Confirmed", "Completed"].includes(appointment.status);
       if (
         canAccessLink &&
         availability?.meetingLink &&
@@ -218,7 +218,7 @@ router.post(
     const existingActiveRequest = await Appointment.exists({
       student: req.user.id,
       availability: slot.id,
-      status: { $in: ["Pending", "Approved", "Rescheduled"] },
+      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
     });
     if (existingActiveRequest)
       return res.status(409).json({
@@ -228,13 +228,13 @@ router.post(
     const [studentConflict, facultyConflict] = await Promise.all([
       Appointment.exists({
         student: req.user.id,
-        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
         startAt: { $lt: requestedEnd },
         endAt: { $gt: requestedStart },
       }),
       Appointment.exists({
         faculty: slot.faculty,
-        status: { $in: ["Approved", "Rescheduled"] },
+        status: "Confirmed",
         startAt: { $lt: requestedEnd },
         endAt: { $gt: requestedStart },
       }),
@@ -565,7 +565,7 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
   await processExpiredAvailability({ facultyId: req.user.id });
   const status = req.body.status;
   if (
-    !["Approved", "Rejected", "Completed", "No Show", "Rescheduled"].includes(
+    !["Confirmed", "Rejected", "Completed", "Reschedule Proposed"].includes(
       status,
     )
   )
@@ -578,19 +578,19 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
     return res.status(404).json({ message: "Appointment not found." });
   if (
     appointment.bookingMethod === "schedule_request" &&
-    appointment.status === "Awaiting Faculty Schedule"
+    appointment.status === "Pending"
   )
     return res.status(409).json({
       message:
         "Decide this request from Appointment Requests by assigning a one-time schedule or rejecting it.",
     });
-  if (["Rejected", "Completed", "No Show"].includes(appointment.status))
+  if (["Rejected", "Cancelled", "Expired", "Completed"].includes(appointment.status))
     return res
       .status(409)
       .json({ message: "This appointment can no longer be updated." });
   const previousStatus = appointment.status;
   if (
-    status === "Approved" &&
+    status === "Confirmed" &&
     !(await Availability.exists({
       _id: appointment.availability,
       faculty: req.user.id,
@@ -602,7 +602,7 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
       message:
         "This consultation schedule has expired or is no longer active. The Student must choose a new schedule.",
     });
-  if (status === "Rescheduled") {
+  if (status === "Reschedule Proposed") {
     const slot = await Availability.findOne({
       _id: req.body.availabilityId,
       faculty: req.user.id,
@@ -628,7 +628,7 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
     appointment.location = slot.location;
   }
   if (
-    ["Approved", "Rescheduled"].includes(status) &&
+    ["Confirmed", "Reschedule Proposed"].includes(status) &&
     (await conflictsWithOneTimeSchedule(
       appointment,
       appointment.startAt,
@@ -641,23 +641,22 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
     });
   appointment.status = status;
   appointment.responseNote = (req.body.note || "").trim();
-  if (status === "Rescheduled") {
+  if (status === "Reschedule Proposed") {
     appointment.rescheduleRequested = false;
     appointment.rescheduleRequestNote = "";
   }
   await appointment.save();
   if (
-    status === "Rescheduled" &&
+    status === "Reschedule Proposed" &&
     appointment.bookingMethod === "schedule_request"
   )
     await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
   const verb = status.toLowerCase();
   const notificationTitles = {
-    Approved: "Consultation Approved",
+    Confirmed: "Consultation Confirmed",
     Rejected: "Consultation Request Rejected",
-    Rescheduled: "Consultation Rescheduled",
+    "Reschedule Proposed": "Consultation Reschedule Proposed",
     Completed: "Consultation Completed",
-    "No Show": "Consultation Marked No Show",
   };
   await Promise.all([
     logActivity(
@@ -746,7 +745,7 @@ router.put(
         message: "A reschedule request is already awaiting Faculty review.",
       });
     if (
-      !["Approved", "Rescheduled"].includes(appointment.status) ||
+      appointment.status !== "Confirmed" ||
       appointment.startAt <= new Date()
     )
       return res.status(400).json({
@@ -810,7 +809,7 @@ router.put(
       return res.status(409).json({
         message: "This appointment has no pending reschedule request.",
       });
-    if (!["Approved", "Rescheduled"].includes(appointment.status))
+    if (appointment.status !== "Confirmed")
       return res.status(400).json({
         message: "This appointment is no longer eligible for rescheduling.",
       });
@@ -819,7 +818,7 @@ router.put(
     appointment.rescheduleReviewedAt = new Date();
     appointment.rescheduleReviewedBy = req.user.id;
     appointment.rescheduleDecisionNote = decisionNote;
-    if (decision === "Approved") appointment.status = "Needs Reschedule";
+    if (decision === "Approved") appointment.status = "Reschedule Proposed";
     await appointment.save();
     if (
       decision === "Approved" &&
@@ -863,7 +862,7 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
   const appointment = await Appointment.findOne({
     _id: req.params.id,
     student: req.user.id,
-    status: "Needs Reschedule",
+    status: "Reschedule Proposed",
   });
   if (!appointment)
     return res.status(409).json({
@@ -885,14 +884,14 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
     Appointment.exists({
       _id: { $ne: appointment.id },
       student: req.user.id,
-      status: { $in: ["Pending", "Approved", "Rescheduled"] },
+      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
       startAt: { $lt: slot.endAt },
       endAt: { $gt: slot.startAt },
     }),
     Appointment.exists({
       _id: { $ne: appointment.id },
       faculty: appointment.faculty,
-      status: { $in: ["Approved", "Rescheduled"] },
+      status: "Confirmed",
       startAt: { $lt: slot.endAt },
       endAt: { $gt: slot.startAt },
     }),
@@ -906,7 +905,7 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
   const scheduled = await Appointment.find({
     _id: { $ne: appointment.id },
     availability: slot.id,
-    status: { $in: ["Approved", "Rescheduled"] },
+    status: "Confirmed",
   }).select("estimatedDurationMinutes");
   const occupiedMinutes = scheduled.reduce(
     (total, item) => total + (item.estimatedDurationMinutes || 0),
@@ -926,7 +925,7 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
   appointment.consultationMode = slot.mode || "Online";
   appointment.location =
     slot.mode === "Online" ? platformFor(slot) : slot.location;
-  appointment.status = "Rescheduled";
+  appointment.status = "Confirmed";
   appointment.responseNote = "";
   await appointment.save();
   await Promise.all([
@@ -937,22 +936,22 @@ router.put("/:id/reschedule", authorize("student"), async (req, res) => {
       appointment.id,
       {
         previousStatus,
-        newStatus: "Rescheduled",
+        newStatus: "Confirmed",
         mode: appointment.consultationMode,
       },
     ),
     notify(
       appointment.faculty,
       "appointment",
-      "Consultation Rescheduled",
+      "Consultation Confirmed",
       `${req.user.name} selected a new consultation schedule.`,
       appointment.id,
     ),
     notify(
       req.user.id,
       "appointment",
-      "Consultation Rescheduled",
-      "Your new consultation schedule has been saved.",
+      "Consultation Confirmed",
+      "Your new consultation schedule has been confirmed.",
       appointment.id,
     ),
   ]);

@@ -143,13 +143,13 @@ export const getFacultyAvailability = async (req, res) => {
     const [studentAppointments, providerAppointments] = await Promise.all([
       Appointment.find({
         student: req.user.id,
-        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
         startAt: { $exists: true },
         endAt: { $gt: now },
       }).select("startAt endAt"),
       Appointment.find({
         faculty: facultyId,
-        status: { $in: ["Approved", "Rescheduled"] },
+        status: "Confirmed",
         startAt: { $exists: true },
         endAt: { $gt: now },
       }).select("startAt endAt"),
@@ -228,7 +228,7 @@ export const getAppointmentRequestSchedules = async (req, res) => {
       $match: {
         faculty: new mongoose.Types.ObjectId(req.user.id),
         availability: { $in: schedules.map((schedule) => schedule._id) },
-        status: { $in: ["Pending", "Approved", "Rejected"] },
+        status: { $in: ["Pending", "Confirmed", "Rejected"] },
       },
     },
     {
@@ -238,7 +238,7 @@ export const getAppointmentRequestSchedules = async (req, res) => {
           $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] },
         },
         approvedCount: {
-          $sum: { $cond: [{ $eq: ["$status", "Approved"] }, 1, 0] },
+          $sum: { $cond: [{ $eq: ["$status", "Confirmed"] }, 1, 0] },
         },
         rejectedCount: {
           $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] },
@@ -255,7 +255,7 @@ export const getAppointmentRequestSchedules = async (req, res) => {
         approvedEstimatedMinutes: {
           $sum: {
             $cond: [
-              { $eq: ["$status", "Approved"] },
+              { $eq: ["$status", "Confirmed"] },
               { $ifNull: ["$estimatedDurationMinutes", 0] },
               0,
             ],
@@ -264,7 +264,7 @@ export const getAppointmentRequestSchedules = async (req, res) => {
         totalEstimatedMinutes: {
           $sum: {
             $cond: [
-              { $in: ["$status", ["Pending", "Approved"]] },
+              { $in: ["$status", ["Pending", "Confirmed"]] },
               { $ifNull: ["$estimatedDurationMinutes", 0] },
               0,
             ],
@@ -309,7 +309,7 @@ export const getAvailabilityDetails = async (req, res) => {
   const appointments = await Appointment.find({
     availability: schedule.id,
     faculty: req.user.id,
-    status: { $in: ["Pending", "Approved", "Rejected"] },
+    status: { $in: ["Pending", "Confirmed", "Rejected"] },
   })
     .populate(
       "student",
@@ -340,7 +340,7 @@ export const getAvailabilityDetails = async (req, res) => {
       (appointment) => appointment.status === "Pending",
     ),
     approvedStudents: safe.filter(
-      (appointment) => appointment.status === "Approved",
+      (appointment) => appointment.status === "Confirmed",
     ),
     rejectedRequests: safe.filter(
       (appointment) => appointment.status === "Rejected",
@@ -371,12 +371,12 @@ export const requestFacultyReschedule = async (req, res) => {
     return res
       .status(404)
       .json({ message: "Appointment not found for this schedule." });
-  if (!["Pending", "Approved", "Rescheduled"].includes(appointment.status))
+  if (!["Pending", "Reschedule Proposed", "Confirmed"].includes(appointment.status))
     return res.status(400).json({
       message:
         "Only a pending, approved, or scheduled appointment can be rescheduled.",
     });
-  appointment.status = "Needs Reschedule";
+  appointment.status = "Reschedule Proposed";
   appointment.responseNote = (req.body.note || "").trim();
   appointment.rescheduleRequested = false;
   appointment.rescheduleRequestNote = "";
@@ -470,7 +470,7 @@ export const updateAvailability = async (req, res) => {
       changesTime &&
       (await Appointment.exists({
         availability: schedule.id,
-        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
       }))
     )
       return res.status(409).json({
@@ -538,7 +538,7 @@ export const deleteAvailability = async (req, res) => {
     await Appointment.exists({
       availability: req.params.id,
       faculty: req.user.id,
-      status: { $in: ["Pending", "Approved", "Rescheduled"] },
+      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
     })
   )
     return res.status(409).json({
