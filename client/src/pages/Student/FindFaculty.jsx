@@ -1,61 +1,20 @@
 import {
   CalendarDays,
-  FileText,
   Info,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
 import { EmptyState, ErrorState } from "../../components/UI";
-import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../../components/profile/ProfileImagePreview";
 import FacultyCard from "../../components/student/FacultyCard";
+import ConsultationRequestForm from "../../components/student/ConsultationRequestForm";
 import { useLocation, useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 
-const YEAR_LEVELS = [
-  "1st Year",
-  "2nd Year",
-  "3rd Year",
-  "4th Year",
-  "5th Year",
-];
-const initialForm = (yearLevel = "") => ({
-  subject: "",
-  reason: "",
-  yearLevel: YEAR_LEVELS.includes(yearLevel) ? yearLevel : "",
-  documents: [],
-  estimatedDurationMinutes: "10",
-  customEstimatedDuration: "",
-});
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
-const allowedExtensions = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "webp",
-  "gif",
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  "txt",
-  "csv",
-  "mp4",
-  "webm",
-]);
-const formatSize = (bytes) =>
-  bytes < 1024 * 1024
-    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
-    : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 const time = (value) =>
   new Date(value).toLocaleTimeString("en-PH", {
     timeZone: "Asia/Manila",
@@ -64,7 +23,6 @@ const time = (value) =>
   });
 
 export default function FindFaculty() {
-  const { user } = useAuth();
   const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -81,10 +39,7 @@ export default function FindFaculty() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [chosenSchedule, setChosenSchedule] = useState(null);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState(() => initialForm(user.yearLevel));
-  const [formError, setFormError] = useState("");
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
   const loadFaculty = () => {
     setError("");
@@ -124,7 +79,6 @@ export default function FindFaculty() {
     const requestId = ++availabilityRequest.current;
     setSelected(member);
     setAvailabilityOpen(true);
-    setFormError("");
     const cached = scheduleCache.current.get(String(member._id));
     if (cached) {
       setSchedules(cached.schedules);
@@ -166,14 +120,6 @@ export default function FindFaculty() {
     }
   };
 
-  const requestSchedule = (member) => {
-    setSelected(member);
-    setAvailabilityOpen(false);
-    setFormError("");
-    setForm(initialForm(user.yearLevel));
-    setChosenSchedule({ onDemand: true });
-  };
-
   useEffect(() => {
     if (!reschedule || !faculty || rescheduleInitialized.current) return;
     const originalFaculty = faculty.find(
@@ -181,17 +127,8 @@ export default function FindFaculty() {
     );
     if (!originalFaculty) return;
     rescheduleInitialized.current = true;
-    const estimate = Number(reschedule.estimatedDurationMinutes) || 10;
-    const standardEstimate = [10, 15, 20, 30, 45, 60].includes(estimate);
-    setForm({
-      ...initialForm(reschedule.yearLevel || user.yearLevel),
-      subject: reschedule.subject || "",
-      reason: reschedule.reason || "",
-      estimatedDurationMinutes: standardEstimate ? String(estimate) : "custom",
-      customEstimatedDuration: standardEstimate ? "" : String(estimate),
-    });
     void viewAvailability(originalFaculty);
-  }, [faculty, reschedule, user.yearLevel]);
+  }, [faculty, reschedule]);
 
   const visibleFaculty = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -202,113 +139,7 @@ export default function FindFaculty() {
     );
   }, [faculty, search]);
 
-  const attach = (fileList) => {
-    const incoming = Array.from(fileList || []);
-    if (!incoming.length) return;
-    const combined = [...form.documents, ...incoming];
-    if (combined.length > 5)
-      return setFormError("You can upload up to 5 supporting files.");
-    if (incoming.some((file) => file.size > MAX_FILE_SIZE))
-      return setFormError("Each supporting file must be 10 MB or smaller.");
-    if (
-      incoming.some(
-        (file) =>
-          !allowedExtensions.has(file.name.split(".").pop()?.toLowerCase()),
-      )
-    )
-      return setFormError("This file type is not supported.");
-    if (combined.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_SIZE)
-      return setFormError(
-        "Supporting documents must not exceed 25 MB in total.",
-      );
-    setFormError("");
-    setForm({ ...form, documents: combined });
-  };
-
-  const removeDocument = (index) =>
-    setForm({
-      ...form,
-      documents: form.documents.filter((_, itemIndex) => itemIndex !== index),
-    });
-
-  const submit = async (event) => {
-    event.preventDefault();
-    if (!selected || !chosenSchedule) return;
-    if (!YEAR_LEVELS.includes(form.yearLevel)) {
-      setFormError("Please select your year level.");
-      return;
-    }
-    setSubmitting(true);
-    setFormError("");
-    try {
-      const request = new FormData();
-      request.append("subject", form.subject);
-      request.append("reason", form.reason);
-      request.append("yearLevel", form.yearLevel);
-      if (!chosenSchedule.onDemand)
-        request.append("availabilityId", chosenSchedule.availabilityId);
-      else request.append("facultyId", selected._id);
-      const estimatedDuration =
-        form.estimatedDurationMinutes === "custom"
-          ? form.customEstimatedDuration
-          : form.estimatedDurationMinutes;
-      request.append("estimatedDurationMinutes", estimatedDuration);
-      form.documents.forEach((file) => request.append("documents", file));
-      const data = reschedule
-        ? await api(`/appointments/${reschedule.appointmentId}/reschedule`, {
-            method: "PUT",
-            body: JSON.stringify({
-              availabilityId: chosenSchedule.availabilityId,
-            }),
-          })
-        : chosenSchedule.onDemand
-          ? await api("/schedule-requests", {
-              method: "POST",
-              body: request,
-            })
-          : await api("/appointments", { method: "POST", body: request });
-      if (reschedule) {
-        toast.success(data.message || "New schedule submitted successfully.");
-        navigate("/student/consultations", { replace: true, state: {} });
-        return;
-      }
-      setChosenSchedule(null);
-      setForm(initialForm(user.yearLevel));
-      scheduleCache.current.delete(String(selected._id));
-      await loadFaculty();
-      toast.success(
-        data.message || "Consultation request submitted successfully.",
-      );
-      if (chosenSchedule.onDemand) navigate("/student/consultations");
-    } catch (requestError) {
-      if (
-        requestError.message ===
-        "You already have an active consultation request for this faculty schedule."
-      ) {
-        setChosenSchedule(null);
-        scheduleCache.current.delete(String(selected._id));
-        await viewAvailability(selected);
-      }
-      toast.error(
-        requestError.message ||
-          (reschedule
-            ? "Unable to submit the new schedule. Please try again."
-            : "Unable to book the consultation. Please try again."),
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   if (error) return <ErrorState message={error} onRetry={loadFaculty} />;
-  const availabilityMinutes = chosenSchedule?.onDemand
-    ? 240
-    : chosenSchedule
-      ? Math.round(
-          (new Date(chosenSchedule.endAt) - new Date(chosenSchedule.startAt)) /
-            60000,
-        )
-      : 0;
   return (
     <div className="w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
       <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm sm:p-5">
@@ -400,9 +231,7 @@ export default function FindFaculty() {
               key={member._id}
               provider={member}
               selected={selected?._id === member._id}
-              allowScheduleRequest={!reschedule}
               onViewAvailability={(provider) => void viewAvailability(provider)}
-              onRequestSchedule={requestSchedule}
             />
           ))}
           <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600 shadow-sm">
@@ -585,23 +414,6 @@ export default function FindFaculty() {
                             onClick={() => {
                               setAvailabilityOpen(false);
                               setChosenSchedule(schedule);
-                              const windowMinutes = Math.round(
-                                (new Date(schedule.endAt) -
-                                  new Date(schedule.startAt)) /
-                                  60000,
-                              );
-                              const defaultEstimate = [
-                                10, 15, 20, 30, 45, 60,
-                              ].find((minutes) => minutes <= windowMinutes);
-                              setForm({
-                                ...initialForm(user.yearLevel),
-                                estimatedDurationMinutes: defaultEstimate
-                                  ? String(defaultEstimate)
-                                  : "custom",
-                                customEstimatedDuration: defaultEstimate
-                                  ? ""
-                                  : "5",
-                              });
                             }}
                             className="btn-primary mt-4 w-full py-2 disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -625,262 +437,26 @@ export default function FindFaculty() {
               event.target === event.currentTarget && setChosenSchedule(null)
             }
           >
-            <form
-              onSubmit={submit}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="booking-modal-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
-            >
-              <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-                <div>
-                  <h2
-                    id="booking-modal-title"
-                    className="text-xl font-bold text-maroon-900"
-                  >
-                    {reschedule
-                      ? "Choose a New Schedule"
-                      : chosenSchedule.onDemand
-                        ? "Request a Schedule"
-                        : "Book Consultation"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Faculty: {formatPersonName(selected.name)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={() => setChosenSchedule(null)}
-                  autoFocus
-                  className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                >
-                  <X />
-                </button>
-              </header>
-              <div className="px-5 py-4 sm:px-6">
-                {chosenSchedule.onDemand ? (
-                  <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                    No date or time is selected. Your request will await the
-                    Faculty Member's decision.
-                  </p>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                    <p className="font-semibold">
-                      {new Date(chosenSchedule.startAt).toLocaleDateString(
-                        "en-PH",
-                        {
-                          timeZone: "Asia/Manila",
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        },
-                      )}
-                    </p>
-                    <p>
-                      {time(chosenSchedule.startAt)} –{" "}
-                      {time(chosenSchedule.endAt)}
-                    </p>
-                    <p className="mt-1">
-                      {chosenSchedule.mode} ·{" "}
-                      {chosenSchedule.mode === "Online"
-                        ? chosenSchedule.meetingPlatform ||
-                          "Meeting platform not provided"
-                        : chosenSchedule.location || "Location not provided"}
-                    </p>
-                  </div>
-                )}
-                <div className="mt-4 space-y-4">
-                  <label className="block text-sm font-semibold">
-                    Subject / Topic
-                    <input
-                      className="field mt-2"
-                      required
-                      disabled={Boolean(reschedule)}
-                      maxLength="150"
-                      value={form.subject}
-                      onChange={(event) =>
-                        setForm({ ...form, subject: event.target.value })
-                      }
-                    />
-                  </label>
-                  <label className="block text-sm font-semibold">
-                    Year Level
-                    <select
-                      className="field mt-2 w-full"
-                      required
-                      disabled={Boolean(reschedule)}
-                      value={form.yearLevel}
-                      onChange={(event) =>
-                        setForm({ ...form, yearLevel: event.target.value })
-                      }
-                    >
-                      <option value="">Select year level</option>
-                      {YEAR_LEVELS.map((yearLevel) => (
-                        <option key={yearLevel} value={yearLevel}>
-                          {yearLevel}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-semibold">
-                    Estimated Consultation Time
-                    <select
-                      className="field mt-2"
-                      disabled={Boolean(reschedule)}
-                      value={form.estimatedDurationMinutes}
-                      onChange={(event) =>
-                        setForm({
-                          ...form,
-                          estimatedDurationMinutes: event.target.value,
-                        })
-                      }
-                    >
-                      {[10, 15, 20, 30, 45, 60].map((minutes) => (
-                        <option
-                          key={minutes}
-                          value={minutes}
-                          disabled={minutes > availabilityMinutes}
-                        >
-                          {minutes} minutes
-                        </option>
-                      ))}
-                      <option value="custom">Custom</option>
-                    </select>
-                  </label>
-                  {form.estimatedDurationMinutes === "custom" && (
-                    <label className="block text-sm font-semibold">
-                      Custom Estimated Time (minutes)
-                      <input
-                        className="field mt-2"
-                        type="number"
-                        min="5"
-                        max={availabilityMinutes}
-                        required
-                        disabled={Boolean(reschedule)}
-                        value={form.customEstimatedDuration}
-                        onChange={(event) =>
-                          setForm({
-                            ...form,
-                            customEstimatedDuration: event.target.value,
-                          })
-                        }
-                      />
-                      <span className="mt-1 block text-xs font-normal text-slate-500">
-                        Minimum 5 minutes · Maximum {availabilityMinutes}{" "}
-                        minutes
-                      </span>
-                    </label>
-                  )}
-                  {reschedule && (
-                    <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                      Existing consultation details and supporting documents
-                      will be preserved.
-                    </p>
-                  )}
-                  {!reschedule && (
-                    <label className="block text-sm font-semibold">
-                      Supporting Documents{" "}
-                      <span className="font-normal text-slate-500">
-                        Optional · Up to 5 files · Maximum 10 MB per file · 25
-                        MB total
-                      </span>
-                      <input
-                        className="field mt-2"
-                        type="file"
-                        multiple
-                        accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp4,.webm"
-                        onChange={(event) => {
-                          attach(event.target.files);
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                  )}
-                  {formError && (
-                    <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      {formError}
-                    </p>
-                  )}
-                  {!reschedule && form.documents.length > 0 && (
-                    <div className="max-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
-                      {form.documents.map((file, index) => (
-                        <div
-                          key={`${file.name}-${file.lastModified}-${index}`}
-                          className="flex items-center gap-3 text-sm"
-                        >
-                          <FileText
-                            size={18}
-                            className="shrink-0 text-maroon-700"
-                          />
-                          <span
-                            className="min-w-0 flex-1 truncate"
-                            title={file.name}
-                          >
-                            {file.name}
-                          </span>
-                          <span className="shrink-0 text-xs text-slate-500">
-                            {formatSize(file.size)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeDocument(index)}
-                            aria-label={`Remove ${file.name}`}
-                            className="shrink-0 rounded p-1 text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 size={17} />
-                          </button>
-                        </div>
-                      ))}
-                      <p className="border-t border-slate-200 pt-2 text-right text-xs font-semibold text-slate-600">
-                        Total:{" "}
-                        {formatSize(
-                          form.documents.reduce(
-                            (total, file) => total + file.size,
-                            0,
-                          ),
-                        )}{" "}
-                        / 25 MB
-                      </p>
-                    </div>
-                  )}
-                  <label className="block text-sm font-semibold">
-                    Reason for Consultation
-                    <textarea
-                      className="field mt-2 min-h-[100px] resize-y"
-                      required
-                      disabled={Boolean(reschedule)}
-                      maxLength="1000"
-                      placeholder="Briefly describe why you are requesting this consultation."
-                      value={form.reason}
-                      onChange={(event) =>
-                        setForm({ ...form, reason: event.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-              </div>
-              <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 px-4 py-4 [&>button]:w-full sm:flex-row sm:justify-end sm:px-6 sm:[&>button]:w-auto">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setChosenSchedule(null)}
-                >
-                  Cancel
-                </button>
-                <button disabled={submitting} className="btn-primary">
-                  {submitting
-                    ? "Submitting..."
-                    : reschedule
-                      ? "Submit New Schedule"
-                      : chosenSchedule.onDemand
-                        ? "Send Schedule Request"
-                        : "Submit Consultation Request"}
-                </button>
-              </footer>
-            </form>
+            <ConsultationRequestForm
+              provider={selected}
+              slot={chosenSchedule}
+              reschedule={reschedule}
+              onCancel={() => setChosenSchedule(null)}
+              onSuccess={(data, wasReschedule) => {
+                setChosenSchedule(null);
+                scheduleCache.current.delete(String(selected._id));
+                toast.success(
+                  data.message ||
+                    (wasReschedule
+                      ? "New schedule submitted successfully."
+                      : "Consultation request submitted successfully."),
+                );
+                navigate("/student/consultations", {
+                  replace: true,
+                  state: {},
+                });
+              }}
+            />
           </div>,
           document.body,
         )}

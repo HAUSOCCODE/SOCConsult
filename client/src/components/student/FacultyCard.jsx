@@ -5,9 +5,7 @@ import { formatPersonName } from "../../utils/formatPersonName";
 export default function FacultyCard({
   provider,
   selected,
-  allowScheduleRequest,
   onViewAvailability,
-  onRequestSchedule,
 }) {
   const count = Number(provider.availableScheduleCount) || 0;
   const details = [provider.specialization, provider.office].filter(Boolean);
@@ -66,15 +64,6 @@ export default function FacultyCard({
             View Availability
             <ChevronRight size={16} aria-hidden="true" />
           </button>
-          {allowScheduleRequest && (
-            <button
-              type="button"
-              onClick={() => onRequestSchedule(provider)}
-              className="btn-secondary min-h-10 w-full px-3 text-sm"
-            >
-              Request a Schedule
-            </button>
-          )}
         </div>
       </div>
     </article>
