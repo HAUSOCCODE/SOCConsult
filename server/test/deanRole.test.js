@@ -124,7 +124,7 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
         assert.equal((await request("/tasks", role, "POST", { appointmentId: other, title: "test" })).status, 404);
         assert.equal(queries[0][1].faculty, ids[role]);
         for (const [url, method, body] of [
-          [`/appointments/${other}/status`, "PUT", { status: "Approved" }],
+          [`/appointments/${other}/status`, "PUT", { status: "Confirmed" }],
           [`/appointments/${other}/reschedule-request`, "PUT", { decision: "Rejected" }],
           [`/availability/${other}`, "PUT", {}],
           [`/availability/${other}`, "DELETE", {}],

@@ -38,7 +38,7 @@ export default function FacultyAppointmentDetailsModal({
 
   const canComplete =
     typeof onComplete === "function" &&
-    ["Approved", "Rescheduled"].includes(appointment.status);
+    appointment.status === "Confirmed";
 
   return createPortal(
     <div

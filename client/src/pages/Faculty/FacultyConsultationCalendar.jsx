@@ -9,11 +9,11 @@ import { formatPersonName } from "../../utils/formatPersonName";
 const TIMEZONE = "Asia/Manila";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const STATUS_STYLES = {
-  Approved: {
+  Confirmed: {
     dot: "bg-maroon-700",
     event: "border-maroon-200 bg-maroon-50 text-maroon-900",
   },
-  Rescheduled: {
+  "Reschedule Proposed": {
     dot: "bg-amber-600",
     event: "border-amber-200 bg-amber-50 text-amber-900",
   },
@@ -21,7 +21,7 @@ const STATUS_STYLES = {
     dot: "bg-green-700",
     event: "border-green-200 bg-green-50 text-green-900",
   },
-  "No Show": {
+  "Attendance Review": {
     dot: "bg-rose-600",
     event: "border-rose-200 bg-rose-50 text-rose-900",
   },
@@ -91,7 +91,7 @@ const fullDateLabel = (value) =>
   }).format(new Date(value));
 const range = (count, start) =>
   Array.from({ length: count }, (_, index) => addDays(start, index));
-const eventStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Approved;
+const eventStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Confirmed;
 
 export default function FacultyConsultationCalendar({ consultationsPath = "/faculty/appointments" }) {
   const today = manilaDateKey();
@@ -664,7 +664,7 @@ function CalendarLegend() {
       {Object.entries(STATUS_STYLES).map(([status, style]) => (
         <span key={status} className="inline-flex items-center gap-1.5">
           <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
-          {status === "Approved" ? "Approved (Confirmed)" : status}
+          {status}
         </span>
       ))}
     </div>

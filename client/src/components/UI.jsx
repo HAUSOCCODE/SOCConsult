@@ -1,6 +1,10 @@
 export const StatusBadge = ({ status, compact = false, allowWrap = false }) => {
   const colors = {
     Pending: "bg-amber-100 text-amber-800",
+    "Reschedule Proposed": "bg-purple-100 text-purple-800",
+    Confirmed: "bg-green-100 text-green-800",
+    "Awaiting Attendance Update": "bg-orange-100 text-orange-800",
+    "Attendance Review": "bg-blue-100 text-blue-800",
     Approved: "bg-green-100 text-green-800",
     Active: "bg-green-100 text-green-800",
     Completed: "bg-blue-100 text-blue-800",

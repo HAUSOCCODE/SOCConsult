@@ -3,7 +3,7 @@ import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
 import AuditLog from "../models/AuditLog.js";
 
-const ACTIVE_STATUSES = ["Approved", "Rescheduled"];
+const ACTIVE_STATUSES = ["Confirmed"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MANILA_OFFSET = "+08:00";
@@ -145,7 +145,7 @@ export async function rescheduleFacultyAppointment(req, res) {
     return res.status(404).json({ message: "Appointment not found." });
   if (!ACTIVE_STATUSES.includes(appointment.status))
     return res.status(409).json({
-      message: "Only approved or rescheduled appointments can be rescheduled.",
+      message: "Only confirmed appointments can be rescheduled.",
     });
   if (!appointment.startAt || appointment.startAt <= new Date())
     return res.status(409).json({
@@ -219,7 +219,7 @@ export async function rescheduleFacultyAppointment(req, res) {
             meetingPlatform:
               input.mode === "Online" ? input.meetingPlatform : "",
             meetingLink: input.mode === "Online" ? input.meetingLink : "",
-            status: "Rescheduled",
+            status: "Reschedule Proposed",
             responseNote: input.reason,
             rescheduleRequested: false,
             rescheduleRequestStatus: "Approved",
@@ -252,10 +252,10 @@ export async function rescheduleFacultyAppointment(req, res) {
           {
             recipient: updated.student._id,
             type: "appointment",
-            title: "Consultation Rescheduled by Faculty",
-            message: `Your ${updated.subject} consultation with ${facultyName} has been moved from ${oldLabel} to ${newLabel}. Mode: ${input.mode}. ${input.mode === "Face-to-Face" ? "Location" : "Meeting"}: ${destination}. Reason: ${input.reason}`,
+            title: "Consultation Reschedule Proposed",
+            message: `A new schedule was proposed for your ${updated.subject} consultation with ${facultyName}: ${newLabel}. Mode: ${input.mode}. ${input.mode === "Face-to-Face" ? "Location" : "Meeting"}: ${destination}. Reason: ${input.reason}`,
             relatedEntityId: updated._id,
-            actionUrl: "/student/appointments",
+            actionUrl: "/student/consultations",
           },
         ],
         { session },
@@ -268,7 +268,7 @@ export async function rescheduleFacultyAppointment(req, res) {
         actor: req.user.id,
         action: "appointment_rescheduled",
         category: "Appointment",
-        description: "Consultation rescheduled by faculty",
+        description: "Consultation reschedule proposed by faculty",
         relatedEntityType: "Appointment",
         relatedEntityId: updated._id,
         changes: { before: previous, after: next },
@@ -301,7 +301,7 @@ export async function rescheduleFacultyAppointment(req, res) {
     await session.endSession();
   }
   return res.json({
-    message: "Consultation rescheduled and the student was notified.",
+    message: "Consultation reschedule proposed and the student was notified.",
     appointment: updated,
   });
 }

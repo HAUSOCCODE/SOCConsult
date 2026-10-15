@@ -2,7 +2,7 @@ export const STUDENT_TERMINAL_STATUSES = Object.freeze([
   "Completed",
   "Cancelled",
   "Rejected",
-  "No Show",
+  "Expired",
 ]);
 
 const timestamp = (value) => {
@@ -18,17 +18,11 @@ export function isAppointmentPast(appointment, now = new Date()) {
 }
 
 export function isStudentCurrentAppointment(appointment, now = new Date()) {
-  return (
-    !STUDENT_TERMINAL_STATUSES.includes(appointment?.status) &&
-    !isAppointmentPast(appointment, now)
-  );
+  return !STUDENT_TERMINAL_STATUSES.includes(appointment?.status);
 }
 
-export function isStudentHistoryAppointment(appointment, now = new Date()) {
-  return (
-    STUDENT_TERMINAL_STATUSES.includes(appointment?.status) ||
-    isAppointmentPast(appointment, now)
-  );
+export function isStudentHistoryAppointment(appointment) {
+  return STUDENT_TERMINAL_STATUSES.includes(appointment?.status);
 }
 
 export function classifyStudentAppointments(appointments, now = new Date()) {

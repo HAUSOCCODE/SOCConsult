@@ -12,9 +12,9 @@ import { logActivity, notify } from "../services/activityService.js";
 
 const router = Router();
 router.use(authenticate);
-const pending = "Awaiting Faculty Schedule";
+const pending = "Pending";
 const years = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
-const active = ["Approved", "Rescheduled"];
+const active = ["Confirmed"];
 const validId = (id) => mongoose.isValidObjectId(id);
 const validMeetingLink = (value) => {
   try {
@@ -418,7 +418,7 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
       },
       {
         $set: {
-          status: "Approved",
+          status: "Confirmed",
           startAt,
           endAt,
           estimatedDurationMinutes: duration,
@@ -442,7 +442,7 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
         req.user.id,
         "Appointment",
         appointment.id,
-        { previousStatus: pending, newStatus: "Approved", mode },
+        { previousStatus: pending, newStatus: "Confirmed", mode },
       ),
       logActivity(
         mode === "Online"
@@ -456,13 +456,13 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
       notify(
         appointment.student,
         "appointment",
-        "Consultation Schedule Approved",
-        "Your Faculty Member approved your request and assigned a consultation schedule. View My Appointments for the date, time, and meeting details.",
+        "Consultation Confirmed",
+        "Your Faculty Member confirmed your request and assigned a consultation schedule. View My Consultations for the date, time, and meeting details.",
         appointment.id,
       ),
     ]);
     return res.json({
-      message: "Schedule approved and sent to the Student.",
+      message: "Schedule confirmed and sent to the Student.",
       appointment: publicRequest(approved),
     });
   } catch (error) {

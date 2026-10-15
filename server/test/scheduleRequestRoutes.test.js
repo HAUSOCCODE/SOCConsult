@@ -174,7 +174,7 @@ for (const providerRole of ["faculty", "dean"]) it(`runs the ${providerRole} sch
   try {
     const first = await submit(studentId);
     assert.equal(first.status, 201);
-    assert.equal(first.data.appointment.status, "Awaiting Faculty Schedule");
+    assert.equal(first.data.appointment.status, "Pending");
     assert.equal(first.data.appointment.startAt, undefined);
     assert.equal(first.data.appointment.availability, undefined);
     assert.equal(
@@ -262,7 +262,7 @@ for (const providerRole of ["faculty", "dean"]) it(`runs the ${providerRole} sch
       },
     );
     assert.equal(approved.status, 200);
-    assert.equal(approved.data.appointment.status, "Approved");
+    assert.equal(approved.data.appointment.status, "Confirmed");
     assert.equal(approved.data.appointment.startAt, instant.toISOString());
     assert.equal(records.length, 1);
     assert.equal(holds.length, 30);
@@ -270,7 +270,7 @@ for (const providerRole of ["faculty", "dean"]) it(`runs the ${providerRole} sch
       notifications.some(
         (item) =>
           same(item.recipient, studentId) &&
-          item.title === "Consultation Schedule Approved",
+          item.title === "Consultation Confirmed",
       ),
       true,
     );

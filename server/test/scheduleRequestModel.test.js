@@ -19,7 +19,7 @@ describe("schedule request model", () => {
     const request = new Appointment({
       ...data,
       bookingMethod: "schedule_request",
-      status: "Awaiting Faculty Schedule",
+      status: "Pending",
     });
     assert.equal(request.validateSync(), undefined);
     assert.equal(request.startAt, undefined);
@@ -30,7 +30,7 @@ describe("schedule request model", () => {
     const request = new Appointment({
       ...data,
       bookingMethod: "schedule_request",
-      status: "Approved",
+      status: "Confirmed",
     });
     const error = request.validateSync();
     assert.ok(error.errors.startAt);

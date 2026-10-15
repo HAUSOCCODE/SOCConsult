@@ -251,7 +251,7 @@ export default function AppointmentsPage({ filter }) {
       setApprovalWarning({ appointment, excess });
       return;
     }
-    await update(appointment._id, "Approved");
+    await update(appointment._id, "Confirmed");
   };
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
@@ -260,7 +260,7 @@ export default function AppointmentsPage({ filter }) {
   if (filter === "requests")
     shown = items.filter((x) => x.status === "Pending");
   if (filter === "history") {
-    const historical = ["Completed", "Rejected", "Cancelled", "No Show"];
+    const historical = ["Completed", "Rejected", "Cancelled", "Expired"];
     const historyItems =
       user.role === "student" ? studentViews?.history || [] : items;
     shown = historyItems.filter((x) =>
@@ -283,15 +283,15 @@ export default function AppointmentsPage({ filter }) {
       const end = new Date(item.endAt);
       if (appointmentTab === "Today")
         return (
-          ["Approved", "Rescheduled"].includes(item.status) &&
+          item.status === "Confirmed" &&
           start.toDateString() === today
         );
       if (appointmentTab === "Upcoming")
         return (
-          ["Approved", "Rescheduled"].includes(item.status) && start >= now
+          item.status === "Confirmed" && start >= now
         );
       if (appointmentTab === "Awaiting Update")
-        return ["Approved", "Rescheduled"].includes(item.status) && end < now;
+        return item.status === "Confirmed" && end < now;
       return item.status === appointmentTab;
     });
   }
@@ -314,7 +314,7 @@ export default function AppointmentsPage({ filter }) {
       >
         View Details
       </button>
-      {appointment.status === "Needs Reschedule" && (
+      {appointment.status === "Reschedule Proposed" && (
         <button
           type="button"
           onClick={() => chooseNewSchedule(appointment)}
@@ -339,7 +339,7 @@ export default function AppointmentsPage({ filter }) {
             Cancel
           </button>
         )}
-      {appointment.status === "Awaiting Faculty Schedule" && (
+      {appointment.bookingMethod === "schedule_request" && appointment.status === "Pending" && (
         <button
           type="button"
           onClick={() => setCancelTarget(appointment)}
@@ -352,7 +352,7 @@ export default function AppointmentsPage({ filter }) {
           Cancel Request
         </button>
       )}
-      {["Approved", "Rescheduled"].includes(appointment.status) &&
+      {appointment.status === "Confirmed" &&
         new Date(appointment.startAt) > new Date() && (
           <button
             type="button"
@@ -485,7 +485,7 @@ export default function AppointmentsPage({ filter }) {
             role="group"
             aria-label="Filter consultation history"
           >
-            {["All", "Completed", "No Show", "Cancelled"].map((name) => (
+            {["All", "Completed", "Expired", "Cancelled"].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -527,7 +527,7 @@ export default function AppointmentsPage({ filter }) {
             role="group"
             aria-label="Filter consultation history"
           >
-            {["All", "Completed", "No Show", "Cancelled"].map((name) => (
+            {["All", "Completed", "Expired", "Cancelled"].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -604,7 +604,7 @@ export default function AppointmentsPage({ filter }) {
                     value={`${capacity.pendingEstimatedMinutes} min`}
                   />
                   <Capacity
-                    label="Approved Estimated"
+                    label="Confirmed Estimated"
                     value={`${capacity.approvedEstimatedMinutes} min`}
                   />
                   <Capacity
@@ -941,7 +941,7 @@ export default function AppointmentsPage({ filter }) {
                   onClick={async () => {
                     const target = approvalWarning.appointment;
                     setApprovalWarning(null);
-                    await update(target._id, "Approved");
+                    await update(target._id, "Confirmed");
                   }}
                   className="btn-primary"
                 >
@@ -981,7 +981,7 @@ export default function AppointmentsPage({ filter }) {
                     key={slot._id}
                     type="button"
                     onClick={async () => {
-                      await update(rescheduleTarget._id, "Rescheduled", {
+                      await update(rescheduleTarget._id, "Reschedule Proposed", {
                         availabilityId: slot.availabilityId,
                         startAt: slot.startAt,
                       });
@@ -1071,7 +1071,7 @@ export default function AppointmentsPage({ filter }) {
                       <span>View Details</span>
                       {mobile && <ChevronRight size={17} aria-hidden="true" />}
                     </button>
-                    {appointment.status === "Needs Reschedule" && (
+                    {appointment.status === "Reschedule Proposed" && (
                       <button
                         type="button"
                         onClick={() => chooseNewSchedule(appointment)}
@@ -1240,7 +1240,7 @@ export default function AppointmentsPage({ filter }) {
                           </p>
                         )}
                       {user.role === "student" &&
-                        x.status === "Needs Reschedule" && (
+                        x.status === "Reschedule Proposed" && (
                           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
                             Your faculty member released the previous slot.
                             Choose a new active schedule to continue this
@@ -1303,7 +1303,7 @@ export default function AppointmentsPage({ filter }) {
                   )}
                   {["faculty", "dean"].includes(user.role) &&
                     !x.rescheduleRequested &&
-                    ["Approved", "Rescheduled"].includes(x.status) && (
+                    x.status === "Confirmed" && (
                       <>
                         <button
                           disabled={updatingIds.has(x._id)}
@@ -1326,7 +1326,7 @@ export default function AppointmentsPage({ filter }) {
                       </>
                     )}
                   {user.role === "student" &&
-                    x.status === "Needs Reschedule" && (
+                    x.status === "Reschedule Proposed" && (
                       <button
                         type="button"
                         onClick={() => chooseNewSchedule(x)}
@@ -1375,7 +1375,7 @@ export default function AppointmentsPage({ filter }) {
                       </button>
                     )}
                   {user.role === "student" &&
-                    ["Approved", "Rescheduled"].includes(x.status) &&
+                    x.status === "Confirmed" &&
                     new Date(x.startAt) > new Date() && (
                       <button
                         type="button"
@@ -1789,7 +1789,7 @@ function FacultyAppointmentActions({
         </>
       )}
       {!appointment.rescheduleRequested &&
-        ["Approved", "Rescheduled"].includes(appointment.status) && (
+        appointment.status === "Confirmed" && (
           <>
             {new Date(appointment.startAt) > new Date() && (
               <button
@@ -1880,24 +1880,20 @@ const appointmentDatePart = (appointment, options) =>
 
 const CURRENT_APPOINTMENT_FILTERS = [
   "All",
-  "Awaiting Faculty Schedule",
+  "Reschedule Proposed",
   "Upcoming",
   "Pending",
-  "Approved",
-  "Rescheduled",
-  "Needs Reschedule",
+  "Confirmed",
 ];
 const CURRENT_APPOINTMENTS_PAGE_SIZE = 3;
 const PRIMARY_MOBILE_APPOINTMENT_FILTERS = [
   "All",
   "Upcoming",
   "Pending",
-  "Approved",
+  "Confirmed",
 ];
 const SECONDARY_MOBILE_APPOINTMENT_FILTERS = [
-  "Awaiting Faculty Schedule",
-  "Rescheduled",
-  "Needs Reschedule",
+  "Reschedule Proposed",
 ];
 
 function StudentCurrentAppointments({
@@ -2036,7 +2032,7 @@ function StudentCurrentAppointments({
           <details className="group relative min-w-0">
             <summary
               className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs [&::-webkit-details-marker]:hidden ${
-                ["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].includes(
+                ["Confirmed", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].includes(
                   activeFilter,
                 )
                   ? "border-maroon-800 bg-maroon-800 text-white"
@@ -2046,7 +2042,7 @@ function StudentCurrentAppointments({
               More
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-              {["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].map(
+              {["Confirmed", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].map(
                 (filter) => (
                   <button
                     key={filter}

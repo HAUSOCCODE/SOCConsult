@@ -60,7 +60,7 @@ const appointmentSchema = new mongoose.Schema(
       required: function () {
         return (
           this.bookingMethod !== "schedule_request" &&
-          this.status !== "Rescheduled"
+          this.status !== "Confirmed"
         );
       },
     },
@@ -69,7 +69,7 @@ const appointmentSchema = new mongoose.Schema(
       required: function () {
         return (
           this.bookingMethod !== "schedule_request" ||
-          ["Approved", "Rescheduled", "Completed", "No Show"].includes(
+          ["Confirmed", "Completed", "Awaiting Attendance Update", "Attendance Review"].includes(
             this.status,
           )
         );
@@ -81,7 +81,7 @@ const appointmentSchema = new mongoose.Schema(
       required: function () {
         return (
           this.bookingMethod !== "schedule_request" ||
-          ["Approved", "Rescheduled", "Completed", "No Show"].includes(
+          ["Confirmed", "Completed", "Awaiting Attendance Update", "Attendance Review"].includes(
             this.status,
           )
         );
@@ -126,14 +126,14 @@ const appointmentSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Pending",
-        "Awaiting Faculty Schedule",
-        "Approved",
+        "Reschedule Proposed",
+        "Confirmed",
         "Rejected",
-        "Needs Reschedule",
-        "Rescheduled",
-        "Completed",
-        "No Show",
         "Cancelled",
+        "Expired",
+        "Awaiting Attendance Update",
+        "Completed",
+        "Attendance Review",
       ],
       default: "Pending",
       index: true,
@@ -166,7 +166,7 @@ appointmentSchema.index(
     unique: true,
     partialFilterExpression: {
       bookingMethod: "schedule_request",
-      status: "Awaiting Faculty Schedule",
+      status: "Pending",
     },
   },
 );

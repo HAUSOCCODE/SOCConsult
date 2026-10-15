@@ -22,12 +22,13 @@ const dateRange = enumSchema([
 ]);
 const status = enumSchema([
   "Pending",
-  "Approved",
+  "Confirmed",
   "Rejected",
-  "Needs Reschedule",
-  "Rescheduled",
+  "Reschedule Proposed",
+  "Expired",
+  "Awaiting Attendance Update",
   "Completed",
-  "No Show",
+  "Attendance Review",
   "Cancelled",
 ]);
 

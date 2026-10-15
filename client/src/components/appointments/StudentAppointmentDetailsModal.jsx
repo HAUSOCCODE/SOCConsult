@@ -76,21 +76,9 @@ export default function StudentAppointmentDetailsModal({
         <div className="space-y-6 px-5 py-5 sm:px-6">
           <div className="grid min-w-0 gap-6 md:grid-cols-2">
             <Section title="Consultation Information">
-              <Detail label="Subject / Topic" value={appointment.subject} />
+              <Detail label="Subject or Course" value={appointment.subject} />
               <Detail
-                label="Year Level"
-                value={appointment.yearLevel || appointment.student?.yearLevel}
-              />
-              <Detail
-                label="Estimated Consultation Time"
-                value={
-                  appointment.estimatedDurationMinutes
-                    ? `${appointment.estimatedDurationMinutes} minutes`
-                    : "Not provided"
-                }
-              />
-              <Detail
-                label="Reason for Consultation"
+                label="Consultation Concern"
                 value={appointment.reason}
                 wide
               />
@@ -117,12 +105,6 @@ export default function StudentAppointmentDetailsModal({
             </Section>
           </div>
 
-          {appointment.status === "Awaiting Faculty Schedule" && (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              Your request is awaiting the Faculty Member's decision. No date or
-              time has been confirmed.
-            </p>
-          )}
           <Section title="Schedule">
             <Detail
               label="Consultation Date"
@@ -134,11 +116,7 @@ export default function StudentAppointmentDetailsModal({
               })}
             />
             <Detail
-              label={
-                appointment.bookingMethod === "schedule_request"
-                  ? "Consultation Time"
-                  : "Faculty Availability Window"
-              }
+              label="Consultation Time"
               value={
                 appointment.startAt
                   ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
@@ -156,14 +134,14 @@ export default function StudentAppointmentDetailsModal({
 
           {isAwaitingFacultyUpdate(appointment) && (
             <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
-              The consultation schedule has ended and is awaiting an update from
-              your faculty member.
+              This consultation is awaiting your attendance response. Attendance
+              submission is handled by the dedicated attendance workflow.
             </p>
           )}
 
           <OnlineMeetingDetails
             appointment={appointment}
-            allowLink={["Approved", "Rescheduled", "Completed"].includes(
+            allowLink={["Confirmed", "Completed"].includes(
               appointment.status,
             )}
             actionLabel="Join Meeting"
@@ -199,10 +177,10 @@ export default function StudentAppointmentDetailsModal({
               />
             </Section>
           )}
-          {appointment.status === "Rescheduled" && (
+          {appointment.status === "Reschedule Proposed" && (
             <Section title="Status Information">
               <Detail
-                label="Rescheduled Schedule"
+                label="Proposed Schedule"
                 value={`${safeDate(appointment.startAt)} – ${clock(appointment.endAt)}`}
                 wide
               />
@@ -220,7 +198,7 @@ export default function StudentAppointmentDetailsModal({
                     className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
                   >
                     <p className="font-bold text-amber-900">
-                      Rescheduled by {entry.initiatedByRole || "Faculty"}
+                      Schedule changed by {entry.initiatedByRole || "Faculty"}
                     </p>
                     <p className="mt-2 text-sm text-slate-700">
                       <strong>Previous:</strong>{" "}

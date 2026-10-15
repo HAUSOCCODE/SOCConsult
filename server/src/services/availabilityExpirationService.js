@@ -4,8 +4,8 @@ import Notification from "../models/Notification.js";
 import { logActivity } from "./activityService.js";
 
 const EXPIRED_RESPONSE_NOTE =
-  "The original consultation schedule expired before approval. Please choose a new schedule.";
-const STUDENT_NOTIFICATION_TITLE = "Consultation Reschedule Required";
+  "The requested consultation schedule expired before confirmation.";
+const STUDENT_NOTIFICATION_TITLE = "Consultation Request Expired";
 const FACULTY_NOTIFICATION_TITLE = "Consultation Schedule Expired";
 
 export const availabilityStatus = (availability, now = new Date()) => {
@@ -46,32 +46,26 @@ const processSchedule = async (candidate, now) => {
   try {
     const affected = await Appointment.find({
       availability: schedule.id,
-      $or: [
-        { status: "Pending" },
-        { status: "Needs Reschedule", responseNote: EXPIRED_RESPONSE_NOTE },
-      ],
+      status: "Pending",
     }).select("_id student status");
 
     await Promise.all(
       affected.map(async (item) => {
-        const changed =
-          item.status === "Pending"
-            ? await Appointment.findOneAndUpdate(
-                { _id: item._id, status: "Pending" },
-                {
-                  $set: {
-                    status: "Needs Reschedule",
-                    responseNote: EXPIRED_RESPONSE_NOTE,
-                    rescheduleRequested: false,
-                    rescheduleRequestNote: "",
-                    rescheduleRequestStatus: "Approved",
-                    rescheduleReviewedAt: now,
-                    rescheduleReviewedBy: schedule.faculty,
-                  },
-                },
-                { new: true },
-              )
-            : null;
+        const changed = await Appointment.findOneAndUpdate(
+          { _id: item._id, status: "Pending" },
+          {
+            $set: {
+              status: "Expired",
+              responseNote: EXPIRED_RESPONSE_NOTE,
+              rescheduleRequested: false,
+              rescheduleRequestNote: "",
+              rescheduleRequestStatus: "Approved",
+              rescheduleReviewedAt: now,
+              rescheduleReviewedBy: schedule.faculty,
+            },
+          },
+          { new: true },
+        );
         const appointment = changed || item;
         await Notification.updateOne(
           {
@@ -83,7 +77,7 @@ const processSchedule = async (candidate, now) => {
           {
             $setOnInsert: {
               message:
-                "Your requested consultation schedule expired before approval. Please choose a new available schedule.",
+                "Your consultation request expired before it could be confirmed.",
             },
           },
           { upsert: true },

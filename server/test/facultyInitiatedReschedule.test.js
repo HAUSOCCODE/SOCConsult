@@ -33,7 +33,7 @@ const appointmentRecord = (overrides = {}) => ({
   faculty: { _id: ids.faculty, name: "Faculty Member" },
   student: { _id: ids.student, name: "Student Name" },
   subject: "Capstone consultation",
-  status: "Approved",
+  status: "Confirmed",
   startAt: new Date("2099-01-01T02:00:00.000Z"),
   endAt: new Date("2099-01-01T02:30:00.000Z"),
   estimatedDurationMinutes: 30,
@@ -119,7 +119,7 @@ for (const providerRole of ["faculty", "dean"]) test(`${providerRole} reschedule
   const restores = [];
   const current = appointmentRecord();
   const updated = appointmentRecord({
-    status: "Rescheduled",
+    status: "Reschedule Proposed",
     startAt: new Date("2099-01-02T06:00:00.000Z"),
     endAt: new Date("2099-01-02T06:30:00.000Z"),
   });
@@ -171,17 +171,17 @@ for (const providerRole of ["faculty", "dean"]) test(`${providerRole} reschedule
     const res = response();
     await rescheduleFacultyAppointment(req, res);
     assert.equal(res.statusCode, 200);
-    assert.equal(update.$set.status, "Rescheduled");
+    assert.equal(update.$set.status, "Reschedule Proposed");
     assert.equal(update.$set.startAt.toISOString(), "2099-01-02T06:00:00.000Z");
     assert.equal(update.$unset.availability, 1);
     assert.equal(update.$push.scheduleHistory.initiatedByRole, "Faculty");
     assert.equal(update.$push.scheduleHistory.previous.startTime, "10:00");
     assert.equal(update.$push.scheduleHistory.next.startTime, "14:00");
     assert.equal(notifications.length, 1);
-    assert.equal(notifications[0].title, "Consultation Rescheduled by Faculty");
-    assert.match(notifications[0].message, /moved from/i);
+    assert.equal(notifications[0].title, "Consultation Reschedule Proposed");
+    assert.match(notifications[0].message, /proposed/i);
     assert.match(notifications[0].message, /Capstone consultation/i);
-    assert.equal(notifications[0].actionUrl, "/student/appointments");
+    assert.equal(notifications[0].actionUrl, "/student/consultations");
     assert.equal(audits.length, 2);
     assert.equal(audits[0].action, "appointment_rescheduled");
     assert.equal(audits[0].actorRole, providerRole);
@@ -204,13 +204,13 @@ test("ownership, terminal status, started, identical, and schedule conflicts are
       name: "completed appointment",
       record: appointmentRecord({ status: "Completed" }),
       status: 409,
-      match: /approved or rescheduled/i,
+      match: /confirmed/i,
     },
     {
       name: "cancelled appointment",
       record: appointmentRecord({ status: "Cancelled" }),
       status: 409,
-      match: /approved or rescheduled/i,
+      match: /confirmed/i,
     },
     {
       name: "already-started appointment",

@@ -97,7 +97,7 @@ export default function AppointmentRequests() {
       status === "Rejected"
         ? toast.info("Appointment request rejected.")
         : toast.success(
-            status === "Approved"
+            status === "Confirmed"
               ? "Appointment approved successfully."
               : data.message,
           );
@@ -110,7 +110,7 @@ export default function AppointmentRequests() {
                 (item) => item._id !== appointment._id,
               ),
               approvedStudents:
-                status === "Approved"
+                status === "Confirmed"
                   ? [
                       ...(current.approvedStudents || []),
                       { ...appointment, ...data.appointment, status },
@@ -134,7 +134,7 @@ export default function AppointmentRequests() {
                 pendingCount: Math.max(0, (schedule.pendingCount || 0) - 1),
                 approvedCount:
                   (schedule.approvedCount || 0) +
-                  (status === "Approved" ? 1 : 0),
+                  (status === "Confirmed" ? 1 : 0),
                 rejectedCount:
                   (schedule.rejectedCount || 0) +
                   (status === "Rejected" ? 1 : 0),
@@ -144,7 +144,7 @@ export default function AppointmentRequests() {
                 ),
                 approvedEstimatedMinutes:
                   (schedule.approvedEstimatedMinutes || 0) +
-                  (status === "Approved" ? minutes : 0),
+                  (status === "Confirmed" ? minutes : 0),
                 totalEstimatedMinutes: Math.max(
                   0,
                   (schedule.totalEstimatedMinutes || 0) -
@@ -250,7 +250,7 @@ export default function AppointmentRequests() {
                       color="text-amber-700"
                     />
                     <Count
-                      label="Approved"
+                      label="Confirmed"
                       value={schedule.approvedCount || 0}
                       color="text-green-700"
                     />
@@ -275,7 +275,7 @@ export default function AppointmentRequests() {
                       value={`${schedule.pendingEstimatedMinutes || 0} min`}
                     />
                     <Metric
-                      label="Approved Time"
+                      label="Confirmed Time"
                       value={`${schedule.approvedEstimatedMinutes || 0} min`}
                     />
                     <Metric
@@ -309,7 +309,7 @@ export default function AppointmentRequests() {
           loading={detailsLoading}
           error={detailsError}
           onRetry={() => loadDetails(selectedId)}
-          onApprove={(item) => update(item, "Approved")}
+          onApprove={(item) => update(item, "Confirmed")}
           onReject={(item, note) => update(item, "Rejected", { note })}
           onReschedule={reschedule}
           onClose={() => {
@@ -342,7 +342,7 @@ function Metric({ label, value }) {
 function Count({ label, value, color }) {
   return (
     <div
-      className={`min-w-0 rounded-lg border px-2 py-2 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Approved" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
+      className={`min-w-0 rounded-lg border px-2 py-2 ${label === "Pending" ? "border-amber-200 bg-amber-50/70" : label === "Confirmed" ? "border-green-200 bg-green-50/70" : "border-red-200 bg-red-50/70"}`}
     >
       <dt className="break-words text-[9px] font-bold uppercase leading-4 tracking-wide text-slate-600 sm:text-xs">
         {label}

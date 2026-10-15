@@ -21,10 +21,10 @@ describe("Faculty consultation calendar", () => {
       null,
     );
     assert.deepEqual(facultyCalendarInternals.CALENDAR_STATUSES, [
-      "Approved",
-      "Rescheduled",
+      "Confirmed",
+      "Awaiting Attendance Update",
+      "Attendance Review",
       "Completed",
-      "No Show",
     ]);
     const event = facultyCalendarInternals.calendarEvent({
       _id: "appointment-a",
@@ -38,7 +38,7 @@ describe("Faculty consultation calendar", () => {
       startAt: new Date("2026-09-13T16:30:00.000Z"),
       endAt: new Date("2026-09-13T17:00:00.000Z"),
       estimatedDurationMinutes: 30,
-      status: "Approved",
+      status: "Confirmed",
       consultationMode: "Online",
       meetingPlatform: "Google Meet",
       meetingLink: "https://meet.example.test/calendar",
@@ -78,7 +78,7 @@ describe("Faculty consultation calendar", () => {
               startAt: new Date("2026-09-14T01:00:00.000Z"),
               endAt: new Date("2026-09-14T01:30:00.000Z"),
               estimatedDurationMinutes: 30,
-              status: "Approved",
+              status: "Confirmed",
               consultationMode: "Online",
               meetingPlatform: "Google Meet",
             },
@@ -119,10 +119,10 @@ describe("Faculty consultation calendar", () => {
         true,
       );
       assert.deepEqual(queries[0].status.$in, [
-        "Approved",
-        "Rescheduled",
+        "Confirmed",
+        "Awaiting Attendance Update",
+        "Attendance Review",
         "Completed",
-        "No Show",
       ]);
       assert.equal(
         (await call(facultyA, "start=bad&end=2026-09-30")).status,

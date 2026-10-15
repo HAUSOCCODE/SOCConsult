@@ -102,22 +102,22 @@ router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
     await Promise.all([
       Appointment.countDocuments({
         faculty: req.user.id,
-        status: { $in: ["Approved", "Rescheduled"] },
+        status: "Confirmed",
         startAt: { $gte: start, $lt: tomorrow },
       }),
       Appointment.countDocuments({
         faculty: req.user.id,
-        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
+        status: "Pending",
       }),
       Appointment.countDocuments({
         faculty: req.user.id,
-        status: { $in: ["Approved", "Completed", "Rescheduled"] },
+        status: { $in: ["Confirmed", "Completed"] },
         startAt: { $gte: start, $lt: week },
       }),
       Appointment.countDocuments({ faculty: req.user.id, status: "Completed" }),
       Appointment.find({
         faculty: req.user.id,
-        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
+        status: "Pending",
       })
         .populate("student", "name email")
         .sort({ createdAt: -1 })

@@ -8,7 +8,12 @@ import { rescheduleFacultyAppointment } from "../controllers/facultyAppointmentC
 const router = Router();
 router.use(authenticate, authorize("faculty", "dean"));
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
-const CALENDAR_STATUSES = ["Approved", "Rescheduled", "Completed", "No Show"];
+const CALENDAR_STATUSES = [
+  "Confirmed",
+  "Awaiting Attendance Update",
+  "Attendance Review",
+  "Completed",
+];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const calendarDateAtManilaMidnight = (value) => {
