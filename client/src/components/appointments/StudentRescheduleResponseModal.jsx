@@ -43,7 +43,7 @@ const Schedule = ({ title, startAt, endAt, mode, location, platform, accent }) =
   );
 };
 
-export default function StudentRescheduleResponseModal({ appointment, onClose, onSuccess }) {
+export default function StudentRescheduleResponseModal({ appointment, onClose, onSuccess, onCancelConsultation }) {
   const toast = useToast();
   const [submitting, setSubmitting] = useState("");
   const [confirmDecision, setConfirmDecision] = useState("");
@@ -100,11 +100,11 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
         </div>
         <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-end sm:px-6">
           <button type="button" disabled={Boolean(submitting)} onClick={onClose} className="btn-secondary min-h-10">Close</button>
-          <button type="button" disabled={Boolean(submitting)} onClick={() => setConfirmDecision("cancel")} className="min-h-10 rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Cancel Consultation</button>
+          <button type="button" disabled={Boolean(submitting)} onClick={onCancelConsultation} className="min-h-10 rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Cancel Consultation</button>
           <button type="button" disabled={Boolean(submitting)} onClick={() => setConfirmDecision("reject")} className="min-h-10 rounded-lg border border-amber-400 px-4 text-sm font-bold text-amber-900 disabled:opacity-50">Reject Proposal</button>
           <button type="button" disabled={Boolean(submitting) || proposalPassed} onClick={() => respond("accept")} className="btn-primary min-h-10 disabled:cursor-not-allowed disabled:opacity-50">{submitting === "accept" ? "Accepting..." : "Accept Proposal"}</button>
         </footer>
-        <ConfirmDialog open={Boolean(confirmDecision)} title={confirmDecision === "cancel" ? "Cancel Consultation" : "Reject Proposal"} message={confirmDecision === "cancel" ? "Cancel this consultation request? You will not be able to accept or reject this proposal afterward." : "Reject this schedule proposal and return the consultation to Pending for Faculty action?"} confirmLabel={confirmDecision === "cancel" ? "Cancel Consultation" : "Reject Proposal"} loadingLabel="Saving..." loading={Boolean(submitting)} onCancel={() => !submitting && setConfirmDecision("")} onConfirm={() => respond(confirmDecision)} />
+        <ConfirmDialog open={confirmDecision === "reject"} title="Reject Proposal" message="Reject this schedule proposal and return the consultation to Pending for Faculty action?" confirmLabel="Reject Proposal" loadingLabel="Saving..." loading={Boolean(submitting)} onCancel={() => !submitting && setConfirmDecision("")} onConfirm={() => respond("reject")} />
       </section>
     </div>,
     document.body,

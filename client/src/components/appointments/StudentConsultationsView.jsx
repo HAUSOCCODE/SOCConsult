@@ -7,6 +7,7 @@ import {
   ACTIVE_REQUEST_STATUSES,
   ATTENDANCE_REQUIRED_STATUSES,
   UNDER_REVIEW_STATUSES,
+  canStudentCancelAppointment,
   getAppointmentDisplayStatus,
 } from "../../utils/appointmentStatus";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../UI";
@@ -40,6 +41,7 @@ export default function StudentConsultationsView() {
   const [details, setDetails] = useState(null);
   const [proposalTarget, setProposalTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const load = () => {
     setError("");
@@ -64,9 +66,13 @@ export default function StudentConsultationsView() {
     if (!cancelTarget || cancelling) return;
     setCancelling(true);
     try {
-      const data = await api(`/appointments/${cancelTarget._id}/cancel`, { method: "PUT" });
+      const data = await api(`/appointments/${cancelTarget._id}/cancel`, {
+        method: "PUT",
+        body: JSON.stringify({ reason: cancellationReason.trim() }),
+      });
       toast.success(data.message || "Consultation request cancelled.");
       setCancelTarget(null);
+      setCancellationReason("");
       await load();
     } catch (requestError) {
       toast.error(requestError.message || "Unable to cancel the consultation request.");
@@ -79,7 +85,7 @@ export default function StudentConsultationsView() {
 
   return (
     <div className="w-full min-w-0 space-y-5 pb-16 md:pb-0">
-      <ConfirmDialog open={Boolean(cancelTarget)} title="Cancel Consultation Request" message="Are you sure you want to cancel this pending consultation request?" confirmLabel="Cancel Request" loadingLabel="Cancelling..." loading={cancelling} onCancel={() => !cancelling && setCancelTarget(null)} onConfirm={cancel} />
+      <ConfirmDialog open={Boolean(cancelTarget)} title="Cancel Consultation" message="Are you sure you want to cancel this consultation?" supportingText="The consultation will move to Consultation History and cannot be restored here." confirmLabel="Cancel Consultation" loadingLabel="Cancelling..." loading={cancelling} inputLabel="Cancellation Reason (Optional)" inputValue={cancellationReason} onInputChange={setCancellationReason} inputPlaceholder="Briefly explain why you are cancelling" inputMaxLength={500} onCancel={() => { if (!cancelling) { setCancelTarget(null); setCancellationReason(""); } }} onConfirm={cancel} />
       <section className="rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -122,15 +128,15 @@ export default function StudentConsultationsView() {
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> View Details</button>
                   {appointment.status === "Reschedule Proposed" && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
-                  {appointment.status === "Pending" && validDate(appointment.startAt) > new Date() && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel</button>}
+                  {canStudentCancelAppointment(appointment) && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel Consultation</button>}
                 </div>
               </article>
             );
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} />}
-      {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} />}
+      {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
 }
