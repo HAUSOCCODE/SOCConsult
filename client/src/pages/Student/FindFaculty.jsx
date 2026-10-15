@@ -12,7 +12,7 @@ import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../../components/profile/ProfileImagePreview";
 import FacultyCard from "../../components/student/FacultyCard";
 import ConsultationRequestForm from "../../components/student/ConsultationRequestForm";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const time = (value) =>
@@ -24,12 +24,9 @@ const time = (value) =>
 
 export default function FindFaculty() {
   const toast = useToast();
-  const location = useLocation();
   const navigate = useNavigate();
-  const reschedule = location.state?.rescheduleAppointment || null;
   const availabilityRequest = useRef(0);
   const scheduleCache = useRef(new Map());
-  const rescheduleInitialized = useRef(false);
   const [faculty, setFaculty] = useState(null);
   const [selected, setSelected] = useState(null);
   const [schedules, setSchedules] = useState([]);
@@ -93,15 +90,8 @@ export default function FindFaculty() {
       const data = await api(`/availability/faculty/${member._id}`);
       if (requestId === availabilityRequest.current) {
         const loaded = Array.isArray(data?.schedules) ? data.schedules : [];
-        const validSchedules = reschedule
-          ? loaded.filter(
-              (slot) =>
-                String(slot.availabilityId || slot._id) !==
-                String(reschedule.currentAvailabilityId),
-            )
-          : loaded;
         const cacheEntry = {
-          schedules: validSchedules,
+          schedules: loaded,
           hasActiveStudentAvailability: Boolean(
             data?.hasActiveStudentAvailability,
           ),
@@ -119,16 +109,6 @@ export default function FindFaculty() {
       if (requestId === availabilityRequest.current) setScheduleLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (!reschedule || !faculty || rescheduleInitialized.current) return;
-    const originalFaculty = faculty.find(
-      (member) => String(member._id) === String(reschedule.facultyId),
-    );
-    if (!originalFaculty) return;
-    rescheduleInitialized.current = true;
-    void viewAvailability(originalFaculty);
-  }, [faculty, reschedule]);
 
   const visibleFaculty = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -151,22 +131,11 @@ export default function FindFaculty() {
               Student Consultation
             </p>
             <h1 className="mt-1.5 break-words text-xl font-bold tracking-tight text-maroon-900 sm:text-[26px]">
-              {reschedule ? "Choose a New Schedule" : "Find Faculty"}
+              Find Faculty
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-5 text-slate-600 sm:text-[15px] sm:leading-6">
-              {reschedule
-                ? "Select a new schedule for your existing consultation."
-                : "Browse consultation providers and review their available schedules."}
+              Browse consultation providers and review their available schedules.
             </p>
-            {reschedule && (
-              <button
-                type="button"
-                onClick={() => navigate("/student/consultations")}
-                className="mt-3 text-sm font-bold text-maroon-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300"
-              >
-                Back to My Appointments
-              </button>
-            )}
           </div>
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 sm:h-14 sm:w-14">
             <CalendarDays size={23} aria-hidden="true" />
@@ -440,16 +409,12 @@ export default function FindFaculty() {
             <ConsultationRequestForm
               provider={selected}
               slot={chosenSchedule}
-              reschedule={reschedule}
               onCancel={() => setChosenSchedule(null)}
-              onSuccess={(data, wasReschedule) => {
+              onSuccess={(data) => {
                 setChosenSchedule(null);
                 scheduleCache.current.delete(String(selected._id));
                 toast.success(
-                  data.message ||
-                    (wasReschedule
-                      ? "New schedule submitted successfully."
-                      : "Consultation request submitted successfully."),
+                  data.message || "Consultation request submitted successfully.",
                 );
                 navigate("/student/consultations", {
                   replace: true,

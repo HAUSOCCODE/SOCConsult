@@ -68,6 +68,38 @@ const cloudinaryResourceType = (mimeType = "") =>
       : "raw";
 const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
+const manilaScheduleSnapshot = ({ startAt, endAt, mode, location, meetingPlatform }) => {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const parts = (value) => {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const values = Object.fromEntries(
+      formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
+    );
+    return values;
+  };
+  const startParts = parts(start);
+  const endParts = parts(end);
+  return {
+    consultationDate: `${startParts.year}-${startParts.month}-${startParts.day}`,
+    startAt: start,
+    endAt: end,
+    startTime: `${startParts.hour}:${startParts.minute}`,
+    endTime: `${endParts.hour}:${endParts.minute}`,
+    durationMinutes: Math.round((end - start) / 60000),
+    mode,
+    location: mode === "Face-to-Face" ? location || "" : "",
+    meetingPlatform: mode === "Online" ? meetingPlatform || "" : "",
+  };
+};
 const conflictsWithOneTimeSchedule = (appointment, startAt, endAt) =>
   OneTimeScheduleHold.exists({
     appointment: { $ne: appointment._id },
@@ -295,6 +327,7 @@ router.post(
         student: req.user.id,
         faculty: reservedSlot.faculty,
         availability: reservedSlot.id,
+        reservationToken,
         startAt: reservedSlot.startAt,
         endAt: reservedSlot.endAt,
         estimatedDurationMinutes: windowMinutes,
@@ -603,12 +636,16 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
         "This consultation schedule has expired or is no longer active. The Student must choose a new schedule.",
     });
   if (status === "Reschedule Proposed") {
+    if (appointment.status !== "Confirmed")
+      return res.status(409).json({
+        message: "Only a confirmed consultation can receive a reschedule proposal.",
+      });
     const slot = await Availability.findOne({
       _id: req.body.availabilityId,
       faculty: req.user.id,
       isActive: true,
       endAt: { $gt: new Date() },
-    });
+    }).select("+meetingLink");
     if (!slot)
       return res
         .status(400)
@@ -621,18 +658,36 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
         message:
           "The availability window is shorter than the estimated consultation time.",
       });
-    appointment.availability = slot.id;
-    appointment.startAt = proposedStart;
-    appointment.endAt = proposedEnd;
-    appointment.consultationMode = slot.mode || "Online";
-    appointment.location = slot.location;
+    if (
+      appointment.startAt?.getTime() === proposedStart.getTime() &&
+      appointment.endAt?.getTime() === proposedEnd.getTime()
+    )
+      return res.status(409).json({
+        message: "The proposed schedule must differ from the current schedule.",
+      });
+    appointment.proposedAvailability = slot.id;
+    appointment.proposedStartAt = proposedStart;
+    appointment.proposedEndAt = proposedEnd;
+    appointment.proposedConsultationMode = slot.mode || "Online";
+    appointment.proposedLocation = slot.mode === "Face-to-Face" ? slot.location : "";
+    appointment.proposedMeetingPlatform =
+      slot.mode === "Online" ? platformFor(slot) : "";
+    appointment.proposedMeetingLink =
+      slot.mode === "Online" ? slot.meetingLink || "" : "";
+    appointment.proposalNote = (req.body.note || "").trim();
+    appointment.proposedAt = new Date();
+    appointment.proposedBy = req.user.id;
   }
   if (
     ["Confirmed", "Reschedule Proposed"].includes(status) &&
     (await conflictsWithOneTimeSchedule(
       appointment,
-      appointment.startAt,
-      appointment.endAt,
+      status === "Reschedule Proposed"
+        ? appointment.proposedStartAt
+        : appointment.startAt,
+      status === "Reschedule Proposed"
+        ? appointment.proposedEndAt
+        : appointment.endAt,
     ))
   )
     return res.status(409).json({
@@ -642,8 +697,7 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
   appointment.status = status;
   appointment.responseNote = (req.body.note || "").trim();
   if (status === "Reschedule Proposed") {
-    appointment.rescheduleRequested = false;
-    appointment.rescheduleRequestNote = "";
+    appointment.responseNote = appointment.proposalNote;
   }
   await appointment.save();
   if (
@@ -715,246 +769,237 @@ router.put("/:id/cancel", authorize("student"), async (req, res) => {
   ]);
   res.json({ message: "Appointment cancelled.", appointment });
 });
-router.put(
-  "/:id/request-reschedule",
-  authorize("student"),
-  async (req, res) => {
-    if (!mongoose.isValidObjectId(req.params.id))
-      return res.status(400).json({ message: "Invalid appointment ID." });
-    const reason = (req.body.reason ?? req.body.note ?? "").trim();
-    if (reason.length < 5)
-      return res.status(400).json({
-        message:
-          "Please provide a meaningful reschedule reason of at least 5 characters.",
-      });
-    if (reason.length > 500)
-      return res.status(400).json({
-        message: "Reschedule reason cannot exceed 500 characters.",
-      });
-    const appointment = await Appointment.findOne({
-      _id: req.params.id,
-      student: req.user.id,
-    });
-    if (!appointment)
-      return res.status(404).json({ message: "Appointment not found." });
-    if (
-      appointment.rescheduleRequested ||
-      appointment.rescheduleRequestStatus === "Pending"
-    )
-      return res.status(409).json({
-        message: "A reschedule request is already awaiting Faculty review.",
-      });
-    if (
-      appointment.status !== "Confirmed" ||
-      appointment.startAt <= new Date()
-    )
-      return res.status(400).json({
-        message: "This appointment is not eligible for rescheduling.",
-      });
-    appointment.rescheduleRequested = true;
-    appointment.rescheduleRequestNote = reason;
-    appointment.rescheduleRequestStatus = "Pending";
-    appointment.rescheduleRequestedAt = new Date();
-    appointment.rescheduleReviewedAt = undefined;
-    appointment.rescheduleReviewedBy = undefined;
-    appointment.rescheduleDecisionNote = "";
-    await appointment.save();
-    await Promise.all([
-      logActivity(
-        "appointment_reschedule_requested",
-        req.user.id,
-        "Appointment",
-        appointment.id,
-      ),
-      notify(
-        appointment.faculty,
-        "appointment",
-        "Reschedule Request",
-        `${req.user.name} requested to reschedule an approved consultation.`,
-        appointment.id,
-      ),
-    ]);
-    res.json({
-      message: "Reschedule request sent to the faculty member.",
-      appointment,
-    });
-  },
-);
-router.put(
-  "/:id/reschedule-request",
-  authorize("faculty", "dean"),
-  async (req, res) => {
-    if (!mongoose.isValidObjectId(req.params.id))
-      return res.status(400).json({ message: "Invalid appointment ID." });
-    const decision = req.body.decision;
-    if (!["Approved", "Rejected"].includes(decision))
-      return res
-        .status(400)
-        .json({ message: "Select a valid reschedule decision." });
-    const decisionNote = (req.body.note || "").trim();
-    if (decisionNote.length > 500)
-      return res.status(400).json({
-        message: "Decision note cannot exceed 500 characters.",
-      });
-    const appointment = await Appointment.findOne({
-      _id: req.params.id,
-      faculty: req.user.id,
-    });
-    if (!appointment)
-      return res.status(404).json({ message: "Appointment not found." });
-    if (
-      !appointment.rescheduleRequested ||
-      appointment.rescheduleRequestStatus !== "Pending"
-    )
-      return res.status(409).json({
-        message: "This appointment has no pending reschedule request.",
-      });
-    if (appointment.status !== "Confirmed")
-      return res.status(400).json({
-        message: "This appointment is no longer eligible for rescheduling.",
-      });
-    appointment.rescheduleRequested = false;
-    appointment.rescheduleRequestStatus = decision;
-    appointment.rescheduleReviewedAt = new Date();
-    appointment.rescheduleReviewedBy = req.user.id;
-    appointment.rescheduleDecisionNote = decisionNote;
-    if (decision === "Approved") appointment.status = "Reschedule Proposed";
-    await appointment.save();
-    if (
-      decision === "Approved" &&
-      appointment.bookingMethod === "schedule_request"
-    )
-      await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
-    const approved = decision === "Approved";
-    await Promise.all([
-      logActivity(
-        `appointment_reschedule_${decision.toLowerCase()}`,
-        req.user.id,
-        "Appointment",
-        appointment.id,
-      ),
-      notify(
-        appointment.student,
-        "appointment",
-        `Reschedule Request ${decision}`,
-        approved
-          ? "Your faculty member approved your reschedule request. Please select another available consultation schedule."
-          : "Your consultation reschedule request was not approved. Your current consultation schedule remains unchanged.",
-        appointment.id,
-      ),
-    ]);
-    res.json({
-      message: approved
-        ? "Reschedule request approved. The Student can now choose a new schedule."
-        : "Reschedule request rejected. The current schedule remains unchanged.",
-      appointment,
-    });
-  },
-);
-router.put("/:id/reschedule", authorize("student"), async (req, res) => {
-  if (
-    !mongoose.isValidObjectId(req.params.id) ||
-    !mongoose.isValidObjectId(req.body.availabilityId)
-  )
-    return res
-      .status(400)
-      .json({ message: "Invalid appointment or availability ID." });
+router.put("/:id/reschedule-response", authorize("student"), async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id))
+    return res.status(400).json({ message: "Invalid appointment ID." });
+  const decision = String(req.body.decision || "").toLowerCase();
+  if (!["accept", "reject", "cancel"].includes(decision))
+    return res.status(400).json({ message: "Select a valid proposal response." });
+
   const appointment = await Appointment.findOne({
     _id: req.params.id,
     student: req.user.id,
-    status: "Reschedule Proposed",
-  });
+  }).select("+reservationToken +proposedMeetingLink +meetingLink");
   if (!appointment)
+    return res.status(404).json({ message: "Appointment not found." });
+  if (appointment.status !== "Reschedule Proposed")
     return res.status(409).json({
-      message: "This appointment is not currently awaiting rescheduling.",
+      message: "This reschedule proposal is no longer active.",
     });
-  const slot = await Availability.findOne({
-    _id: req.body.availabilityId,
-    faculty: appointment.faculty,
-    isActive: true,
-    startAt: { $gt: new Date() },
-    endAt: { $gt: new Date() },
-  });
-  if (!slot)
+
+  const proposedStart = new Date(appointment.proposedStartAt);
+  const proposedEnd = new Date(appointment.proposedEndAt);
+  const proposalComplete =
+    Number.isFinite(proposedStart.getTime()) &&
+    Number.isFinite(proposedEnd.getTime()) &&
+    proposedEnd > proposedStart &&
+    ["Face-to-Face", "Online"].includes(appointment.proposedConsultationMode);
+  if (!proposalComplete)
     return res.status(400).json({
-      message:
-        "Select a valid future availability schedule for this faculty member.",
+      message: "This reschedule proposal is incomplete and cannot be processed.",
     });
-  const [studentConflict, facultyConflict] = await Promise.all([
-    Appointment.exists({
-      _id: { $ne: appointment.id },
-      student: req.user.id,
-      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
-      startAt: { $lt: slot.endAt },
-      endAt: { $gt: slot.startAt },
-    }),
-    Appointment.exists({
-      _id: { $ne: appointment.id },
-      faculty: appointment.faculty,
-      status: "Confirmed",
-      startAt: { $lt: slot.endAt },
-      endAt: { $gt: slot.startAt },
-    }),
-  ]);
-  if (studentConflict || facultyConflict)
+
+  const original = manilaScheduleSnapshot({
+    startAt: appointment.startAt,
+    endAt: appointment.endAt,
+    mode: appointment.consultationMode,
+    location: appointment.location,
+    meetingPlatform: appointment.meetingPlatform,
+  });
+  const proposed = manilaScheduleSnapshot({
+    startAt: proposedStart,
+    endAt: proposedEnd,
+    mode: appointment.proposedConsultationMode,
+    location: appointment.proposedLocation,
+    meetingPlatform: appointment.proposedMeetingPlatform,
+  });
+  const respondedAt = new Date();
+  const history = {
+    previous: original,
+    next: proposed,
+    reason: appointment.proposalNote || "Schedule adjustment proposed by Faculty.",
+    initiatedByRole: "Faculty",
+    initiatedBy: appointment.proposedBy || appointment.faculty,
+    createdAt: appointment.proposedAt || appointment.updatedAt,
+    response:
+      decision === "accept"
+        ? "Accepted"
+        : decision === "reject"
+          ? "Rejected"
+          : "Cancelled",
+    respondedAt,
+    respondedBy: req.user.id,
+  };
+  const proposalFields = {
+    proposedAvailability: 1,
+    proposedStartAt: 1,
+    proposedEndAt: 1,
+    proposedConsultationMode: 1,
+    proposedLocation: 1,
+    proposedMeetingPlatform: 1,
+    proposedMeetingLink: 1,
+    proposalNote: 1,
+    proposedAt: 1,
+    proposedBy: 1,
+  };
+
+  let claimedToken;
+  let claimedAvailability;
+  if (decision === "accept") {
+    if (proposedStart <= respondedAt || proposedEnd <= respondedAt)
+      return res.status(400).json({
+        message: "This proposed schedule has already passed and can no longer be accepted.",
+      });
+    const blockingStatuses = ["Pending", "Reschedule Proposed", "Confirmed"];
+    const [studentConflict, facultyConflict] = await Promise.all([
+      Appointment.exists({
+        _id: { $ne: appointment._id },
+        student: req.user.id,
+        status: { $in: blockingStatuses },
+        startAt: { $lt: proposedEnd },
+        endAt: { $gt: proposedStart },
+      }),
+      Appointment.exists({
+        _id: { $ne: appointment._id },
+        faculty: appointment.faculty,
+        status: { $in: blockingStatuses },
+        startAt: { $lt: proposedEnd },
+        endAt: { $gt: proposedStart },
+      }),
+    ]);
+    if (studentConflict || facultyConflict)
+      return res.status(409).json({
+        message: "The proposed schedule now conflicts with an active consultation.",
+      });
+    if (await conflictsWithOneTimeSchedule(appointment, proposedStart, proposedEnd))
+      return res.status(409).json({
+        message: "The proposed schedule now conflicts with an active consultation.",
+      });
+
+    if (appointment.proposedAvailability) {
+      claimedToken = crypto.randomUUID();
+      claimedAvailability = await Availability.findOneAndUpdate(
+        {
+          _id: appointment.proposedAvailability,
+          faculty: appointment.faculty,
+          isActive: true,
+          reservationToken: { $exists: false },
+          startAt: proposedStart,
+          endAt: proposedEnd,
+        },
+        { $set: { reservationToken: claimedToken } },
+        { new: true },
+      ).select("+meetingLink");
+      if (!claimedAvailability)
+        return res.status(409).json({
+          message: "This proposed schedule is no longer available.",
+        });
+    }
+  }
+
+  const nextStatus =
+    decision === "accept" ? "Confirmed" : decision === "reject" ? "Pending" : "Cancelled";
+  const set = { status: nextStatus, responseNote: "" };
+  if (decision === "accept") {
+    Object.assign(set, {
+      availability: appointment.proposedAvailability || undefined,
+      reservationToken: claimedToken,
+      startAt: proposedStart,
+      endAt: proposedEnd,
+      estimatedDurationMinutes: Math.round((proposedEnd - proposedStart) / 60000),
+      consultationMode: appointment.proposedConsultationMode,
+      location:
+        appointment.proposedConsultationMode === "Face-to-Face"
+          ? appointment.proposedLocation
+          : appointment.proposedMeetingPlatform,
+      meetingPlatform:
+        appointment.proposedConsultationMode === "Online"
+          ? appointment.proposedMeetingPlatform
+          : "",
+      meetingLink:
+        appointment.proposedConsultationMode === "Online"
+          ? appointment.proposedMeetingLink || claimedAvailability?.meetingLink || ""
+          : "",
+    });
+  }
+  const unset = { ...proposalFields };
+  if (decision === "accept" && !appointment.proposedAvailability) {
+    unset.availability = 1;
+    unset.reservationToken = 1;
+    delete set.availability;
+    delete set.reservationToken;
+  }
+  let updated;
+  try {
+    updated = await Appointment.findOneAndUpdate(
+      {
+        _id: appointment._id,
+        student: req.user.id,
+        status: "Reschedule Proposed",
+        proposedAt: appointment.proposedAt,
+      },
+      { $set: set, $unset: unset, $push: { scheduleHistory: history } },
+      { new: true, runValidators: true },
+    );
+  } catch (error) {
+    if (claimedToken)
+      await Availability.updateOne(
+        { _id: appointment.proposedAvailability, reservationToken: claimedToken },
+        { $unset: { reservationToken: 1 } },
+      );
+    throw error;
+  }
+  if (!updated) {
+    if (claimedToken)
+      await Availability.updateOne(
+        { _id: appointment.proposedAvailability, reservationToken: claimedToken },
+        { $unset: { reservationToken: 1 } },
+      );
     return res.status(409).json({
-      message:
-        "This schedule conflicts with an active consultation and is no longer available.",
+      message: "This reschedule proposal was already answered.",
     });
-  const windowMinutes = Math.round((slot.endAt - slot.startAt) / 60000);
-  const scheduled = await Appointment.find({
-    _id: { $ne: appointment.id },
-    availability: slot.id,
-    status: "Confirmed",
-  }).select("estimatedDurationMinutes");
-  const occupiedMinutes = scheduled.reduce(
-    (total, item) => total + (item.estimatedDurationMinutes || 0),
-    0,
-  );
-  if (
-    occupiedMinutes + (appointment.estimatedDurationMinutes || 0) >
-    windowMinutes
-  )
-    return res.status(409).json({
-      message: "This schedule no longer has enough time for your consultation.",
-    });
-  appointment.availability = slot.id;
-  const previousStatus = appointment.status;
-  appointment.startAt = slot.startAt;
-  appointment.endAt = slot.endAt;
-  appointment.consultationMode = slot.mode || "Online";
-  appointment.location =
-    slot.mode === "Online" ? platformFor(slot) : slot.location;
-  appointment.status = "Confirmed";
-  appointment.responseNote = "";
-  await appointment.save();
+  }
+
+  const shouldReleaseOriginal =
+    decision === "cancel" ||
+    (decision === "accept" &&
+      String(appointment.availability || "") !==
+        String(appointment.proposedAvailability || ""));
+  if (shouldReleaseOriginal && appointment.availability && appointment.reservationToken)
+    await Availability.updateOne(
+      { _id: appointment.availability, reservationToken: appointment.reservationToken },
+      { $unset: { reservationToken: 1 } },
+    );
+
+  const responseLabel = history.response.toLowerCase();
   await Promise.all([
     logActivity(
-      "appointment_rescheduled",
+      `appointment_reschedule_${responseLabel}`,
       req.user.id,
       "Appointment",
       appointment.id,
-      {
-        previousStatus,
-        newStatus: "Confirmed",
-        mode: appointment.consultationMode,
-      },
+      { previousStatus: "Reschedule Proposed", newStatus: nextStatus },
     ),
     notify(
       appointment.faculty,
       "appointment",
-      "Consultation Confirmed",
-      `${req.user.name} selected a new consultation schedule.`,
-      appointment.id,
-    ),
-    notify(
-      req.user.id,
-      "appointment",
-      "Consultation Confirmed",
-      "Your new consultation schedule has been confirmed.",
+      `Reschedule Proposal ${history.response}`,
+      `${req.user.name} ${responseLabel} the consultation reschedule proposal.`,
       appointment.id,
     ),
   ]);
-  res.json({ message: "New consultation schedule selected.", appointment });
+  const safe = updated.toObject ? updated.toObject() : updated;
+  delete safe.reservationToken;
+  delete safe.proposedMeetingLink;
+  if (nextStatus !== "Confirmed") delete safe.meetingLink;
+  return res.json({
+    message:
+      decision === "accept"
+        ? "Reschedule proposal accepted. Your consultation is confirmed."
+        : decision === "reject"
+          ? "Reschedule proposal rejected. The consultation is pending Faculty action."
+          : "Consultation cancelled.",
+    appointment: safe,
+  });
 });
 export default router;

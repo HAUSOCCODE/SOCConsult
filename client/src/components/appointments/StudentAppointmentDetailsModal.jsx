@@ -22,6 +22,7 @@ const clock = (value) =>
 export default function StudentAppointmentDetailsModal({
   appointment,
   onClose,
+  onRespondToProposal,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
   useEffect(() => {
@@ -180,10 +181,29 @@ export default function StudentAppointmentDetailsModal({
           {appointment.status === "Reschedule Proposed" && (
             <Section title="Status Information">
               <Detail
-                label="Proposed Schedule"
+                label="Original Schedule"
                 value={`${safeDate(appointment.startAt)} – ${clock(appointment.endAt)}`}
                 wide
               />
+            </Section>
+          )}
+          {appointment.status === "Reschedule Proposed" && (
+            <Section title="Proposed Schedule">
+              <Detail
+                label="Date and Time"
+                value={`${safeDate(appointment.proposedStartAt)} – ${clock(appointment.proposedEndAt)}`}
+                wide
+              />
+              <Detail label="Mode" value={appointment.proposedConsultationMode} />
+              <Detail
+                label="Location / Platform"
+                value={
+                  appointment.proposedConsultationMode === "Face-to-Face"
+                    ? appointment.proposedLocation
+                    : appointment.proposedMeetingPlatform
+                }
+              />
+              <Detail label="Faculty Note / Reason" value={appointment.proposalNote} wide />
             </Section>
           )}
 
@@ -224,43 +244,13 @@ export default function StudentAppointmentDetailsModal({
                     <p className="mt-1 break-words text-sm text-slate-700">
                       <strong>Reason:</strong> {entry.reason}
                     </p>
+                    {entry.response && (
+                      <p className="mt-1 break-words text-sm font-semibold text-slate-700">
+                        Student response: {entry.response}
+                      </p>
+                    )}
                   </div>
                 ))}
-            </Section>
-          )}
-
-          {(appointment.rescheduleRequestStatus ||
-            appointment.rescheduleRequested) && (
-            <Section title="Reschedule Information">
-              <Detail
-                label="Status"
-                value={
-                  appointment.rescheduleRequestStatus ||
-                  (appointment.rescheduleRequested ? "Pending" : "Not provided")
-                }
-              />
-              <Detail
-                label="Requested"
-                value={safeDate(appointment.rescheduleRequestedAt)}
-              />
-              <Detail
-                label="Reason"
-                value={appointment.rescheduleRequestNote}
-                wide
-              />
-              {appointment.rescheduleReviewedAt && (
-                <Detail
-                  label="Reviewed"
-                  value={safeDate(appointment.rescheduleReviewedAt)}
-                />
-              )}
-              {appointment.rescheduleDecisionNote && (
-                <Detail
-                  label="Faculty Decision"
-                  value={appointment.rescheduleDecisionNote}
-                  wide
-                />
-              )}
             </Section>
           )}
 
@@ -270,7 +260,12 @@ export default function StudentAppointmentDetailsModal({
             </div>
           </Section>
         </div>
-        <footer className="sticky bottom-0 flex justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+        <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
+          {appointment.status === "Reschedule Proposed" && onRespondToProposal && (
+            <button type="button" onClick={onRespondToProposal} className="btn-primary w-full sm:w-auto">
+              View Proposal / Respond
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

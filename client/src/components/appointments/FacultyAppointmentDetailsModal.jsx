@@ -200,41 +200,6 @@ export default function FacultyAppointmentDetailsModal({
             </Section>
           )}
 
-          {(appointment.rescheduleRequestStatus ||
-            appointment.rescheduleRequested) && (
-            <Section title="Reschedule Information">
-              <Detail
-                label="Status"
-                value={
-                  appointment.rescheduleRequestStatus ||
-                  (appointment.rescheduleRequested ? "Pending" : "Not provided")
-                }
-              />
-              <Detail
-                label="Requested"
-                value={safeDate(appointment.rescheduleRequestedAt)}
-              />
-              <Detail
-                label="Reason"
-                value={appointment.rescheduleRequestNote}
-                wide
-              />
-              {appointment.rescheduleReviewedAt && (
-                <Detail
-                  label="Reviewed"
-                  value={safeDate(appointment.rescheduleReviewedAt)}
-                />
-              )}
-              {appointment.rescheduleDecisionNote && (
-                <Detail
-                  label="Faculty Decision"
-                  value={appointment.rescheduleDecisionNote}
-                  wide
-                />
-              )}
-            </Section>
-          )}
-
           {appointment.scheduleHistory?.length > 0 && (
             <Section title="Reschedule History">
               {appointment.scheduleHistory

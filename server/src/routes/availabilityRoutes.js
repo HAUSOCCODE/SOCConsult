@@ -8,7 +8,6 @@ import {
   getAvailabilityDetails,
   getMyAvailability,
   getAppointmentRequestSchedules,
-  requestFacultyReschedule,
   updateAvailability,
 } from "../controllers/availabilityController.js";
 
@@ -32,12 +31,6 @@ router.get(
   authenticate,
   authorize("faculty", "dean"),
   getAvailabilityDetails,
-);
-router.put(
-  "/:id/appointments/:appointmentId/request-reschedule",
-  authenticate,
-  authorize("faculty", "dean"),
-  requestFacultyReschedule,
 );
 router.post("/", authenticate, authorize("faculty", "dean"), createAvailability);
 router.put("/:id", authenticate, authorize("faculty", "dean"), updateAvailability);

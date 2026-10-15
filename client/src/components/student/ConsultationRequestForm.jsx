@@ -23,7 +23,6 @@ const time = (value) =>
 export default function ConsultationRequestForm({
   provider,
   slot,
-  reschedule,
   onCancel,
   onSuccess,
 }) {
@@ -59,34 +58,26 @@ export default function ConsultationRequestForm({
     if (submittingRef.current) return;
     const trimmedSubject = subject.trim();
     const trimmedConcern = concern.trim();
-    if (!reschedule && !trimmedSubject)
+    if (!trimmedSubject)
       return setError("Subject or Course is required.");
-    if (!reschedule && trimmedSubject.length > 150)
+    if (trimmedSubject.length > 150)
       return setError("Subject or Course must be 150 characters or fewer.");
-    if (!reschedule && !trimmedConcern)
+    if (!trimmedConcern)
       return setError("Consultation Concern is required.");
-    if (!reschedule && trimmedConcern.length > 1000)
+    if (trimmedConcern.length > 1000)
       return setError("Consultation Concern must be 1,000 characters or fewer.");
 
     submittingRef.current = true;
     setSubmitting(true);
     setError("");
     try {
-      let data;
-      if (reschedule) {
-        data = await api(`/appointments/${reschedule.appointmentId}/reschedule`, {
-          method: "PUT",
-          body: JSON.stringify({ availabilityId: slot.availabilityId }),
-        });
-      } else {
-        const request = new FormData();
-        request.append("availabilityId", slot.availabilityId);
-        request.append("subject", trimmedSubject);
-        request.append("reason", trimmedConcern);
-        documents.forEach((file) => request.append("documents", file));
-        data = await api("/appointments", { method: "POST", body: request });
-      }
-      await onSuccess(data, Boolean(reschedule));
+      const request = new FormData();
+      request.append("availabilityId", slot.availabilityId);
+      request.append("subject", trimmedSubject);
+      request.append("reason", trimmedConcern);
+      documents.forEach((file) => request.append("documents", file));
+      const data = await api("/appointments", { method: "POST", body: request });
+      await onSuccess(data);
     } catch (requestError) {
       setError(requestError.message || "Unable to submit the consultation request.");
     } finally {
@@ -107,7 +98,7 @@ export default function ConsultationRequestForm({
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h2 id="consultation-request-title" className="text-xl font-bold text-maroon-900">
-            {reschedule ? "Choose a New Schedule" : "Request Consultation"}
+            Request Consultation
           </h2>
           <p className="mt-1 break-words text-sm text-slate-600">
             Faculty: {formatPersonName(provider) || "Consultation Provider"}
@@ -134,12 +125,7 @@ export default function ConsultationRequestForm({
           </p>
         </div>
 
-        {reschedule ? (
-          <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-            Existing consultation details and supporting documents will be preserved.
-          </p>
-        ) : (
-          <>
+        <>
             <label className="block min-w-0 text-sm font-semibold">
               Subject or Course
               <input className="field mt-2" required maxLength="150" value={subject} onChange={(event) => setSubject(event.target.value)} />
@@ -169,15 +155,14 @@ export default function ConsultationRequestForm({
                 ))}
               </div>
             )}
-          </>
-        )}
+        </>
         {error && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>
 
       <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
         <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
         <button type="submit" disabled={submitting} className="btn-primary">
-          {submitting ? "Submitting..." : reschedule ? "Submit New Schedule" : "Submit Request"}
+          {submitting ? "Submitting..." : "Submit Request"}
         </button>
       </footer>
     </form>
