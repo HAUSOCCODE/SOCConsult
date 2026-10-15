@@ -2,6 +2,13 @@ export const notFound = (_req, res) =>
   res.status(404).json({ message: "Route not found." });
 
 export const errorHandler = (err, _req, res, _next) => {
+  if (/^\/api\/appointments\/[^/]+\/attendance(?:-responses)?\/?(?:\?|$)/.test(_req.originalUrl || "")) {
+    res.set("Cache-Control", "no-store");
+    const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400
+      : [400, 403, 404, 409].includes(err?.statusCode) ? err.statusCode : 503;
+    return res.status(status).json({ message: status === 503 ? "Attendance is temporarily unavailable."
+      : err?.type ? "Invalid attendance request." : err.message });
+  }
   // Parser errors include raw request bodies, which may contain rejected credentials.
   if (_req.method === "POST" && /^\/api\/dean\/users\/[^/]+\/reset-password\/?(?:\?|$)/i.test(_req.originalUrl || "")) {
     res.set("Cache-Control", "no-store");

@@ -5,6 +5,7 @@ import Availability from "../models/Availability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
 import Notification from "../models/Notification.js";
+import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
 import { safeReason, scheduleSnapshot, statusHistoryEntry } from "./appointmentHistoryService.js";
 
@@ -19,6 +20,10 @@ export function assertTransition({ appointment, action, actor, now = new Date(),
   const rule = TRANSITION_RULES[action];
   if (!rule || !rule.from.includes(appointment.status)) fail("This status transition is not allowed.");
   if (actor.management) fail("Dean management access is read-only.", 403);
+  if (["propose", "accept_proposal"].includes(action) && appointment.attendance &&
+    (appointment.attendance.studentResponded || appointment.attendance.facultyResponded ||
+      date(now) >= date(appointment.attendance.attendanceOpensAt)))
+    fail("Attendance has opened; this consultation cannot be rescheduled.");
   const student = actor.role === "student" && idOf(appointment.student) === idOf(actor.id);
   const faculty = ["faculty", "dean"].includes(actor.role) && idOf(appointment.faculty) === idOf(actor.id);
   if (!(rule.actor === "system" ? actor.role === "system" && !actor.id
@@ -104,6 +109,7 @@ export const safeAppointment = (record, role) => {
   const result = record.toObject ? record.toObject() : { ...record };
   delete result.reservationToken; delete result.proposedMeetingLink;
   delete result.decisionLock; delete result.decisionLockAt;
+  delete result.attendance;
   if (role === "student" && !["Confirmed", "Completed"].includes(result.status)) delete result.meetingLink;
   return result;
 };
@@ -141,7 +147,7 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
       const appointment = await Appointment.findOne({ _id: id,
         ...(actor.role === "student" ? { student: actor.id } : actor.role === "system" ? {} : { faculty: actor.id }),
       })
-        .select("+reservationToken +meetingLink +proposedMeetingLink").session(session);
+        .select("+reservationToken +meetingLink +proposedMeetingLink +attendance").session(session);
       if (!appointment) fail("Appointment not found.", 404, "APPOINTMENT_NOT_FOUND");
       if (action === "expire" && appointment.status !== "Pending")
         fail("This appointment changed.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
@@ -202,6 +208,7 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
       }
       if (action === "confirm" || action === "accept_proposal") {
         validSchedule(schedule, now);
+        set.attendance = attendanceEnrollment(schedule.endAt);
         if (action === "accept_proposal") await conflicts(appointment, schedule, session);
         const sameSlot = schedule.availability && idOf(schedule.availability) === idOf(appointment.availability);
         if (!sameSlot) await release(appointment, session, false);

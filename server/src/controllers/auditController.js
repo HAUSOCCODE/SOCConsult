@@ -90,6 +90,9 @@ const publicUser = (user, lastActivity = null) => ({
   lastActivity,
 });
 const logQueryFor = (userId) => ({
+  // Retained for the future authorized review workflow, excluded from general
+  // activity so a Dean acting as Faculty cannot discover a counterpart's submission.
+  action: { $ne: "attendance_response_submitted" },
   $or: [
     { subjectUser: userId },
     { subjectUsers: userId },
@@ -221,6 +224,7 @@ export async function getAuditUsers(req, res) {
     ? await AuditLog.aggregate([
         {
           $match: {
+            action: { $ne: "attendance_response_submitted" },
             $or: [
               { subjectUser: { $in: ids } },
               { subjectUsers: { $in: ids } },

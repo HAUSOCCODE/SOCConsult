@@ -1,3 +1,4 @@
+import { attendanceCounts } from "./attendanceReportingService.js";
 import { getDateRangeFilter } from "./calendarRangeService.js";
 export { getDateRangeFilter } from "./calendarRangeService.js";
 import Appointment from "../models/Appointment.js";
@@ -137,6 +138,7 @@ export async function getAppointmentCount(args = {}) {
     ...args,
     dateRange: args.dateRange || "all_time",
     count: await Appointment.countDocuments(appointmentFilter(args)),
+    attendanceSummary: await attendanceCounts(appointmentFilter(args)),
   };
 }
 
@@ -146,6 +148,7 @@ export async function getAppointmentStatusBreakdown({
   return {
     dateRange,
     statuses: await countsByField("status", getDateRangeFilter(dateRange)),
+    attendanceSummary: await attendanceCounts(getDateRangeFilter(dateRange)),
   };
 }
 
@@ -156,7 +159,7 @@ export async function getConsultationSummary({ dateRange = "all_time" } = {}) {
     countsByField("status", filter),
     countsByField("consultationMode", filter),
   ]);
-  return { dateRange, totalAppointments, statuses, modes };
+  return { dateRange, totalAppointments, statuses, modes, attendanceSummary: await attendanceCounts(filter) };
 }
 
 export async function getRegistrationSummary() {

@@ -1,3 +1,4 @@
+import AttendanceSummary from "../appointments/AttendanceSummary";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarCheck, CheckCircle2, Clock3, Users } from "lucide-react";
@@ -16,7 +17,7 @@ const titles = {
   pendingAppointments: "Pending Appointments",
   approvedAppointments: "Approved Appointments",
   rescheduledAppointments: "Rescheduled Appointments",
-  completedConsultations: "Completed Consultations",
+  completedConsultations: "Verified Completed Attendance",
   cancelledAppointments: "Cancelled Appointments",
   rejectedAppointments: "Rejected Appointments",
   upcomingAppointments: "Upcoming Appointments",
@@ -79,6 +80,7 @@ export default function DashboardOverview({
     : recent;
   return (
     <div className="w-full min-w-0 space-y-7">
+      <AttendanceSummary counts={data.attendanceSummary} />
       <section className="w-full min-w-0 rounded-2xl bg-[#72182A] p-5 text-white shadow-sm sm:p-8">
         <p className="eyebrow !text-gold-300">Welcome back</p>
         <h1 className="mt-2 max-w-full whitespace-normal break-normal font-sans text-[2rem] font-bold leading-[1.1] tracking-[-0.02em] sm:text-[2.5rem] lg:text-[2.875rem]">

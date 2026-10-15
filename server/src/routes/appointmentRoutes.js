@@ -8,6 +8,7 @@ import User from "../models/User.js";
 import SupportingDocument from "../models/SupportingDocument.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { classifyStudentAppointments } from "../services/appointmentClassificationService.js";
+import { monitoringAttendance } from "../services/attendancePrivacyService.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
 import { logActivity } from "../services/activityService.js";
 import { transitionAppointment, createAppointmentRequest } from "../services/appointmentTransitionService.js";
@@ -107,7 +108,7 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
       ? { student: req.user.id }
       : { faculty: req.user.id };
   const appointments = await Appointment.find(query)
-    .select("+meetingLink")
+    .select("+meetingLink +attendance")
     .populate(
       "student",
       "name email studentId program yearLevel +profilePicture",
@@ -124,6 +125,8 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     .lean();
   await hydrateLegacyDocuments(appointments);
   const safeAppointments = appointments.map((appointment) => {
+    appointment.attendanceSummary = monitoringAttendance(appointment);
+    delete appointment.attendance;
     normalizeProfilePicture(appointment.student);
     normalizeProfilePicture(appointment.faculty);
     const availability = appointment.availability;

@@ -86,6 +86,7 @@ export default function StudentAppointmentDetailsModal({
                 wide
               />
               <Detail label="Status" value={displayStatus} />
+              <Detail label="Final attendance outcome" value={appointment.attendanceSummary?.finalOutcome || "Unresolved / not verified"} />
               <Detail
                 label="Date Submitted"
                 value={safeDate(appointment.createdAt)}
@@ -171,8 +172,8 @@ export default function StudentAppointmentDetailsModal({
           {appointment.status === "Completed" && (
             <Section title="Status Details">
               <Detail
-                label="Completion Date"
-                value={safeDate(appointment.updatedAt)}
+                label="Attendance Finalized"
+                value={appointment.attendanceSummary?.finalizedAt ? safeDate(appointment.attendanceSummary.finalizedAt) : "Historical Completed: attendance not verified"}
               />
               <Detail
                 label="Consultation Summary"

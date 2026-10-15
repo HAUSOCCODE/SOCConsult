@@ -1,3 +1,4 @@
+import AttendanceSummary from "../appointments/AttendanceSummary";
 import {
   Bell,
   CalendarCheck2,
@@ -121,6 +122,7 @@ export default function StudentDashboardContent() {
 
   return (
     <div className="w-full min-w-0 space-y-5 pb-8 sm:space-y-6">
+      <AttendanceSummary counts={data.attendanceSummary} />
       <section className="overflow-hidden rounded-2xl border border-maroon-700 bg-maroon-800 p-5 text-white shadow-sm sm:p-6">
         <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-gold-300">
           Student dashboard

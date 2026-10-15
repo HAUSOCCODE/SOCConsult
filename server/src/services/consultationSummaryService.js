@@ -1,3 +1,4 @@
+import { attendanceCounts, verifiedCompletedFilter } from "./attendanceReportingService.js";
 import Groq from "groq-sdk";
 import Appointment from "../models/Appointment.js";
 import { getGroqModel } from "./groqModel.js";
@@ -158,7 +159,7 @@ async function generateNarrative(aggregatedData, dateRange) {
 export async function createConsultationSummary(startDate, endDate) {
   const range = getSummaryDateRange(startDate, endDate);
   const records = await Appointment.find({
-    status: "Completed",
+    ...verifiedCompletedFilter,
     startAt: { $gte: range.startAt, $lt: range.endAt },
   })
     .select(
@@ -166,14 +167,15 @@ export async function createConsultationSummary(startDate, endDate) {
     )
     .populate("faculty", "name position")
     .lean();
+  const attendanceSummary = await attendanceCounts({ startAt: { $gte: range.startAt, $lt: range.endAt } });
   const insights = aggregateRecords(records);
   const dateRange = { start: range.startDate, end: range.endDate };
   if (!records.length) {
     return {
       dateRange,
       summary:
-        "No completed consultations were recorded during the selected period. Choose another date range to generate a summary.",
-      insights,
+        "No two-party verified completed consultations were recorded during the selected period. Choose another date range to generate a summary.",
+      insights, attendanceSummary,
       generatedAt: new Date().toISOString(),
       hasData: false,
     };
@@ -181,7 +183,7 @@ export async function createConsultationSummary(startDate, endDate) {
   return {
     dateRange,
     summary: await generateNarrative(insights, dateRange),
-    insights,
+    insights, attendanceSummary,
     generatedAt: new Date().toISOString(),
     hasData: true,
   };

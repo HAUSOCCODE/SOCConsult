@@ -1,3 +1,4 @@
+import { monitoringAttendance } from "./attendancePrivacyService.js";
 import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
@@ -57,11 +58,11 @@ export function parseConsultationQuery(query = {}) {
   return { filter, filters: { ...filters, search, sort }, search, page: integer(query.page, 1, 1000000), limit: integer(query.limit, 20, 100), sort: { createdAt: sort === "newest" ? -1 : 1, _id: sort === "newest" ? -1 : 1 } };
 }
 const names = "name firstName middleName lastName";
-const projection = "student faculty subject startAt endAt consultationMode status createdAt updatedAt";
+const projection = "attendance student faculty subject startAt endAt consultationMode status createdAt updatedAt";
 const populate = { path: "student faculty", select: names, options: { maxTimeMS: 10000 } };
 const displayName = user => user && typeof user === "object" && user.name ? formatFullName(user) : null;
 export const listRecord = row => ({
-  recordId: String(row._id), studentName: displayName(row.student), facultyName: displayName(row.faculty),
+  recordId: String(row._id), attendance: monitoringAttendance(row), studentName: displayName(row.student), facultyName: displayName(row.faculty),
   subject: row.subject, startAt: row.startAt ?? null, endAt: row.endAt ?? null,
   mode: row.consultationMode ?? null, status: row.status, legacy: LEGACY_APPOINTMENT_STATUSES.includes(row.status),
   createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -113,7 +114,7 @@ export async function consultationDetails(id) {
     return { from: entry.previousStatus, to: entry.newStatus,
       actorRole: ["Student", "Faculty", "Dean", "System"].includes(entry.changedByRole) ? entry.changedByRole : "Unknown",
       actorType: entry.actorType === "system" ? "system" : "user", timestamp: entry.changedAt, reason,
-      source: entry.migrationVersion || /migration/i.test(entry.source || "") ? "Legacy migration" : ["request", "confirm", "reject", "propose", "accept_proposal", "reject_proposal", "cancel", "expire"].includes(entry.source) ? entry.source : "Legacy record" };
+      source: entry.migrationVersion || /migration/i.test(entry.source || "") ? "Legacy migration" : ["request", "confirm", "reject", "propose", "accept_proposal", "reject_proposal", "cancel", "expire", "attendance_open", "attendance_finalize", "attendance_review"].includes(entry.source) ? entry.source : "Legacy record" };
   });
   const accepted = (row.scheduleHistory || []).filter(entry => entry.response === "Accepted").sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   return { consultation: { ...listRecord(row), concern: row.reason, bookingMethod: row.bookingMethod,

@@ -1,3 +1,4 @@
+import { attendanceCounts, verifiedCompletedFilter, attendanceClassification } from "./attendanceReportingService.js";
 import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import SupportingDocument from "../models/SupportingDocument.js";
@@ -53,6 +54,7 @@ const safeAppointment = (
   ...(appointment.faculty?.name ? { faculty: appointment.faculty.name } : {}),
   subject: appointment.subject,
   status: appointment.status,
+  attendance: { classification: attendanceClassification(appointment), finalOutcome: appointment.attendance?.finalOutcome ?? null },
   dateTime: appointment.startAt
     ? MANILA_FORMAT.format(appointment.startAt)
     : "Pending",
@@ -77,7 +79,7 @@ async function safeAppointments(
 ) {
   const rows = await Appointment.find(filter)
     .select(
-      "student faculty subject status startAt endAt consultationMode location supportingDocument.name supportingDocuments",
+      "student faculty subject status startAt endAt consultationMode location supportingDocument.name supportingDocuments +attendance",
     )
     .populate(includeStudent ? "student" : "faculty", "name")
     .sort({ endAt: sort, startAt: sort })
@@ -114,7 +116,7 @@ export async function getMyStudentAppointmentSummary(_args = {}, context = {}) {
       endAt: { $gt: context.now || new Date() },
     }),
   ]);
-  return { statuses, upcoming };
+  return { statuses, upcoming, attendanceSummary: await attendanceCounts({ student }) };
 }
 export async function getMyUpcomingAppointments(_args = {}, context = {}) {
   const student = safeId(context.userId);
@@ -171,10 +173,11 @@ export async function getMyConsultationHistorySummary(
   );
   const totalCompleted = await Appointment.countDocuments({
     student,
-    status: "Completed",
+    ...verifiedCompletedFilter,
   });
   return {
     totalCompleted,
+    attendanceSummary: await attendanceCounts({ student }),
     recentHistory: appointments,
     limited: appointments.length === 10,
   };
@@ -199,7 +202,7 @@ export async function getMyActionItemsSummary(_args = {}, context = {}) {
 }
 export async function getMyFacultyAppointmentSummary(_args = {}, context = {}) {
   const faculty = safeId(context.userId);
-  return { statuses: await statusSummary("faculty", faculty) };
+  return { statuses: await statusSummary("faculty", faculty), attendanceSummary: await attendanceCounts({ faculty }) };
 }
 export async function getMyUpcomingFacultyAppointments(
   _args = {},
@@ -287,13 +290,14 @@ export async function getMyConsultationWorkload(_args = {}, context = {}) {
       status: { $in: ACTIVE_STATUSES },
       ...filter,
     }),
-    Appointment.countDocuments({ faculty, status: "Completed", ...filter }),
+    Appointment.countDocuments({ faculty, ...verifiedCompletedFilter, ...filter }),
     Appointment.countDocuments({ faculty, status: "Pending", ...filter }),
   ]);
   return {
     period: "this week (Asia/Manila)",
     scheduled,
     completed,
+    attendanceSummary: await attendanceCounts({ faculty, ...filter }),
     pendingRequests: pending,
   };
 }

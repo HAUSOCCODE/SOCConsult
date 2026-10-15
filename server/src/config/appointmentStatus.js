@@ -11,7 +11,7 @@ export const isTerminalStatus = (status) => TERMINAL_STATUSES.includes(status);
 export const isUnresolvedStatus = (status) => APPOINTMENT_STATUSES.includes(status) && !isTerminalStatus(status);
 export const isLegacyStatus = (status) => LEGACY_APPOINTMENT_STATUSES.includes(status);
 
-// Future attendance commands are deliberately not executable in CORE-02.
+// Participant commands. Attendance destinations remain unavailable to callers.
 export const TRANSITION_RULES = Object.freeze({
   confirm: { from: ["Pending"], to: "Confirmed", actor: "faculty" },
   reject: { from: ["Pending"], to: "Rejected", actor: "faculty" },
@@ -22,8 +22,8 @@ export const TRANSITION_RULES = Object.freeze({
   expire: { from: ["Pending"], to: "Expired", actor: "system" },
 });
 
-// Contract for the attendance foundation; intentionally absent from executable actions.
-export const DEFERRED_ATTENDANCE_TRANSITIONS = Object.freeze({
+// Executed only by the transactional attendance service, never participant status input.
+export const ATTENDANCE_TRANSITIONS = Object.freeze({
   "Confirmed": ["Awaiting Attendance Update"],
   "Awaiting Attendance Update": ["Completed", "Attendance Review"],
   "Attendance Review": [], // Resolution requires the later authorized Dean workflow.

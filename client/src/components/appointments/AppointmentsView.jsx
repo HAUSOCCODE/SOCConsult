@@ -174,21 +174,21 @@ export default function AppointmentsPage({ filter }) {
   }
   if (["faculty", "dean"].includes(user.role) && !filter) {
     const now = new Date();
-    const today = now.toDateString();
+    const today = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
     shown = items.filter((item) => {
       const start = new Date(item.startAt);
       const end = new Date(item.endAt);
       if (appointmentTab === "Today")
         return (
           item.status === "Confirmed" &&
-          start.toDateString() === today
+          start.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === today
         );
       if (appointmentTab === "Upcoming")
         return (
           item.status === "Confirmed" && start >= now
         );
       if (appointmentTab === "Awaiting Update")
-        return item.status === "Confirmed" && end < now;
+        return item.status === "Awaiting Attendance Update" || item.status === "Attendance Review" || (item.status === "Confirmed" && end <= now);
       if (appointmentTab === "Legacy") return isLegacyAppointmentStatus(item.status);
       return item.status === appointmentTab;
     });

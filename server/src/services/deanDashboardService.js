@@ -1,3 +1,4 @@
+import { attendanceCounts } from "./attendanceReportingService.js";
 import User from "../models/User.js";
 import Appointment from "../models/Appointment.js";
 import AccountImport from "../models/AccountImport.js";
@@ -104,6 +105,7 @@ export async function readDeanDashboard(parsed, now = new Date()) {
     accounts: { activeStudents, activeFaculty, asOf: now.toISOString() },
     consultations: {
       total: summary?.total ?? 0,
+      attendanceSummary: await attendanceCounts(parsed.filter),
       byStatus: {
         pending: summary?.pending ?? 0,
         completed: summary?.completed ?? 0,

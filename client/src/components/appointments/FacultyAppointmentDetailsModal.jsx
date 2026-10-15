@@ -119,6 +119,7 @@ export default function FacultyAppointmentDetailsModal({
                 wide
               />
               <Detail label="Status" value={appointment.status} />
+              <Detail label="Final attendance outcome" value={appointment.attendanceSummary?.finalOutcome || "Unresolved / not verified"} />
               <Detail
                 label="Date Request Was Submitted"
                 value={safeDate(appointment.createdAt)}

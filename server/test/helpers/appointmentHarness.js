@@ -1,3 +1,4 @@
+import AttendanceResponse from "../../src/models/AttendanceResponse.js";
 import mongoose from "mongoose";
 import Appointment from "../../src/models/Appointment.js";
 import Availability from "../../src/models/Availability.js";
@@ -13,7 +14,7 @@ export const clone = (value) => value instanceof Date ? new Date(value) : value?
 const same = (a, b) => a instanceof Date || b instanceof Date ? new Date(a).getTime() === new Date(b).getTime() : String(a) === String(b);
 const matches = (record, query) => Object.entries(query).every(([key, value]) => {
   if (key === "$or") return value.some((item) => matches(record, item));
-  const actual = record[key];
+  const actual = key.split(".").reduce((value, part) => value?.[part], record);
   if (value && typeof value === "object" && !(value instanceof Date) && !value._bsontype) {
     return Object.entries(value).every(([op, expected]) => {
       if (op === "$exists") return (actual !== undefined) === expected;
@@ -56,7 +57,7 @@ const update = (record, changes) => {
 
 export function appointmentHarness() {
   const restores = [];
-  const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [] };
+  const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [], responses: [] };
   let failAt, retryOnce = false, queue = Promise.resolve();
   const patch = (object, key, value) => { const old = object[key]; object[key] = value; restores.push(() => { object[key] = old; }); };
   const failure = (name) => { if (failAt === name) throw new Error(`Injected ${name} failure`); };
@@ -72,7 +73,7 @@ export function appointmentHarness() {
       } catch (error) { Object.assign(state, before); throw error; } finally { done(); }
     }, endSession: async () => {},
   }));
-  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [OneTimeScheduleHold, "holds"], [User, "users"]]) {
+  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [OneTimeScheduleHold, "holds"], [User, "users"], [AttendanceResponse, "responses"]]) {
     patch(model, "findOne", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));
     patch(model, "findById", (id) => query(() => clone(state[key].find((record) => same(record._id, id)) || null)));
     patch(model, "exists", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));
@@ -91,6 +92,15 @@ export function appointmentHarness() {
     });
     patch(model, "deleteMany", async (filter) => { failure(key); state[key] = state[key].filter((record) => !matches(record, filter)); });
   }
+  patch(AttendanceResponse.collection, "indexes", async () => [{ key: { appointment: 1, participant: 1 }, unique: true }, { key: { appointment: 1, participantRole: 1 }, unique: true }]);
+  patch(AttendanceResponse, "create", async records => {
+    failure("responses");
+    for (const r of records) {
+      if (state.responses.some(old => same(old.appointment, r.appointment) && (same(old.participant, r.participant) || old.participantRole === r.participantRole))) throw Object.assign(new Error("Duplicate response"), { code: 11000 });
+      const error = new AttendanceResponse(r).validateSync(); if (error) throw error;
+      state.responses.push(clone(r));
+    } return clone(records);
+  });
   patch(Appointment, "create", async (records) => {
     failure("appointments");
     return records.map((record) => {
