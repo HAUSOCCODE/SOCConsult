@@ -15,7 +15,7 @@ export async function appointmentHttp() {
   const server = await new Promise((resolve) => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
   return { ...h, users,
     request: (path, role = "student", method = "GET", body) => fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
-      method, headers: { Authorization: `Bearer ${jwt.sign({ sub: users[role].id }, env.jwtSecret)}`,
+      method, headers: { ...(role && { Authorization: `Bearer ${jwt.sign({ sub: users[role].id }, env.jwtSecret)}` }),
         "Content-Type": "application/json", Connection: "close" }, ...(body && { body: JSON.stringify(body) }),
     }),
     close: async () => { await new Promise((resolve) => server.close(resolve)); h.restore(); },

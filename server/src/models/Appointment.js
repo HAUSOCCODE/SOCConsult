@@ -189,6 +189,14 @@ const appointmentSchema = new mongoose.Schema(
       default: "Pending",
       index: true,
     },
+    attendance: { type: new mongoose.Schema({
+      policyVersion: String, attendanceOpensAt: Date, responseDeadlineAt: Date,
+      studentResponded: Boolean, facultyResponded: Boolean,
+      finalOutcome: { type: String, enum: ["Completed", "Student No-show", "Faculty No-show", null], default: null },
+      finalizedAt: Date, finalizationSource: { type: String, enum: ["participant_agreement"] },
+      reviewReason: { type: String, enum: ["student_response_missing", "faculty_response_missing", "both_responses_missing", "responses_conflict"] },
+      missingRoles: [{ type: String, enum: ["student", "faculty"] }], reviewStartedAt: Date,
+    }, { _id: false }), select: false, default: undefined },
     responseNote: { type: String, trim: true, maxlength: 500 },
     statusMigration: {
       version: String,
@@ -222,4 +230,6 @@ appointmentSchema.index(
     },
   },
 );
+appointmentSchema.index({ status: 1, "attendance.policyVersion": 1, endAt: 1 });
+appointmentSchema.index({ status: 1, "attendance.responseDeadlineAt": 1 });
 export default mongoose.model("Appointment", appointmentSchema);

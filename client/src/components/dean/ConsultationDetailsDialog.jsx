@@ -24,6 +24,13 @@ export default function ConsultationDetailsDialog({ recordId, onClose }) {
     <div className="flex items-center justify-between gap-3"><h2 id="consultation-detail-title" className="text-xl font-bold">Consultation details</h2><button autoFocus type="button" className="btn-secondary" onClick={onClose}>Close</button></div>
     {error ? <div role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></div> : !data ? <p role="status">Loading details…</p> : <div className="mt-5 space-y-5">
       <dl className="grid gap-3 sm:grid-cols-2">{[
+        ["Attendance verification", data.attendance?.verification === "two_party_workflow" ? "Two-party workflow" : "Not verified by two-party workflow"],
+        ["Final attendance outcome", data.attendance?.finalOutcome || "Unresolved / not verified"],
+        ["Attendance review category", data.attendance?.reviewReason],
+        ["Missing response roles", data.attendance?.missingRoles?.join(", ")],
+        ["Attendance opens (Asia/Manila)", monitoringDate(data.attendance?.attendanceOpensAt)],
+        ["Response deadline (Asia/Manila)", monitoringDate(data.attendance?.responseDeadlineAt)],
+        ["Finalization source", data.attendance?.finalizationSource],
         ["Record ID", data.recordId], ["Student", data.studentName], ["Faculty", data.facultyName], ["Subject/course", data.subject],
         ["Consultation concern", data.concern], ["Booking method", data.bookingMethod], ["Consultation mode", data.mode], ["Status", `${data.status}${data.legacy ? " (Legacy)" : ""}`],
         ["Original/requested schedule", schedule(data.originalSchedule)], ["Current/requested schedule", schedule(data.currentSchedule)],

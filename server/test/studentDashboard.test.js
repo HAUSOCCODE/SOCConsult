@@ -32,6 +32,7 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   const notificationCalls = [];
   let appointmentCount = 0;
 
+  patch(Appointment, "aggregate", async () => []);
   patch(Appointment, "countDocuments", async (filter) => {
     appointmentFilters.push(filter);
     appointmentCount += 1;
@@ -72,6 +73,7 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
     "nextConsultation",
     "recentConsultations",
     "recentNotifications",
+    "attendanceSummary",
   ]);
   assert.equal(body.upcomingCount, 1);
   assert.equal(body.pendingCount, 2);

@@ -6,6 +6,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node scripts/test-isolated.mjs",
+    "appointments:attendance": "node scripts/process-appointment-attendance.mjs",
     "appointments:expire": "node scripts/process-appointment-expiration.mjs"
   },
   "dependencies": {

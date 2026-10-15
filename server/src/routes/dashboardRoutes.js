@@ -1,3 +1,4 @@
+import { attendanceCounts, verifiedCompletedFilter } from "../services/attendanceReportingService.js";
 import { Router } from "express";
 import { getDateRangeFilter } from "../services/calendarRangeService.js";
 import Appointment from "../models/Appointment.js";
@@ -36,6 +37,7 @@ export async function getStudentDashboard(req, res) {
     Appointment.countDocuments({
       student: req.user.id,
       status: "Awaiting Attendance Update",
+      "attendance.studentResponded": { $ne: true },
     }),
     Notification.countDocuments({ recipient: req.user.id, isRead: false }),
     Appointment.findOne({
@@ -85,6 +87,7 @@ export async function getStudentDashboard(req, res) {
     nextConsultation: nextConsultation || null,
     recentConsultations,
     recentNotifications,
+    attendanceSummary: await attendanceCounts({ student: req.user.id }),
   });
 }
 router.get("/student", authorize("student"), getStudentDashboard);
@@ -105,10 +108,10 @@ router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
       }),
       Appointment.countDocuments({
         faculty: req.user.id,
-        status: { $in: ["Confirmed", "Completed"] },
+        $or: [{ status: "Confirmed" }, verifiedCompletedFilter],
         startAt: weekRange,
       }),
-      Appointment.countDocuments({ faculty: req.user.id, status: "Completed" }),
+      Appointment.countDocuments({ faculty: req.user.id, ...verifiedCompletedFilter }),
       Appointment.find({
         faculty: req.user.id,
         status: "Pending",
@@ -131,6 +134,7 @@ router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
       availableSchedules: availability,
     },
     recentRequests,
+    attendanceSummary: await attendanceCounts({ faculty: req.user.id }),
   });
 });
 export default router;
