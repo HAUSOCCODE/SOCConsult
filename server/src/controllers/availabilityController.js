@@ -79,6 +79,7 @@ export const getAvailableFaculty = async (_req, res) => {
   const availability = await Availability.find({
     faculty: { $in: ids },
     isActive: true,
+    reservationToken: { $exists: false },
     startAt: { $gt: now },
     endAt: { $gt: now },
   });
@@ -124,6 +125,9 @@ export const getFacultyAvailability = async (req, res) => {
   const schedules = await Availability.find({
     faculty: facultyId,
     isActive: true,
+    ...(req.user.role === "student" && {
+      reservationToken: { $exists: false },
+    }),
     ...(req.user.role === "student" && { startAt: { $gt: now } }),
     endAt: { $gt: now },
   }).sort({ startAt: 1 });

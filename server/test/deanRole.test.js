@@ -151,6 +151,8 @@ test("HTTP Dean management and personal Faculty access stay separate for all rol
     const slotId = new mongoose.Types.ObjectId().toString();
     const slot = { id: slotId, faculty: ids.dean, startAt: new Date("2099-01-01T01:00:00Z"), endAt: new Date("2099-01-01T02:00:00Z"), mode: "Face-to-Face", location: "Office" };
     patch(Availability, "findOne", async () => slot, restores);
+    patch(Availability, "findOneAndUpdate", async () => slot, restores);
+    patch(Availability, "updateOne", async () => ({ modifiedCount: 1 }), restores);
     patch(User, "exists", async query => {
       assert.equal(String(query._id), ids.dean);
       assert.ok(query.role.$in.includes("dean"));

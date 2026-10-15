@@ -183,28 +183,24 @@ router.post(
   authorize("student"),
   supportingDocumentUpload,
   async (req, res) => {
+    if (!mongoose.isValidObjectId(req.body.availabilityId))
+      return res
+        .status(400)
+        .json({ message: "Select a valid consultation schedule." });
     const slot = await Availability.findOne({
       _id: req.body.availabilityId,
       isActive: true,
+      reservationToken: { $exists: false },
       startAt: { $gt: new Date() },
     });
     const requestedStart = slot?.startAt;
     const requestedEnd = slot?.endAt;
-    const estimatedDurationMinutes = Number(req.body.estimatedDurationMinutes);
     const windowMinutes = slot
       ? Math.round((slot.endAt - slot.startAt) / 60000)
       : 0;
-    if (!slot || slot.endAt <= new Date())
-      return res.status(400).json({
-        message: "This faculty availability is unavailable or in the past.",
-      });
-    if (
-      !Number.isInteger(estimatedDurationMinutes) ||
-      estimatedDurationMinutes < 5 ||
-      estimatedDurationMinutes > windowMinutes
-    )
-      return res.status(400).json({
-        message: `Estimated consultation time must be between 5 and ${windowMinutes} minutes.`,
+    if (!slot || slot.endAt <= slot.startAt)
+      return res.status(409).json({
+        message: "This schedule is no longer available.",
       });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
@@ -248,36 +244,74 @@ router.post(
         message:
           "This schedule conflicts with an active consultation and is no longer available.",
       });
-    const subject = (req.body.subject || "").trim();
-    const reason = (req.body.reason || "").trim();
-    const yearLevel = (req.body.yearLevel || "").trim();
-    if (!subject || !reason)
+    const subject =
+      typeof req.body.subject === "string" ? req.body.subject.trim() : "";
+    const reason =
+      typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+    if (!subject)
+      return res.status(400).json({ message: "Subject or Course is required." });
+    if (subject.length > 150)
+      return res.status(400).json({
+        message: "Subject or Course must be 150 characters or fewer.",
+      });
+    if (!reason)
       return res
         .status(400)
-        .json({ message: "Subject and reason are required." });
-    if (
-      !["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"].includes(
-        yearLevel,
-      )
-    )
+        .json({ message: "Consultation Concern is required." });
+    if (reason.length > 1000)
+      return res.status(400).json({
+        message: "Consultation Concern must be 1,000 characters or fewer.",
+      });
+    const validYearLevels = new Set([
+      "1st Year",
+      "2nd Year",
+      "3rd Year",
+      "4th Year",
+      "5th Year",
+    ]);
+    const yearLevel = validYearLevels.has(req.user.yearLevel)
+      ? req.user.yearLevel
+      : undefined;
+    const reservationToken = crypto.randomUUID();
+    const reservedSlot = await Availability.findOneAndUpdate(
+      {
+        _id: slot.id,
+        isActive: true,
+        reservationToken: { $exists: false },
+        startAt: { $gt: new Date() },
+        endAt: { $gt: slot.startAt },
+      },
+      { $set: { reservationToken } },
+      { new: true },
+    );
+    if (!reservedSlot)
       return res
-        .status(400)
-        .json({ message: "Please select your year level." });
-    const appointment = await Appointment.create({
-      student: req.user.id,
-      faculty: slot.faculty,
-      availability: slot.id,
-      startAt: requestedStart,
-      endAt: requestedEnd,
-      estimatedDurationMinutes,
-      subject,
-      yearLevel,
-      reason,
-      consultationMode: slot.mode || "Online",
-      location: slot.mode === "Online" ? platformFor(slot) : slot.location,
-    });
+        .status(409)
+        .json({ message: "This schedule is no longer available." });
+    let appointment;
     const uploadedAssets = [];
     try {
+      appointment = await Appointment.create({
+        student: req.user.id,
+        faculty: reservedSlot.faculty,
+        availability: reservedSlot.id,
+        startAt: reservedSlot.startAt,
+        endAt: reservedSlot.endAt,
+        estimatedDurationMinutes: windowMinutes,
+        subject,
+        yearLevel,
+        reason,
+        consultationMode: reservedSlot.mode || "Online",
+        meetingPlatform:
+          reservedSlot.mode === "Online"
+            ? platformFor(reservedSlot)
+            : undefined,
+        location:
+          reservedSlot.mode === "Online"
+            ? platformFor(reservedSlot)
+            : reservedSlot.location,
+        status: "Pending",
+      });
       if (req.files?.length) {
         for (const file of req.files) {
           const resourceType = cloudinaryResourceType(file.mimetype);
@@ -310,12 +344,18 @@ router.post(
         );
         await appointment.save();
       }
-    } catch (documentError) {
+    } catch (creationError) {
       await Promise.all([
         ...uploadedAssets.map((asset) => destroyAsset(asset).catch(() => {})),
-        Appointment.deleteOne({ _id: appointment.id }),
+        ...(appointment
+          ? [Appointment.deleteOne({ _id: appointment.id })]
+          : []),
+        Availability.updateOne(
+          { _id: slot.id, reservationToken },
+          { $unset: { reservationToken: 1 } },
+        ),
       ]);
-      throw documentError;
+      throw creationError;
     }
     await Promise.all([
       logActivity(
