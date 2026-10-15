@@ -30,8 +30,8 @@ import CsvImport from "./pages/Dean/CsvImport";
 import DeanLayout from "./layouts/DeanLayout";
 import DeanDashboard from "./pages/Dean/DeanDashboard";
 import UserManagement from "./pages/Dean/UserManagement";
-import ConsultationOverview from "./pages/Dean/ConsultationOverview";
-import AppointmentsManagement from "./pages/Dean/AppointmentsManagement";
+import ConsultationMonitoring from "./pages/Dean/ConsultationMonitoring";
+import { monitoringQuery } from "./utils/deanWorkspace";
 import ReportsAnalytics from "./pages/Dean/ReportsAnalytics";
 import SystemSettings from "./pages/Dean/SystemSettings";
 import DeanNotifications from "./pages/Dean/DeanNotifications";
@@ -41,6 +41,10 @@ import RouteDocumentTitle from "./components/RouteDocumentTitle";
 function DeanRouteRedirect({ to }) {
   const location = useLocation();
   return <Navigate to={to + location.search + location.hash} replace />;
+}
+function ConsultationMonitoringRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/dean/consultations${monitoringQuery(location.search)}`} replace />;
 }
 function LegacyManagementRedirect() {
   const location = useLocation();
@@ -115,8 +119,9 @@ export default function App() {
               path="registrations"
               element={<DeanRouteRedirect to="/dean/users" />}
             />
-            <Route path="consultations" element={<ConsultationOverview />} />
-            <Route path="appointments" element={<AppointmentsManagement />} />
+            <Route path="consultations" element={<ConsultationMonitoring />} />
+            <Route path="appointments" element={<ConsultationMonitoringRedirect />} />
+            <Route path="consultation-overview" element={<ConsultationMonitoringRedirect />} />
             <Route path="reports" element={<ReportsAnalytics />} />
             <Route path="notifications" element={<DeanNotifications />} />
             <Route path="audit-logs" element={<AuditLogs />} />

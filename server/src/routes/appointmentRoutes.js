@@ -1,3 +1,4 @@
+import { canReadAppointmentDocument } from "../services/appointmentDocumentAuthorizationService.js";
 import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import { Router } from "express";
 import mongoose from "mongoose";
@@ -273,6 +274,14 @@ router.post(
 );
 
 export const appointmentDocumentRoutes = Router();
+appointmentDocumentRoutes.use((req, res, next) => {
+  if (!/^\/[^/]+\/(?:documents\/[^/]+|document)\/?$/.test(req.path)) return next();
+  const parts = req.path.split("/");
+  if (![parts[1], ...(parts[2] === "documents" ? [parts[3]] : [])].every(id => /^[a-f\d]{24}$/i.test(id)))
+    return res.status(400).json({ message: "Invalid document reference." });
+  res.set("Cache-Control", "no-store");
+  next();
+});
 appointmentDocumentRoutes.get(
   "/:id/documents/:documentId",
   authorize("student", "faculty", "dean"),
@@ -282,10 +291,7 @@ appointmentDocumentRoutes.get(
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.deanManagementAccess === true ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)
@@ -348,10 +354,7 @@ appointmentDocumentRoutes.delete(
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.deanManagementAccess === true ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)
@@ -405,10 +408,7 @@ appointmentDocumentRoutes.get(
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.deanManagementAccess === true ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)

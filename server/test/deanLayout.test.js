@@ -6,6 +6,7 @@ import {
   deanWorkspace,
   isDeanManagementPath,
   legacyFacultyDestination,
+  monitoringQuery,
 } from "../../client/src/utils/deanWorkspace.js";
 
 const source = (path) =>
@@ -165,7 +166,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     RoleLayout: () => React.createElement(router.Outlet),
     SOCConsultFacultyAIAssistant: () => null,
   });
-  const App = await loadComponent("App.jsx", { ...router, ...components });
+  const App = await loadComponent("App.jsx", { ...router, ...components, monitoringQuery });
   const render = (path) =>
     renderToString(
       React.createElement(
@@ -178,7 +179,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     dashboard: "DeanDashboard",
     import: "CsvImport",
     users: "UserManagement",
-    consultations: "ConsultationOverview",
+    consultations: "ConsultationMonitoring",
     "attendance-review": "DeferredFeaturePage",
     reports: "ReportsAnalytics",
     notifications: "DeanNotifications",
