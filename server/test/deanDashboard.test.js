@@ -221,7 +221,7 @@ test("dashboard uses exact counts, bounded safe lists, role authorization and sa
     assert.equal(body.accounts.activeStudents, 3);
     assert.equal(body.accounts.activeFaculty, 2);
     assert.deepEqual(body.consultations, {
-      total: 10,
+      total: 15, // Canonical and recognized legacy records remain counted.
       byStatus: { pending: 2, completed: 1 },
     });
     assert.doesNotMatch(

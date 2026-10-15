@@ -644,7 +644,7 @@ function UpcomingPanel({ items, loading, onOpenEvent }) {
                   <span className="min-w-0 break-words text-sm font-bold text-slate-900">
                     {eventParticipantName(event)}
                   </span>
-                  <StatusBadge status={event.status} compact allowWrap />
+                  <StatusBadge appointment status={event.status} compact allowWrap />
                 </span>
                 <span className="mt-1 block text-xs font-semibold text-slate-600">
                   {timeLabel(event.start)} – {timeLabel(event.end)}
@@ -758,7 +758,7 @@ function CalendarEventModal({ event, opener, onClose }) {
               {eventParticipantName(event)}
             </p>
           </div>
-          <StatusBadge status={event.status} allowWrap />
+          <StatusBadge appointment status={event.status} allowWrap />
         </div>
         <dl className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
           <ModalDetail label="Date" value={fullDateLabel(event.start)} />

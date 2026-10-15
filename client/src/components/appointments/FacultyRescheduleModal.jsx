@@ -129,7 +129,7 @@ export default function FacultyRescheduleModal({
         `/faculty/appointments/${appointment._id}/reschedule`,
         {
           method: "PATCH",
-          body: JSON.stringify({
+          body: JSON.stringify({ expectedVersion: appointment.__v,
             ...form,
             duration,
             reason,

@@ -2,21 +2,13 @@ import { ChevronRight, ChevronUp, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api/apiClient";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../UI";
+import { APPOINTMENT_STATUSES, isLegacyAppointmentStatus } from "../../utils/appointmentStatus";
 import Pagination from "../Pagination";
 import FacultyAppointmentDetailsModal from "../appointments/FacultyAppointmentDetailsModal";
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const APPOINTMENTS_PER_PAGE = 6;
-const appointmentFilters = [
-  "All Appointments",
-  "Approved",
-  "Pending",
-  "Awaiting Faculty Schedule",
-  "Rescheduled",
-  "Completed",
-  "Cancelled",
-  "Rejected",
-];
+const appointmentFilters = ["All Appointments", ...APPOINTMENT_STATUSES, "Legacy"];
 
 const dateLabel = (value) => {
   if (!value) return "Not scheduled";
@@ -80,8 +72,8 @@ export default function DeanRecordsList({ title }) {
   const shownAppointments = (appointments || []).filter((appointment) => {
     const matchesFilter =
       filter === "All Appointments" ||
-      (filter === "Rescheduled"
-        ? /reschedul/i.test(appointment.status || "")
+      (filter === "Legacy"
+        ? isLegacyAppointmentStatus(appointment.status)
         : appointment.status === filter);
     const matchesSearch =
       !normalizedSearch ||
@@ -211,7 +203,7 @@ export default function DeanRecordsList({ title }) {
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <StatusBadge status={appointment.status} compact />
+                      <StatusBadge appointment status={appointment.status} compact />
                       <button
                         type="button"
                         onClick={() =>
@@ -303,7 +295,7 @@ export default function DeanRecordsList({ title }) {
                       {timeLabel(appointment.endAt)}
                     </p>
                   </div>
-                  <StatusBadge status={appointment.status} compact />
+                  <StatusBadge appointment status={appointment.status} compact />
                 </div>
                 <dl className="mt-4 grid min-w-0 grid-cols-2 gap-3 text-sm">
                   <MobileDetail
@@ -422,7 +414,7 @@ export default function DeanRecordsList({ title }) {
                     </td>
                     <td className="px-1 py-2 min-[1200px]:px-2 2xl:px-3">
                       <div className="flex items-center justify-center">
-                        <StatusBadge status={appointment.status} compact />
+                        <StatusBadge appointment status={appointment.status} compact />
                       </div>
                     </td>
                     <td className="px-1 py-2 pr-2 text-center min-[1200px]:px-2 2xl:px-3">

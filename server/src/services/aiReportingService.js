@@ -2,18 +2,9 @@ import { getDateRangeFilter } from "./calendarRangeService.js";
 export { getDateRangeFilter } from "./calendarRangeService.js";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
+import { APPOINTMENT_STATUSES } from "../config/appointmentStatus.js";
+export { APPOINTMENT_STATUSES } from "../config/appointmentStatus.js";
 
-export const APPOINTMENT_STATUSES = [
-  "Pending",
-  "Reschedule Proposed",
-  "Confirmed",
-  "Rejected",
-  "Cancelled",
-  "Expired",
-  "Awaiting Attendance Update",
-  "Completed",
-  "Attendance Review",
-];
 
 export const CONSULTATION_MODES = ["Online", "Face-to-Face"];
 export const DATE_RANGES = [
@@ -71,7 +62,7 @@ export async function getUserCounts({
   assertEnum(accountStatus, ["Active", "Inactive"], "account status");
   assertEnum(
     registrationStatus,
-    ["Pending", "Confirmed", "Rejected"],
+    ["Pending", "Approved", "Rejected"],
     "registration status",
   );
   const filter = {

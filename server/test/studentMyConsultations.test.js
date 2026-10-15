@@ -1,3 +1,4 @@
+import { APPOINTMENT_STATUSES, LEGACY_APPOINTMENT_STATUSES } from "../src/config/appointmentStatus.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -13,19 +14,8 @@ import {
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("Appointment schema exposes only the revised consultation lifecycle", () => {
-  assert.deepEqual(Appointment.schema.path("status").enumValues, [
-    "Pending",
-    "Reschedule Proposed",
-    "Confirmed",
-    "Rejected",
-    "Cancelled",
-    "Expired",
-    "Awaiting Attendance Update",
-    "Completed",
-    "Attendance Review",
-  ]);
-});
+test("Appointment schema recognizes canonical and temporary legacy values", () => {
+  assert.deepEqual(Appointment.schema.path("status").enumValues, [...APPOINTMENT_STATUSES, ...LEGACY_APPOINTMENT_STATUSES]);});
 
 test("Student consultation groups are exact, terminal-safe, and unknown-safe", () => {
   assert.deepEqual(ACTIVE_REQUEST_STATUSES, ["Pending", "Reschedule Proposed", "Confirmed"]);
@@ -73,7 +63,8 @@ test("canonical Student consultations UI uses revised groups and no legacy actio
 
 test("backend status producers use revised Appointment statuses", async () => {
   const sources = await Promise.all([
-    read("../src/routes/appointmentRoutes.js"),
+    read("../src/services/appointmentTransitionService.js"),
+    read("../src/config/appointmentStatus.js"),
     read("../src/routes/scheduleRequestRoutes.js"),
     read("../src/controllers/facultyAppointmentController.js"),
     read("../src/services/availabilityExpirationService.js"),
@@ -87,7 +78,7 @@ test("backend status producers use revised Appointment statuses", async () => {
     'status: "No Show"',
   ]) assert.doesNotMatch(source, new RegExp(creation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(source, /status: "Pending"/);
-  assert.match(source, /status: "Confirmed"/);
-  assert.match(source, /status: "Reschedule Proposed"/);
-  assert.match(source, /status: "Expired"/);
+  assert.match(source, /to: "Confirmed"/);
+  assert.match(source, /to: "Reschedule Proposed"/);
+  assert.match(source, /to: "Expired"/);
 });

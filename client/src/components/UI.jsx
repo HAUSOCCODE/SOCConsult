@@ -1,4 +1,5 @@
-export const StatusBadge = ({ status, compact = false, allowWrap = false }) => {
+import { isLegacyAppointmentStatus } from "../utils/appointmentStatus";
+export const StatusBadge = ({ status, compact = false, allowWrap = false, appointment = false }) => {
   const colors = {
     Pending: "bg-amber-100 text-amber-800",
     "Reschedule Proposed": "bg-purple-100 text-purple-800",

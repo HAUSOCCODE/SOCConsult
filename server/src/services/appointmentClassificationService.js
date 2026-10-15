@@ -1,9 +1,5 @@
-export const STUDENT_TERMINAL_STATUSES = Object.freeze([
-  "Completed",
-  "Cancelled",
-  "Rejected",
-  "Expired",
-]);
+import { TERMINAL_STATUSES as STUDENT_TERMINAL_STATUSES } from "../config/appointmentStatus.js";
+export { TERMINAL_STATUSES as STUDENT_TERMINAL_STATUSES } from "../config/appointmentStatus.js";
 
 const timestamp = (value) => {
   if (!value) return NaN;

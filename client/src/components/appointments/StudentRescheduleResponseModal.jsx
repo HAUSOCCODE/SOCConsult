@@ -66,7 +66,7 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
     try {
       const data = await api(`/appointments/${appointment._id}/reschedule-response`, {
         method: "PUT",
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({ decision, proposedAt: appointment.proposedAt, expectedVersion: appointment.__v }),
       });
       toast.success(data.message || "Proposal response saved.");
       await onSuccess(data.appointment);
