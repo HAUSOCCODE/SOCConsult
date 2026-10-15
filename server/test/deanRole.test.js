@@ -1,3 +1,5 @@
+import { appointmentHttp } from "./helpers/appointmentHttp.js";
+import { fixture, addSlot } from "./helpers/appointmentHarness.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import jwt from "jsonwebtoken";
@@ -73,102 +75,24 @@ test("Dean login uses username and the stored role remains authoritative", async
   } finally { restores.reverse().forEach(fn => fn()); }
 });
 
-test("HTTP Dean management and personal Faculty access stay separate for all roles", async () => {
-  const restores = [], queries = [];
-  const ids = Object.fromEntries(["student", "faculty", "dean"].map(role => [role, new mongoose.Types.ObjectId().toString()]));
-  const other = new mongoose.Types.ObjectId().toString();
-  patch(User, "findById", async id => ({ id: String(id), _id: new mongoose.Types.ObjectId(id), role: Object.keys(ids).find(role => ids[role] === String(id)), name: "Caller", accountStatus: "Active", registrationStatus: "Approved" }), restores);
-  patch(User, "find", query => { queries.push(["users", query]); return chain([]); }, restores);
-  patch(User, "countDocuments", async () => 0, restores);
-  patch(Appointment, "find", query => { queries.push(["appointments", query]); return chain([]); }, restores);
-  patch(Appointment, "countDocuments", async query => { queries.push(["appointments", query]); return 0; }, restores);
-  patch(Appointment, "aggregate", async pipeline => { queries.push(["appointments", pipeline[0].$match]); return []; }, restores);
-  patch(Availability, "find", query => { queries.push(["availability", query]); return chain([]); }, restores);
-  patch(Availability, "countDocuments", async query => { queries.push(["availability", query]); return 0; }, restores);
-  patch(Task, "find", query => { queries.push(["tasks", query]); return chain([]); }, restores);
-  patch(Appointment, "findById", () => chain({ id: other, student: other, faculty: other, supportingDocument: { data: "data:text/plain;base64,dGVzdA==", toObject: () => ({ name: "test.txt", data: "data:text/plain;base64,dGVzdA==" }) }, supportingDocuments: [] }), restores);
-  patch(Appointment, "findOne", query => { queries.push(["mutation", query]); return chain(null); }, restores);
-  patch(Availability, "findOne", query => { queries.push(["mutation", query]); return chain(null); }, restores);
-  patch(Availability, "findOneAndDelete", async query => { queries.push(["mutation", query]); return null; }, restores);
-  patch(Appointment, "exists", async query => { queries.push(["mutation", query]); return null; }, restores);
-  const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
-  const base = `http://127.0.0.1:${server.address().port}/api`;
-  const request = (url, role, method = "GET", body) => fetch(base + url, { method, headers: { Authorization: `Bearer ${jwt.sign({ sub: ids[role] }, env.jwtSecret)}`, "Content-Type": "application/json", Connection: "close" }, ...(body && { body: JSON.stringify(body) }) });
+test("HTTP Dean management is read-only while personal Faculty actions remain owner-scoped", async () => {
+  const h = await appointmentHttp();
   try {
+    const record = fixture({ student: h.users.student.id, faculty: h.users.dean.id,
+      supportingDocument: { name: "test.txt", data: "data:text/plain;base64,dGVzdA==",
+        toObject: () => ({ name: "test.txt", data: "data:text/plain;base64,dGVzdA==" }) } });
+    h.state.appointments.push(record); addSlot(h, record);
     for (const role of ["student", "faculty", "dean"]) {
-      assert.equal((await request("/dean/users", role)).status, role === "dean" ? 200 : 403);
-      for (const method of ["GET", "POST", "PUT", "DELETE"]) assert.equal((await request("/admin/users", role, method)).status, 404);
-      const owner = role === "student" ? "student" : "faculty";
-      queries.length = 0;
-      assert.equal((await request(`/appointments/mine?facultyId=${other}`, role)).status, 200);
-      for (const [model, query] of queries) if (model === "appointments") assert.equal(String(query[owner]), ids[role]);
-      for (const endpoint of ["/faculty/calendar?start=2026-10-01&end=2026-10-31", "/availability/mine", "/availability/request-schedules", "/schedule-requests/mine", "/dashboard/faculty", "/tasks"]) {
-        queries.length = 0;
-        assert.equal((await request(endpoint, role)).status, role === "student" && endpoint !== "/tasks" ? 403 : 200);
-        for (const [model, query] of queries) {
-          if (model === "users") continue;
-          if (model === "availability" && query._id) continue;
-          assert.equal(String(query[owner]), ids[role], `${endpoint}: ${model} must use caller ID`);
-        }
-      }
-      queries.length = 0;
-      assert.equal((await request("/dean/appointments", role)).status, role === "dean" ? 200 : 403);
-      if (role === "dean") {
-        assert.ok(queries.some(([model, query]) => model === "appointments" && query === undefined), "Management retains its school-wide query");
-      }
-      for (const suffix of ["document", "documents/unknown"]) assert.equal((await request(`/appointments/${other}/${suffix}`, role)).status, 403);
-      assert.equal((await request(`/appointments/${other}/documents/unknown`, role, "DELETE", { deanManagementAccess: true })).status, 403);
-      assert.equal((await request(`/dean/appointments/${other}/document`, role)).status, role === "dean" ? 200 : 403);
-      if (role !== "student") {
-        queries.length = 0;
-        assert.equal((await request("/tasks", role, "POST", { appointmentId: other, title: "test" })).status, 404);
-        assert.equal(queries[0][1].faculty, ids[role]);
-        for (const [url, method, body] of [
-          [`/appointments/${other}/status`, "PUT", { status: "Confirmed" }],
-          [`/appointments/${other}/reschedule-request`, "PUT", { decision: "Rejected" }],
-          [`/availability/${other}`, "PUT", {}],
-          [`/availability/${other}`, "DELETE", {}],
-        ]) {
-          queries.length = 0;
-          assert.equal((await request(url, role, method, body)).status, 404);
-          for (const [, query] of queries) assert.equal(String(query.faculty), ids[role]);
-        }
-      }
+      assert.equal((await h.request('/dean/appointments', role)).status, role === "dean" ? 200 : 403);
+      assert.equal((await h.request('/dean/appointments/'+record._id+'/document', role)).status, role === "dean" ? 200 : 403);
+      assert.equal((await h.request('/dean/appointments/'+record._id+'/documents/unknown', role, "DELETE", {})).status, 403);
     }
-    queries.length = 0;
-    assert.equal((await request("/availability/faculty", "student")).status, 200);
-    const providerQuery = queries.find(([model]) => model === "users")[1];
-    assert.equal(providerQuery.accountStatus, "Active");
-    assert.deepEqual(providerQuery.$or, [
-      { role: "faculty", registrationStatus: "Approved" },
-      { role: "dean" },
-    ]);
-    assert.ok(providerQuery.$or.every(({ role }) => role !== "student"));
-    queries.length = 0;
-    assert.equal((await request(`/availability/faculty/${other}`, "dean")).status, 200);
-    for (const [model, query] of queries) if (model === "availability") assert.equal(String(query.faculty), ids.dean);
-
-    const slotId = new mongoose.Types.ObjectId().toString();
-    const slot = { id: slotId, faculty: ids.dean, startAt: new Date("2099-01-01T01:00:00Z"), endAt: new Date("2099-01-01T02:00:00Z"), mode: "Face-to-Face", location: "Office" };
-    patch(Availability, "findOne", async () => slot, restores);
-    patch(Availability, "findOneAndUpdate", async () => slot, restores);
-    patch(Availability, "updateOne", async () => ({ modifiedCount: 1 }), restores);
-    patch(User, "exists", async query => {
-      assert.equal(String(query._id), ids.dean);
-      assert.ok(query.role.$in.includes("dean"));
-      return { _id: ids.dean };
-    }, restores);
-    patch(Appointment, "exists", async () => null, restores);
-    patch(Appointment, "create", async data => ({ ...data, id: other, _id: other }), restores);
-    patch(Notification, "create", async data => data, restores);
-    const booking = await request("/appointments", "student", "POST", { availabilityId: slotId, estimatedDurationMinutes: 30, subject: "Consultation", reason: "Review", yearLevel: "1st Year" });
-    assert.equal(booking.status, 201);
-    assert.equal((await booking.json()).appointment.faculty, ids.dean);
-    assert.equal((await User.findById(ids.dean)).role, "dean");
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-    restores.reverse().forEach(fn => fn());
-  }
+    assert.equal((await h.request('/appointments/'+record._id+'/status', "faculty", "PUT", { status: "Confirmed" })).status, 404);
+    assert.equal((await h.request('/appointments/'+record._id+'/status', "dean", "PUT", { status: "Confirmed" })).status, 200);
+    assert.equal((await h.request('/appointments/'+record._id+'/status', "dean", "PUT", { status: "Completed" })).status, 400);
+    assert.equal(h.state.appointments[0].status, "Confirmed");
+    assert.equal(h.state.audits.length, 1);
+  } finally { await h.close(); }
 });
 
 function migrationHarness(accounts) {

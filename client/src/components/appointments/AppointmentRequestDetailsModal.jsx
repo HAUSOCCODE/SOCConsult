@@ -145,7 +145,7 @@ export default function AppointmentRequestDetailsModal({
                   Status
                 </p>
                 <div className="mt-1">
-                  <StatusBadge status={appointment.status} />
+                  <StatusBadge appointment status={appointment.status} />
                 </div>
               </div>
             </DetailSection>

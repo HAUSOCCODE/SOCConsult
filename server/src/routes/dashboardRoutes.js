@@ -1,10 +1,9 @@
 import { Router } from "express";
-import User from "../models/User.js";
+import { getDateRangeFilter } from "../services/calendarRangeService.js";
 import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
 import Availability from "../models/Availability.js";
 import { authenticate, authorize } from "../middleware/auth.js";
-import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
 import { getDeanDashboard } from "../controllers/deanDashboardController.js";
 const router = Router();
 router.use("/dean", (_req, res, next) => {
@@ -90,20 +89,15 @@ export async function getStudentDashboard(req, res) {
 }
 router.get("/student", authorize("student"), getStudentDashboard);
 router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(start);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const week = new Date(start);
-  week.setDate(week.getDate() + 7);
+  const { startAt: todayRange } = getDateRangeFilter("today", now);
+  const { startAt: weekRange } = getDateRangeFilter("this_week", now);
   const [today, pending, weekly, completed, recentRequests, availability] =
     await Promise.all([
       Appointment.countDocuments({
         faculty: req.user.id,
         status: "Confirmed",
-        startAt: { $gte: start, $lt: tomorrow },
+        startAt: todayRange,
       }),
       Appointment.countDocuments({
         faculty: req.user.id,
@@ -112,7 +106,7 @@ router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
       Appointment.countDocuments({
         faculty: req.user.id,
         status: { $in: ["Confirmed", "Completed"] },
-        startAt: { $gte: start, $lt: week },
+        startAt: weekRange,
       }),
       Appointment.countDocuments({ faculty: req.user.id, status: "Completed" }),
       Appointment.find({

@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node scripts/test-isolated.mjs",
+    "appointments:expire": "node scripts/process-appointment-expiration.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

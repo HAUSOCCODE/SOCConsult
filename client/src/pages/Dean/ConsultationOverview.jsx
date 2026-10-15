@@ -1,3 +1,4 @@
+import { APPOINTMENT_STATUSES, LEGACY_APPOINTMENT_STATUSES, getAppointmentDisplayStatus } from "../../utils/appointmentStatus";
 import { useEffect, useState } from "react";
 import { api } from "../../api/apiClient";
 import { EmptyState, ErrorState, Loading } from "../../components/UI";
@@ -16,15 +17,7 @@ export default function ConsultationOverview() {
   useEffect(load, []);
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
-  const statuses = [
-    "Pending",
-    "Awaiting Faculty Schedule",
-    "Approved",
-    "Rescheduled",
-    "Completed",
-    "Cancelled",
-    "Rejected",
-  ];
+  const statuses = [...APPOINTMENT_STATUSES, ...LEGACY_APPOINTMENT_STATUSES];
   return (
     <div className="space-y-6">
       <div>
@@ -39,7 +32,7 @@ export default function ConsultationOverview() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {statuses.map((status) => (
           <div key={status} className="rounded-2xl border bg-white p-5">
-            <p className="text-sm font-semibold text-slate-500">{status}</p>
+            <p className="text-sm font-semibold text-slate-500">{getAppointmentDisplayStatus({ status })}</p>
             <p className="mt-2 text-3xl font-bold text-maroon-900">
               {items.filter((x) => x.status === status).length}
             </p>
@@ -57,7 +50,7 @@ export default function ConsultationOverview() {
             return (
               <div key={status}>
                 <div className="mb-1 flex flex-wrap justify-between gap-2 text-sm">
-                  <span>{status}</span>
+                  <span>{getAppointmentDisplayStatus({ status })}</span>
                   <span>
                     {count} ({width}%)
                   </span>

@@ -62,7 +62,7 @@ export default function StudentAppointmentDetailsModal({
               {appointment.subject || "Consultation"}
             </p>
             <div className="mt-2">
-              <StatusBadge status={displayStatus} />
+              <StatusBadge appointment status={displayStatus} />
             </div>
           </div>
           <button

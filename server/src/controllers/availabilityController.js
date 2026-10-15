@@ -1,3 +1,4 @@
+import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import Availability from "../models/Availability.js";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
@@ -6,7 +7,6 @@ import mongoose from "mongoose";
 import { logActivity, notify } from "../services/activityService.js";
 import {
   availabilityStatus,
-  processExpiredAvailability,
 } from "../services/availabilityExpirationService.js";
 
 const validateSchedule = ({ startAt, endAt }) => {
@@ -64,7 +64,6 @@ const scheduleShape = (availability) => ({
 });
 
 export const getAvailableFaculty = async (_req, res) => {
-  await processExpiredAvailability();
   const now = new Date();
   const faculty = await User.find({
     accountStatus: "Active",
@@ -120,7 +119,6 @@ export const getFacultyAvailability = async (req, res) => {
     if (!provider)
       return res.status(404).json({ message: "Consultation provider not found." });
   }
-  await processExpiredAvailability({ facultyId });
   const now = new Date();
   const schedules = await Availability.find({
     faculty: facultyId,
@@ -143,7 +141,7 @@ export const getFacultyAvailability = async (req, res) => {
     const [studentAppointments, providerAppointments] = await Promise.all([
       Appointment.find({
         student: req.user.id,
-        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
+        status: { $in: BLOCKING_STATUSES },
         startAt: { $exists: true },
         endAt: { $gt: now },
       }).select("startAt endAt"),
@@ -192,7 +190,6 @@ export const getFacultyAvailability = async (req, res) => {
 };
 
 export const getMyAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
   const now = new Date();
   const availability = await Availability.find({ faculty: req.user.id })
     .select("+meetingLink")
@@ -214,7 +211,6 @@ export const getMyAvailability = async (req, res) => {
 };
 
 export const getAppointmentRequestSchedules = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
   const now = new Date();
   const schedules = await Availability.find({
     faculty: req.user.id,
@@ -294,7 +290,6 @@ export const getAppointmentRequestSchedules = async (req, res) => {
 export const getAvailabilityDetails = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id))
     return res.status(400).json({ message: "Invalid availability ID." });
-  await processExpiredAvailability({ facultyId: req.user.id });
   const schedule = await Availability.findOne({
     _id: req.params.id,
     faculty: req.user.id,
@@ -387,7 +382,6 @@ export const createAvailability = async (req, res) => {
 };
 
 export const updateAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
   const schedule = await Availability.findOne({
     _id: req.params.id,
     faculty: req.user.id,
@@ -411,7 +405,7 @@ export const updateAvailability = async (req, res) => {
       changesTime &&
       (await Appointment.exists({
         availability: schedule.id,
-        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
+        status: { $in: BLOCKING_STATUSES },
       }))
     )
       return res.status(409).json({
@@ -479,7 +473,7 @@ export const deleteAvailability = async (req, res) => {
     await Appointment.exists({
       availability: req.params.id,
       faculty: req.user.id,
-      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
+      status: { $in: BLOCKING_STATUSES },
     })
   )
     return res.status(409).json({

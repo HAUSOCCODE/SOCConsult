@@ -9,6 +9,7 @@ import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import FacultyAppointmentDetailsModal from "./FacultyAppointmentDetailsModal";
 import FacultyRescheduleModal from "./FacultyRescheduleModal";
 import {
+  isLegacyAppointmentStatus,
   getAppointmentDisplayStatus,
   isAwaitingFacultyUpdate,
 } from "../../utils/appointmentStatus";
@@ -76,7 +77,7 @@ export default function AppointmentsPage({ filter }) {
     try {
       const d = await api(`/appointments/${id}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status, ...extra }),
+        body: JSON.stringify({ status, expectedVersion: items.find((item) => item._id === id)?.__v, ...extra }),
       });
       if (status === "Rejected") toast.info(d.message);
       else toast.success(d.message);
@@ -188,6 +189,7 @@ export default function AppointmentsPage({ filter }) {
         );
       if (appointmentTab === "Awaiting Update")
         return item.status === "Confirmed" && end < now;
+      if (appointmentTab === "Legacy") return isLegacyAppointmentStatus(item.status);
       return item.status === appointmentTab;
     });
   }
@@ -473,9 +475,6 @@ export default function AppointmentsPage({ filter }) {
         <FacultyAppointmentDetailsModal
           appointment={details}
           onClose={() => setDetails(null)}
-          onComplete={async () => {
-            if (await update(details._id, "Completed")) setDetails(null);
-          }}
         />
       )}
       {facultyReschedule && (
@@ -614,7 +613,6 @@ export default function AppointmentsPage({ filter }) {
           onFacultyReschedule={(appointment, opener) =>
             setFacultyReschedule({ appointment, opener })
           }
-          onComplete={(appointment) => update(appointment._id, "Completed")}
           onViewDocument={openSupportingDocument}
         />
       ) : filter === "history" ? (
@@ -686,7 +684,7 @@ export default function AppointmentsPage({ filter }) {
                           {formatPersonName(x.student?.name) ||
                             "Student name not provided"}
                         </h2>
-                        <StatusBadge status={x.status} />
+                        <StatusBadge appointment status={x.status} />
                       </div>
                       <dl className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
                         <div className="min-w-0">
@@ -727,7 +725,7 @@ export default function AppointmentsPage({ filter }) {
                         <h2 className="min-w-0 break-words font-bold">
                           {x.subject}
                         </h2>
-                        <StatusBadge
+                        <StatusBadge appointment
                           status={
                             user.role === "student"
                               ? getAppointmentDisplayStatus(x)
@@ -848,29 +846,6 @@ export default function AppointmentsPage({ filter }) {
                       </button>
                     </>
                   )}
-                  {["faculty", "dean"].includes(user.role) &&
-                    x.status === "Confirmed" && (
-                      <>
-                        <button
-                          disabled={updatingIds.has(x._id)}
-                          onClick={() => update(x._id, "Completed")}
-                          className="rounded-lg bg-maroon-800 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60"
-                        >
-                          {updatingIds.has(x._id)
-                            ? "Completing..."
-                            : "Complete"}
-                        </button>
-                        {new Date(x.endAt) < new Date() && (
-                          <button
-                            type="button"
-                            onClick={() => beginReschedule(x)}
-                            className="btn-action"
-                          >
-                            Reschedule
-                          </button>
-                        )}
-                      </>
-                    )}
                   {x.supportingDocument?.name &&
                     filter !== "requests" &&
                     filter !== "history" &&
@@ -897,6 +872,10 @@ const FACULTY_APPOINTMENT_FILTERS = [
   "Today",
   "Upcoming",
   "Awaiting Update",
+  "Reschedule Proposed",
+  "Awaiting Attendance Update",
+  "Attendance Review",
+  "Legacy",
   "Completed",
   "Cancelled",
 ];
@@ -912,7 +891,6 @@ function FacultyCurrentAppointments({
   onReject,
   onBeginReschedule,
   onFacultyReschedule,
-  onComplete,
   onViewDocument,
 }) {
   const [sortOrder, setSortOrder] = useState("newest");
@@ -1080,7 +1058,6 @@ function FacultyCurrentAppointments({
                     onReject={onReject}
                     onBeginReschedule={onBeginReschedule}
                     onFacultyReschedule={onFacultyReschedule}
-                    onComplete={onComplete}
                     onViewDocument={onViewDocument}
                   />
                 )}
@@ -1168,7 +1145,7 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
               </div>
             </div>
             <span className="shrink-0 md:hidden">
-              <StatusBadge status={appointment.status} compact />
+              <StatusBadge appointment status={appointment.status} compact />
             </span>
           </div>
         </div>
@@ -1200,7 +1177,7 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
       </div>
 
       <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
-        <StatusBadge status={appointment.status} compact />
+        <StatusBadge appointment status={appointment.status} compact />
       </div>
 
       <div className="col-span-2 border-t border-slate-200 p-3 md:col-span-4 md:px-4 min-[1200px]:col-span-1 min-[1200px]:flex min-[1200px]:items-center min-[1200px]:justify-center min-[1200px]:border-l min-[1200px]:border-t-0 min-[1200px]:py-3 min-[1200px]:pl-4 min-[1200px]:pr-6">
@@ -1220,7 +1197,6 @@ function FacultyAppointmentActions({
   onReject,
   onBeginReschedule,
   onFacultyReschedule,
-  onComplete,
   onViewDocument,
 }) {
   const buttonLayout = mobile
@@ -1269,22 +1245,6 @@ function FacultyAppointmentActions({
                   onFacultyReschedule(appointment, event.currentTarget)
                 }
                 className={`rounded-lg border border-gold-500 bg-gold-50 px-4 text-sm font-bold text-maroon-900 transition-colors hover:bg-gold-100 ${mobileButton}`}
-              >
-                Reschedule
-              </button>
-            )}
-            <button
-              disabled={updatingIds.has(appointment._id)}
-              onClick={() => onComplete(appointment)}
-              className={`rounded-lg bg-maroon-800 px-4 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60 ${mobileButton}`}
-            >
-              {updatingIds.has(appointment._id) ? "Completing..." : "Complete"}
-            </button>
-            {new Date(appointment.endAt) < new Date() && (
-              <button
-                type="button"
-                onClick={() => onBeginReschedule(appointment)}
-                className={`btn-action ${mobileButton}`}
               >
                 Reschedule
               </button>
@@ -1601,7 +1561,7 @@ function StudentAppointmentCard({ appointment, renderActions }) {
                 </p>
               </div>
               <span className="shrink-0 md:hidden">
-                <StatusBadge status={status} compact />
+                <StatusBadge appointment status={status} compact />
               </span>
             </div>
           </div>
@@ -1633,7 +1593,7 @@ function StudentAppointmentCard({ appointment, renderActions }) {
 
       <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
         <div className="flex justify-center">
-          <StatusBadge status={status} compact />
+          <StatusBadge appointment status={status} compact />
         </div>
       </div>
 
@@ -1833,7 +1793,7 @@ function ConsultationHistoryTable({
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 2xl:px-3">
                       <div className="flex items-center justify-center">
-                        <StatusBadge
+                        <StatusBadge appointment
                           status={
                             role === "student"
                               ? getAppointmentDisplayStatus(appointment)
@@ -2011,7 +1971,7 @@ function FacultyHistoryAccordionRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-          <StatusBadge status={appointment.status} compact />
+          <StatusBadge appointment status={appointment.status} compact />
           <button
             type="button"
             onClick={onToggle}
@@ -2046,7 +2006,7 @@ function FacultyHistoryAccordionRow({
               {duration}
             </FacultyHistoryDetail>
             <FacultyHistoryDetail icon={Tag} label="Status">
-              <StatusBadge status={appointment.status} compact />
+              <StatusBadge appointment status={appointment.status} compact />
             </FacultyHistoryDetail>
           </dl>
 
@@ -2152,7 +2112,7 @@ function StudentHistoryMobileRow({
 
         <div className="flex min-w-0 items-center gap-1 self-center">
           <span className="flex max-w-[4.75rem] justify-end min-[390px]:max-w-[8.5rem]">
-            <StatusBadge
+            <StatusBadge appointment
               status={getAppointmentDisplayStatus(appointment)}
               compact
               allowWrap

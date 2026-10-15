@@ -34,7 +34,8 @@ router.use(authenticate, authorize("dean"));
 router.use("/account-imports", accountImportRoutes);
 router.use(
   "/appointments",
-  (req, _res, next) => {
+  (req, res, next) => {
+    if (!["GET", "HEAD"].includes(req.method)) return res.status(403).json({ message: "Dean management access is read-only." });
     req.deanManagementAccess = true;
     next();
   },

@@ -92,7 +92,7 @@ export default function AppointmentRequests() {
     try {
       const data = await api(`/appointments/${appointment._id}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status, ...extra }),
+        body: JSON.stringify({ status, expectedVersion: appointment.__v, ...extra }),
       });
       status === "Rejected"
         ? toast.info("Appointment request rejected.")
