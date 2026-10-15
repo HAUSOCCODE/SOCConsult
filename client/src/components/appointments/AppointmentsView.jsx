@@ -14,7 +14,6 @@ import {
 } from "../../utils/appointmentStatus";
 import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../profile/ProfileImagePreview";
-import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 import ConfirmDialog from "../ConfirmDialog";
 import {
@@ -33,7 +32,6 @@ const HISTORY_ITEMS_PER_PAGE = 6;
 export default function AppointmentsPage({ filter }) {
   const { user } = useAuth();
   const toast = useToast();
-  const navigate = useNavigate();
   const [items, setItems] = useState(null);
   const [studentViews, setStudentViews] = useState(null);
   const [error, setError] = useState("");
@@ -46,13 +44,6 @@ export default function AppointmentsPage({ filter }) {
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [facultyReschedule, setFacultyReschedule] = useState(null);
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
-  const [requestTarget, setRequestTarget] = useState(null);
-  const [requestReason, setRequestReason] = useState("");
-  const [requestError, setRequestError] = useState("");
-  const [requestSubmitting, setRequestSubmitting] = useState(false);
-  const [reviewTarget, setReviewTarget] = useState(null);
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [availabilityCapacity, setAvailabilityCapacity] = useState([]);
   const [approvalWarning, setApprovalWarning] = useState(null);
@@ -131,21 +122,6 @@ export default function AppointmentsPage({ filter }) {
       toast.error(requestError.message || "Unable to load schedules.");
     }
   };
-  const chooseNewSchedule = (appointment) =>
-    navigate("/student/faculty", {
-      state: {
-        rescheduleAppointment: {
-          appointmentId: appointment._id,
-          facultyId: appointment.faculty?._id || appointment.faculty,
-          currentAvailabilityId:
-            appointment.availability?._id || appointment.availability,
-          subject: appointment.subject,
-          yearLevel: appointment.yearLevel || appointment.student?.yearLevel,
-          estimatedDurationMinutes: appointment.estimatedDurationMinutes,
-          reason: appointment.reason,
-        },
-      },
-    });
   const cancel = async (id) => {
     try {
       const target = items?.find((item) => item._id === id);
@@ -171,69 +147,6 @@ export default function AppointmentsPage({ filter }) {
       link.click();
     } catch (requestError) {
       toast.error(requestError.message || "Unable to open the document.");
-    }
-  };
-  const requestReschedule = async () => {
-    const reason = requestReason.trim();
-    if (!reason) {
-      setRequestError("Please enter a reason for rescheduling.");
-      return;
-    }
-    if (reason.length < 5) {
-      setRequestError(
-        "Please enter a meaningful reason of at least 5 characters.",
-      );
-      return;
-    }
-    if (reason.length > 500) {
-      setRequestError("Reason cannot exceed 500 characters.");
-      return;
-    }
-    setRequestSubmitting(true);
-    try {
-      const data = await api(
-        `/appointments/${requestTarget._id}/request-reschedule`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ reason }),
-        },
-      );
-      toast.success("Reschedule request submitted successfully.");
-      setRequestTarget(null);
-      setRequestReason("");
-      setRequestError("");
-      load();
-    } catch (requestError) {
-      toast.error(
-        requestError.message ||
-          "Unable to submit the reschedule request. Please try again.",
-      );
-    } finally {
-      setRequestSubmitting(false);
-    }
-  };
-  const reviewReschedule = async () => {
-    setReviewSubmitting(true);
-    try {
-      const data = await api(
-        `/appointments/${reviewTarget.appointment._id}/reschedule-request`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            decision: reviewTarget.decision,
-            note: reviewNote.trim(),
-          }),
-        },
-      );
-      if (reviewTarget.decision === "Rejected") toast.info(data.message);
-      else toast.success(data.message);
-      setReviewTarget(null);
-      setReviewNote("");
-      load();
-    } catch (requestError) {
-      toast.error(requestError.message || "Unable to review the request.");
-    } finally {
-      setReviewSubmitting(false);
     }
   };
   const approve = async (appointment) => {
@@ -314,17 +227,6 @@ export default function AppointmentsPage({ filter }) {
       >
         View Details
       </button>
-      {appointment.status === "Reschedule Proposed" && (
-        <button
-          type="button"
-          onClick={() => chooseNewSchedule(appointment)}
-          className={`btn-table-primary ${
-            mobile ? "h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1" : ""
-          }`}
-        >
-          Choose New Schedule
-        </button>
-      )}
       {appointment.status === "Pending" &&
         new Date(appointment.startAt) > new Date() && (
           <button
@@ -352,31 +254,6 @@ export default function AppointmentsPage({ filter }) {
           Cancel Request
         </button>
       )}
-      {appointment.status === "Confirmed" &&
-        new Date(appointment.startAt) > new Date() && (
-          <button
-            type="button"
-            disabled={
-              appointment.rescheduleRequestStatus === "Pending" ||
-              appointment.rescheduleRequested
-            }
-            onClick={() => {
-              setRequestTarget(appointment);
-              setRequestReason("");
-              setRequestError("");
-            }}
-            className={
-              mobile
-                ? "btn-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-                : "btn-action-sm"
-            }
-          >
-            {appointment.rescheduleRequestStatus === "Pending" ||
-            appointment.rescheduleRequested
-              ? "Reschedule Requested"
-              : "Request Reschedule"}
-          </button>
-        )}
     </div>
   );
   return (
@@ -709,206 +586,6 @@ export default function AppointmentsPage({ filter }) {
           </div>,
           document.body,
         )}
-      {requestTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget &&
-              !requestSubmitting &&
-              setRequestTarget(null)
-            }
-          >
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="request-reschedule-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:max-h-[92vh] sm:p-6"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <h2
-                  id="request-reschedule-title"
-                  className="text-xl font-bold text-maroon-900"
-                >
-                  Request Reschedule
-                </h2>
-                <button
-                  type="button"
-                  aria-label="Close reschedule request"
-                  disabled={requestSubmitting}
-                  onClick={() => {
-                    setRequestTarget(null);
-                    setRequestReason("");
-                    setRequestError("");
-                  }}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h3 className="font-bold text-slate-800">
-                  Current Consultation
-                </h3>
-                <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-                  <ModalDetail
-                    label="Faculty"
-                    value={formatPersonName(requestTarget.faculty?.name)}
-                  />
-                  <ModalDetail
-                    label="Date"
-                    value={new Date(requestTarget.startAt).toLocaleDateString()}
-                  />
-                  <ModalDetail
-                    label="Time"
-                    value={`${formatClock(requestTarget.startAt)} – ${formatClock(requestTarget.endAt)}`}
-                  />
-                  <ModalDetail
-                    label="Mode"
-                    value={requestTarget.consultationMode}
-                  />
-                  <ModalDetail
-                    label="Location / Meeting Platform"
-                    value={
-                      requestTarget.meetingPlatform || requestTarget.location
-                    }
-                    wide
-                  />
-                  <ModalDetail
-                    label="Subject / Topic"
-                    value={requestTarget.subject}
-                    wide
-                  />
-                </dl>
-              </div>
-              <label className="mt-5 block text-sm font-semibold text-slate-700">
-                Reason for Reschedule <span className="text-red-700">*</span>
-                <textarea
-                  autoFocus
-                  required
-                  maxLength={500}
-                  rows={5}
-                  value={requestReason}
-                  aria-invalid={Boolean(requestError)}
-                  onChange={(event) => {
-                    setRequestReason(event.target.value);
-                    setRequestError("");
-                  }}
-                  placeholder="Please explain why you need to reschedule this consultation."
-                  className="field mt-2 resize-y"
-                />
-              </label>
-              <div className="mt-1 flex justify-between gap-3 text-xs text-slate-500">
-                <span>Minimum 5 characters</span>
-                <span>{requestReason.length}/500</span>
-              </div>
-              {requestError && (
-                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                  {requestError}
-                </p>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={requestSubmitting}
-                  onClick={() => {
-                    setRequestTarget(null);
-                    setRequestReason("");
-                    setRequestError("");
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={requestSubmitting}
-                  onClick={requestReschedule}
-                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {requestSubmitting ? "Submitting..." : "Submit Request"}
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-      {reviewTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget &&
-              !reviewSubmitting &&
-              setReviewTarget(null)
-            }
-          >
-            <section
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="review-reschedule-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="w-full min-w-0 max-w-lg rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="review-reschedule-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                {reviewTarget.decision === "Approved"
-                  ? "Approve Reschedule Request?"
-                  : "Reject Reschedule Request?"}
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                {reviewTarget.decision === "Approved"
-                  ? "The Student will be removed from the current consultation schedule and may select another available schedule. The appointment record and consultation data will be preserved."
-                  : "The appointment will remain approved and its current schedule will remain unchanged."}
-              </p>
-              {reviewTarget.decision === "Rejected" && (
-                <label className="mt-5 block text-sm font-semibold text-slate-700">
-                  Optional reason
-                  <textarea
-                    maxLength={500}
-                    rows={3}
-                    value={reviewNote}
-                    onChange={(event) => setReviewNote(event.target.value)}
-                    className="field mt-2 resize-y"
-                  />
-                </label>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={reviewSubmitting}
-                  onClick={() => {
-                    setReviewTarget(null);
-                    setReviewNote("");
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={reviewSubmitting}
-                  onClick={reviewReschedule}
-                  className={
-                    reviewTarget.decision === "Approved"
-                      ? "btn-primary"
-                      : "rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-                  }
-                >
-                  {reviewSubmitting
-                    ? "Saving..."
-                    : reviewTarget.decision === "Approved"
-                      ? "Approve Reschedule"
-                      : "Reject Reschedule"}
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
       {approvalWarning &&
         createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-3 sm:p-4">
@@ -1026,9 +703,6 @@ export default function AppointmentsPage({ filter }) {
             setFacultyReschedule({ appointment, opener })
           }
           onComplete={(appointment) => update(appointment._id, "Completed")}
-          onReviewReschedule={(appointment, decision) =>
-            setReviewTarget({ appointment, decision })
-          }
           onViewDocument={openSupportingDocument}
         />
       ) : filter === "history" ? (
@@ -1071,15 +745,6 @@ export default function AppointmentsPage({ filter }) {
                       <span>View Details</span>
                       {mobile && <ChevronRight size={17} aria-hidden="true" />}
                     </button>
-                    {appointment.status === "Reschedule Proposed" && (
-                      <button
-                        type="button"
-                        onClick={() => chooseNewSchedule(appointment)}
-                        className={`btn-table-primary ${mobile ? "h-10 w-full min-w-0 flex-1 rounded-lg" : ""}`}
-                      >
-                        Choose New Schedule
-                      </button>
-                    )}
                   </div>
                 )
               : undefined
@@ -1217,36 +882,6 @@ export default function AppointmentsPage({ filter }) {
                           </p>
                         </div>
                       )}
-                      {["faculty", "dean"].includes(user.role) && x.rescheduleRequested && (
-                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                          <p className="font-bold">
-                            Pending Reschedule Request
-                          </p>
-                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words leading-relaxed">
-                            Reason: {x.rescheduleRequestNote}
-                          </p>
-                          <p className="mt-1 text-xs text-amber-800">
-                            Requested:{" "}
-                            {new Date(
-                              x.rescheduleRequestedAt || x.updatedAt,
-                            ).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                      {user.role === "student" &&
-                        x.rescheduleRequestStatus === "Pending" && (
-                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                            Reschedule: Pending Faculty Approval
-                          </p>
-                        )}
-                      {user.role === "student" &&
-                        x.status === "Reschedule Proposed" && (
-                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                            Your faculty member released the previous slot.
-                            Choose a new active schedule to continue this
-                            consultation.
-                          </p>
-                        )}
                       {user.role === "student" &&
                         isAwaitingFacultyUpdate(x) && (
                           <p className="mt-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
@@ -1302,7 +937,6 @@ export default function AppointmentsPage({ filter }) {
                     </>
                   )}
                   {["faculty", "dean"].includes(user.role) &&
-                    !x.rescheduleRequested &&
                     x.status === "Confirmed" && (
                       <>
                         <button
@@ -1326,45 +960,6 @@ export default function AppointmentsPage({ filter }) {
                       </>
                     )}
                   {user.role === "student" &&
-                    x.status === "Reschedule Proposed" && (
-                      <button
-                        type="button"
-                        onClick={() => chooseNewSchedule(x)}
-                        className="btn-primary"
-                      >
-                        Choose New Schedule
-                      </button>
-                    )}
-                  {["faculty", "dean"].includes(user.role) &&
-                    x.rescheduleRequestStatus === "Pending" && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReviewTarget({
-                              appointment: x,
-                              decision: "Approved",
-                            })
-                          }
-                          className="rounded-lg bg-green-700 px-4 py-2 text-sm font-bold text-white"
-                        >
-                          Approve Reschedule
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReviewTarget({
-                              appointment: x,
-                              decision: "Rejected",
-                            })
-                          }
-                          className="btn-danger-action"
-                        >
-                          Reject Reschedule
-                        </button>
-                      </>
-                    )}
-                  {user.role === "student" &&
                     x.status === "Pending" &&
                     new Date(x.startAt) > new Date() && (
                       <button
@@ -1372,28 +967,6 @@ export default function AppointmentsPage({ filter }) {
                         className="btn-danger-action"
                       >
                         Cancel
-                      </button>
-                    )}
-                  {user.role === "student" &&
-                    x.status === "Confirmed" &&
-                    new Date(x.startAt) > new Date() && (
-                      <button
-                        type="button"
-                        disabled={
-                          x.rescheduleRequestStatus === "Pending" ||
-                          x.rescheduleRequested
-                        }
-                        onClick={() => {
-                          setRequestTarget(x);
-                          setRequestReason("");
-                          setRequestError("");
-                        }}
-                        className="btn-action"
-                      >
-                        {x.rescheduleRequestStatus === "Pending" ||
-                        x.rescheduleRequested
-                          ? "Reschedule Requested"
-                          : "Request Reschedule"}
                       </button>
                     )}
                   {x.supportingDocument?.name &&
@@ -1438,7 +1011,6 @@ function FacultyCurrentAppointments({
   onBeginReschedule,
   onFacultyReschedule,
   onComplete,
-  onReviewReschedule,
   onViewDocument,
 }) {
   const [sortOrder, setSortOrder] = useState("newest");
@@ -1607,7 +1179,6 @@ function FacultyCurrentAppointments({
                     onBeginReschedule={onBeginReschedule}
                     onFacultyReschedule={onFacultyReschedule}
                     onComplete={onComplete}
-                    onReviewReschedule={onReviewReschedule}
                     onViewDocument={onViewDocument}
                   />
                 )}
@@ -1748,7 +1319,6 @@ function FacultyAppointmentActions({
   onBeginReschedule,
   onFacultyReschedule,
   onComplete,
-  onReviewReschedule,
   onViewDocument,
 }) {
   const buttonLayout = mobile
@@ -1788,8 +1358,7 @@ function FacultyAppointmentActions({
           </button>
         </>
       )}
-      {!appointment.rescheduleRequested &&
-        appointment.status === "Confirmed" && (
+      {appointment.status === "Confirmed" && (
           <>
             {new Date(appointment.startAt) > new Date() && (
               <button
@@ -1820,24 +1389,6 @@ function FacultyAppointmentActions({
             )}
           </>
         )}
-      {appointment.rescheduleRequestStatus === "Pending" && (
-        <>
-          <button
-            type="button"
-            onClick={() => onReviewReschedule(appointment, "Approved")}
-            className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white ${mobileButton}`}
-          >
-            Approve Reschedule
-          </button>
-          <button
-            type="button"
-            onClick={() => onReviewReschedule(appointment, "Rejected")}
-            className={`btn-danger-action ${mobileButton}`}
-          >
-            Reject Reschedule
-          </button>
-        </>
-      )}
       {appointment.supportingDocument?.name && (
         <button
           type="button"

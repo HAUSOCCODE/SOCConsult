@@ -12,6 +12,7 @@ import {
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../UI";
 import ConfirmDialog from "../ConfirmDialog";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
+import StudentRescheduleResponseModal from "./StudentRescheduleResponseModal";
 
 const TABS = [
   { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultation requests." },
@@ -37,6 +38,7 @@ export default function StudentConsultationsView() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("active");
   const [details, setDetails] = useState(null);
+  const [proposalTarget, setProposalTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const load = () => {
@@ -119,6 +121,7 @@ export default function StudentConsultationsView() {
                 </div>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> View Details</button>
+                  {appointment.status === "Reschedule Proposed" && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
                   {appointment.status === "Pending" && validDate(appointment.startAt) > new Date() && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel</button>}
                 </div>
               </article>
@@ -126,7 +129,8 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} />}
+      {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
 }

@@ -28,10 +28,8 @@ export default function FacultyScheduleDetailsModal({
   onRetry,
   onApprove,
   onReject,
-  onReschedule,
 }) {
   const [appointmentDetails, setAppointmentDetails] = useState(null);
-  const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
@@ -42,7 +40,6 @@ export default function FacultyScheduleDetailsModal({
       if (
         event.key === "Escape" &&
         !appointmentDetails &&
-        !rescheduleTarget &&
         !rejectTarget
       )
         onClose();
@@ -53,7 +50,7 @@ export default function FacultyScheduleDetailsModal({
       document.body.style.overflow = previous;
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [appointmentDetails, onClose, rejectTarget, rescheduleTarget]);
+  }, [appointmentDetails, onClose, rejectTarget]);
 
   const schedule = details?.schedule;
   const pending = details?.pendingRequests || [];
@@ -245,14 +242,6 @@ export default function FacultyScheduleDetailsModal({
                           >
                             Reject
                           </button>
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => setRescheduleTarget(appointment)}
-                            className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-bold text-amber-800"
-                          >
-                            Reschedule
-                          </button>
                         </div>
                       </article>
                     ))}
@@ -371,13 +360,6 @@ export default function FacultyScheduleDetailsModal({
                           >
                             View Appointment
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setRescheduleTarget(appointment)}
-                            className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-50"
-                          >
-                            Reschedule
-                          </button>
                         </div>
                       </article>
                     ))}
@@ -403,61 +385,6 @@ export default function FacultyScheduleDetailsModal({
           appointment={appointmentDetails}
           onClose={() => setAppointmentDetails(null)}
         />
-      )}
-      {rescheduleTarget && (
-        <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4"
-          onMouseDown={(event) =>
-            event.target === event.currentTarget &&
-            !submitting &&
-            setRescheduleTarget(null)
-          }
-        >
-          <section
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="faculty-reschedule-title"
-            onMouseDown={(event) => event.stopPropagation()}
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
-          >
-            <h2
-              id="faculty-reschedule-title"
-              className="text-xl font-bold text-maroon-900"
-            >
-              Reschedule Student?
-            </h2>
-            <p className="mt-3 break-words text-sm text-slate-600">
-              {formatPersonName(rescheduleTarget.student?.name) ||
-                "This student"}{" "}
-              will be removed from this schedule and will need to select another
-              available consultation schedule. The appointment record will be
-              preserved.
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => setRescheduleTarget(null)}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={async () => {
-                  setSubmitting(true);
-                  const succeeded = await onReschedule(rescheduleTarget);
-                  setSubmitting(false);
-                  if (succeeded) setRescheduleTarget(null);
-                }}
-                className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? "Rescheduling..." : "Confirm Reschedule"}
-              </button>
-            </div>
-          </section>
-        </div>
       )}
     </div>,
     document.body,

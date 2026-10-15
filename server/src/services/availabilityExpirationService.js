@@ -57,11 +57,6 @@ const processSchedule = async (candidate, now) => {
             $set: {
               status: "Expired",
               responseNote: EXPIRED_RESPONSE_NOTE,
-              rescheduleRequested: false,
-              rescheduleRequestNote: "",
-              rescheduleRequestStatus: "Approved",
-              rescheduleReviewedAt: now,
-              rescheduleReviewedBy: schedule.faculty,
             },
           },
           { new: true },

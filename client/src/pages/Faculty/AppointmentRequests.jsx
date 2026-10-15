@@ -162,24 +162,6 @@ export default function AppointmentRequests() {
     }
   };
 
-  const reschedule = async (appointment) => {
-    try {
-      const data = await api(
-        `/availability/${selectedId}/appointments/${appointment._id}/request-reschedule`,
-        {
-          method: "PUT",
-          body: JSON.stringify({}),
-        },
-      );
-      toast.success(data.message);
-      await refresh();
-      return true;
-    } catch (error) {
-      toast.error(error.message || "Unable to reschedule appointment.");
-      return false;
-    }
-  };
-
   const openSchedule = (schedule) => {
     setSelectedId(schedule._id);
     setDetails(null);
@@ -311,7 +293,6 @@ export default function AppointmentRequests() {
           onRetry={() => loadDetails(selectedId)}
           onApprove={(item) => update(item, "Confirmed")}
           onReject={(item, note) => update(item, "Rejected", { note })}
-          onReschedule={reschedule}
           onClose={() => {
             setSelectedId("");
             setDetails(null);

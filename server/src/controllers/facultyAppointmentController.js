@@ -4,6 +4,7 @@ import Notification from "../models/Notification.js";
 import AuditLog from "../models/AuditLog.js";
 
 const ACTIVE_STATUSES = ["Confirmed"];
+const BLOCKING_STATUSES = ["Pending", "Reschedule Proposed", "Confirmed"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MANILA_OFFSET = "+08:00";
@@ -162,7 +163,7 @@ export async function rescheduleFacultyAppointment(req, res) {
     });
   const overlap = {
     _id: { $ne: appointment._id },
-    status: { $in: ACTIVE_STATUSES },
+    status: { $in: BLOCKING_STATUSES },
     startAt: { $lt: input.endAt },
     endAt: { $gt: input.startAt },
   };
@@ -189,14 +190,7 @@ export async function rescheduleFacultyAppointment(req, res) {
     meetingLink: appointment.meetingLink || "",
   });
   const next = snapshot(input);
-  const history = {
-    previous,
-    next,
-    reason: input.reason,
-    initiatedByRole: "Faculty",
-    initiatedBy: req.user.id,
-    createdAt: new Date(),
-  };
+  const proposedAt = new Date();
   const session = await mongoose.startSession();
   let updated;
   try {
@@ -211,24 +205,21 @@ export async function rescheduleFacultyAppointment(req, res) {
         },
         {
           $set: {
-            startAt: input.startAt,
-            endAt: input.endAt,
-            estimatedDurationMinutes: input.duration,
-            consultationMode: input.mode,
-            location: input.mode === "Face-to-Face" ? input.location : "",
-            meetingPlatform:
+            proposedStartAt: input.startAt,
+            proposedEndAt: input.endAt,
+            proposedConsultationMode: input.mode,
+            proposedLocation:
+              input.mode === "Face-to-Face" ? input.location : "",
+            proposedMeetingPlatform:
               input.mode === "Online" ? input.meetingPlatform : "",
-            meetingLink: input.mode === "Online" ? input.meetingLink : "",
+            proposedMeetingLink:
+              input.mode === "Online" ? input.meetingLink : "",
+            proposalNote: input.reason,
+            proposedAt,
+            proposedBy: req.user.id,
             status: "Reschedule Proposed",
             responseNote: input.reason,
-            rescheduleRequested: false,
-            rescheduleRequestStatus: "Approved",
-            rescheduleReviewedAt: history.createdAt,
-            rescheduleReviewedBy: req.user.id,
-            rescheduleDecisionNote: input.reason,
           },
-          $unset: { availability: 1 },
-          $push: { scheduleHistory: history },
         },
         { new: true, runValidators: true, session },
       )
@@ -243,10 +234,9 @@ export async function rescheduleFacultyAppointment(req, res) {
       const studentName = updated.student?.name || "Student";
       const oldLabel = readableSchedule(previous);
       const newLabel = readableSchedule(next);
-      const destination =
-        input.mode === "Face-to-Face"
-          ? input.location
-          : input.meetingLink || input.meetingPlatform;
+      const destination = input.mode === "Face-to-Face"
+        ? input.location
+        : input.meetingPlatform;
       await Notification.create(
         [
           {
@@ -308,6 +298,7 @@ export async function rescheduleFacultyAppointment(req, res) {
 
 export const facultyAppointmentInternals = {
   ACTIVE_STATUSES,
+  BLOCKING_STATUSES,
   manilaParts,
   parseManilaDateTime,
   snapshot,

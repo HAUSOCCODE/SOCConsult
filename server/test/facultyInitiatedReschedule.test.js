@@ -115,7 +115,7 @@ test("appointment schema preserves faculty reschedule history", () => {
   assert.ok(history.schema.path("initiatedBy"));
 });
 
-for (const providerRole of ["faculty", "dean"]) test(`${providerRole} reschedule atomically updates the appointment, history, notification, and audit`, async () => {
+for (const providerRole of ["faculty", "dean"]) test(`${providerRole} proposal atomically preserves the current schedule and stores a separate proposal`, async () => {
   const restores = [];
   const current = appointmentRecord();
   const updated = appointmentRecord({
@@ -172,11 +172,13 @@ for (const providerRole of ["faculty", "dean"]) test(`${providerRole} reschedule
     await rescheduleFacultyAppointment(req, res);
     assert.equal(res.statusCode, 200);
     assert.equal(update.$set.status, "Reschedule Proposed");
-    assert.equal(update.$set.startAt.toISOString(), "2099-01-02T06:00:00.000Z");
-    assert.equal(update.$unset.availability, 1);
-    assert.equal(update.$push.scheduleHistory.initiatedByRole, "Faculty");
-    assert.equal(update.$push.scheduleHistory.previous.startTime, "10:00");
-    assert.equal(update.$push.scheduleHistory.next.startTime, "14:00");
+    assert.equal(update.$set.proposedStartAt.toISOString(), "2099-01-02T06:00:00.000Z");
+    assert.equal(update.$set.proposedEndAt.toISOString(), "2099-01-02T06:30:00.000Z");
+    assert.equal(update.$set.proposedConsultationMode, "Online");
+    assert.equal(update.$set.proposalNote, requestBody().reason);
+    assert.equal(update.$set.startAt, undefined);
+    assert.equal(update.$set.endAt, undefined);
+    assert.equal(update.$push, undefined);
     assert.equal(notifications.length, 1);
     assert.equal(notifications[0].title, "Consultation Reschedule Proposed");
     assert.match(notifications[0].message, /proposed/i);
@@ -287,7 +289,7 @@ test("ownership, terminal status, started, identical, and schedule conflicts are
   }
 });
 
-test("faculty endpoint is role-protected and existing student reschedule route remains available", () => {
+test("faculty endpoint is role-protected and only the canonical Student proposal response route remains", () => {
   const facultyRoutes = fs.readFileSync(
     new URL("../src/routes/facultyRoutes.js", import.meta.url),
     "utf8",
@@ -301,8 +303,7 @@ test("faculty endpoint is role-protected and existing student reschedule route r
     /router\.use\(authenticate, authorize\("faculty", "dean"\)\)/,
   );
   assert.match(facultyRoutes, /\/appointments\/:appointmentId\/reschedule/);
-  assert.match(
-    appointmentRoutes,
-    /router\.put\("\/:id\/reschedule", authorize\("student"\)/,
-  );
+  assert.match(appointmentRoutes, /"\/:id\/reschedule-response"/);
+  assert.doesNotMatch(appointmentRoutes, /"\/:id\/request-reschedule"/);
+  assert.doesNotMatch(appointmentRoutes, /router\.put\("\/:id\/reschedule"/);
 });
