@@ -134,26 +134,28 @@ test("Student proposal responses are exact, owner-only, atomic, conflict-safe, a
   }
 });
 
-test("reject and cancel preserve proposal history without accepting client schedules", async () => {
+test("accept and reject preserve proposal history while cancellation uses the canonical endpoint", async () => {
   const source = await import("node:fs").then(({ readFileSync }) => readFileSync(new URL("../src/routes/appointmentRoutes.js", import.meta.url), "utf8"));
   assert.match(source, /"\/:id\/reschedule-response"/);
   assert.doesNotMatch(source, /"\/:id\/request-reschedule"/);
   assert.doesNotMatch(source, /router\.put\("\/:id\/reschedule"/);
   const handler = source.slice(source.indexOf('router.put("/:id/reschedule-response"'));
-  assert.match(handler, /decision === "reject" \? "Pending" : "Cancelled"/);
-  assert.match(handler, /response:[\s\S]*"Accepted"[\s\S]*"Rejected"[\s\S]*"Cancelled"/);
+  assert.match(handler, /decision === "accept" \? "Confirmed" : "Pending"/);
+  assert.match(handler, /response: decision === "accept" \? "Accepted" : "Rejected"/);
+  assert.doesNotMatch(handler, /decision === "cancel"/);
   assert.match(handler, /student: req\.user\.id/);
   assert.match(handler, /status: "Reschedule Proposed"/);
   assert.doesNotMatch(handler, /req\.body\.(startAt|endAt|availabilityId|mode|location|meetingPlatform)/);
+  assert.match(source, /router\.put\("\/:id\/cancel"/);
 });
 
-test("reject returns to Pending and cancel becomes terminal with one history entry and notification", async () => {
+test("reject returns to Pending with one history entry and notification", async () => {
   const restores = [];
   const student = new mongoose.Types.ObjectId();
   const faculty = new mongoose.Types.ObjectId();
   const records = new Map();
   const releases = [];
-  for (const decision of ["reject", "cancel"]) {
+  for (const decision of ["reject"]) {
     const id = new mongoose.Types.ObjectId();
     records.set(String(id), {
       _id: id,
@@ -173,10 +175,6 @@ test("reject returns to Pending and cancel becomes terminal with one history ent
       proposedAt: new Date(),
       proposedBy: faculty,
       decision,
-      ...(decision === "cancel" && {
-        availability: new mongoose.Types.ObjectId(),
-        reservationToken: "cancel-owned-token",
-      }),
     });
   }
   const notifications = [];
@@ -207,13 +205,13 @@ test("reject returns to Pending and cancel becomes terminal with one history ent
         body: JSON.stringify({ decision: record.decision, startAt: new Date(0), availabilityId: new mongoose.Types.ObjectId() }),
       });
       assert.equal(response.status, 200);
-      assert.equal(record.status, record.decision === "reject" ? "Pending" : "Cancelled");
-      assert.equal(record.history.response, record.decision === "reject" ? "Rejected" : "Cancelled");
+      assert.equal(record.status, "Pending");
+      assert.equal(record.history.response, "Rejected");
       assert.equal(record.history.previous.startAt instanceof Date, true);
       assert.equal(record.history.next.startAt instanceof Date, true);
     }
-    assert.equal(notifications.length, 2);
-    assert.equal(releases.some((query) => query.reservationToken === "cancel-owned-token"), true);
+    assert.equal(notifications.length, 1);
+    assert.equal(releases.length, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     restores.reverse().forEach((restore) => restore());

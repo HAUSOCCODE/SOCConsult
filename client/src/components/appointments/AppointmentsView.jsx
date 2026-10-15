@@ -44,7 +44,6 @@ export default function AppointmentsPage({ filter }) {
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [facultyReschedule, setFacultyReschedule] = useState(null);
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
-  const [cancelTarget, setCancelTarget] = useState(null);
   const [availabilityCapacity, setAvailabilityCapacity] = useState([]);
   const [approvalWarning, setApprovalWarning] = useState(null);
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
@@ -120,22 +119,6 @@ export default function AppointmentsPage({ filter }) {
       setRescheduleTarget(appointment);
     } catch (requestError) {
       toast.error(requestError.message || "Unable to load schedules.");
-    }
-  };
-  const cancel = async (id) => {
-    try {
-      const target = items?.find((item) => item._id === id);
-      const d = await api(
-        target?.bookingMethod === "schedule_request"
-          ? `/schedule-requests/${id}/cancel`
-          : `/appointments/${id}/cancel`,
-        { method: "PUT" },
-      );
-      toast.success(d.message);
-      setCancelTarget(null);
-      load();
-    } catch (e) {
-      toast.error(e.message || "Unable to cancel the appointment.");
     }
   };
   const openSupportingDocument = async (appointment) => {
@@ -227,33 +210,6 @@ export default function AppointmentsPage({ filter }) {
       >
         View Details
       </button>
-      {appointment.status === "Pending" &&
-        new Date(appointment.startAt) > new Date() && (
-          <button
-            type="button"
-            onClick={() => setCancelTarget(appointment)}
-            className={
-              mobile
-                ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-                : "btn-danger-action-sm"
-            }
-          >
-            Cancel
-          </button>
-        )}
-      {appointment.bookingMethod === "schedule_request" && appointment.status === "Pending" && (
-        <button
-          type="button"
-          onClick={() => setCancelTarget(appointment)}
-          className={
-            mobile
-              ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-              : "btn-danger-action-sm"
-          }
-        >
-          Cancel Request
-        </button>
-      )}
     </div>
   );
   return (
@@ -542,50 +498,6 @@ export default function AppointmentsPage({ filter }) {
           }}
         />
       )}
-      {cancelTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget && setCancelTarget(null)
-            }
-          >
-            <section
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="cancel-consultation-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="w-full min-w-0 max-w-md rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="cancel-consultation-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                Cancel Consultation?
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                Are you sure you want to cancel this consultation request?
-              </p>
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setCancelTarget(null)}
-                  className="btn-secondary"
-                >
-                  Keep Appointment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => cancel(cancelTarget._id)}
-                  className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-                >
-                  Cancel Appointment
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
       {approvalWarning &&
         createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-3 sm:p-4">
@@ -958,16 +870,6 @@ export default function AppointmentsPage({ filter }) {
                           </button>
                         )}
                       </>
-                    )}
-                  {user.role === "student" &&
-                    x.status === "Pending" &&
-                    new Date(x.startAt) > new Date() && (
-                      <button
-                        onClick={() => setCancelTarget(x)}
-                        className="btn-danger-action"
-                      >
-                        Cancel
-                      </button>
                     )}
                   {x.supportingDocument?.name &&
                     filter !== "requests" &&

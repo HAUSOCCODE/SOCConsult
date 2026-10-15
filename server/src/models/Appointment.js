@@ -45,6 +45,32 @@ const scheduleHistorySchema = new mongoose.Schema(
   { _id: true },
 );
 
+const statusHistorySchema = new mongoose.Schema(
+  {
+    previousStatus: {
+      type: String,
+      required: true,
+    },
+    newStatus: {
+      type: String,
+      required: true,
+    },
+    reason: { type: String, trim: true, maxlength: 500 },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    changedByRole: {
+      type: String,
+      enum: ["Student", "Faculty", "Dean"],
+      required: true,
+    },
+    changedAt: { type: Date, default: Date.now, required: true },
+  },
+  { _id: true },
+);
+
 const appointmentSchema = new mongoose.Schema(
   {
     student: {
@@ -167,6 +193,14 @@ const appointmentSchema = new mongoose.Schema(
     },
     responseNote: { type: String, trim: true, maxlength: 500 },
     scheduleHistory: { type: [scheduleHistorySchema], default: [] },
+    statusHistory: { type: [statusHistorySchema], default: [] },
+    cancellationReason: { type: String, trim: true, maxlength: 500 },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    cancelledByRole: {
+      type: String,
+      enum: ["Student", "Faculty", "Dean"],
+    },
+    cancelledAt: Date,
   },
   { timestamps: true },
 );

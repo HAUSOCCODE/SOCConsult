@@ -13,6 +13,11 @@ export const TERMINAL_STATUSES = Object.freeze([
   "Expired",
   "Completed",
 ]);
+export const STUDENT_CANCELLABLE_STATUSES = Object.freeze([
+  "Pending",
+  "Reschedule Proposed",
+  "Confirmed",
+]);
 
 export const APPOINTMENT_STATUS_META = Object.freeze({
   Pending: { label: "Pending", group: "active" },
@@ -40,6 +45,15 @@ export const getAppointmentDisplayStatus = (appointment) =>
 
 export const isAwaitingFacultyUpdate = (appointment) =>
   appointment?.status === "Awaiting Attendance Update";
+
+export const canStudentCancelAppointment = (appointment, now = new Date()) => {
+  if (!STUDENT_CANCELLABLE_STATUSES.includes(appointment?.status)) return false;
+  const startAt = new Date(appointment?.startAt);
+  if (!Number.isFinite(startAt.getTime()) || startAt <= now) return false;
+  if (appointment.status !== "Reschedule Proposed") return true;
+  const proposedStartAt = new Date(appointment.proposedStartAt);
+  return Number.isFinite(proposedStartAt.getTime()) && proposedStartAt > now;
+};
 
 export const getStudentConsultationGroup = (status) => {
   if (ACTIVE_REQUEST_STATUSES.includes(status)) return "active";

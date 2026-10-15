@@ -16,6 +16,13 @@ import { destroyAsset, uploadBuffer } from "../services/cloudinaryStorage.js";
 const router = Router();
 router.use(authenticate);
 
+const STUDENT_CANCELLABLE_STATUSES = Object.freeze([
+  "Pending",
+  "Reschedule Proposed",
+  "Confirmed",
+]);
+const CANCELLATION_REASON_MAX_LENGTH = 500;
+
 const documentSize = (data = "") => {
   const encoded = data.split(",")[1] || "";
   return Buffer.from(encoded, "base64").length;
@@ -731,49 +738,202 @@ router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
   res.json({ message: `Appointment ${verb}.`, appointment });
 });
 router.put("/:id/cancel", authorize("student"), async (req, res) => {
-  const appointment = await Appointment.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      student: req.user.id,
-      status: "Pending",
-      startAt: { $gt: new Date() },
-    },
-    { status: "Cancelled" },
-    { new: true },
-  );
+  if (!mongoose.isValidObjectId(req.params.id))
+    return res.status(400).json({ message: "Invalid appointment ID." });
+  if (req.body?.reason !== undefined && typeof req.body.reason !== "string")
+    return res.status(400).json({ message: "Cancellation reason must be text." });
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length > CANCELLATION_REASON_MAX_LENGTH)
+    return res.status(400).json({
+      message: `Cancellation reason must be ${CANCELLATION_REASON_MAX_LENGTH} characters or fewer.`,
+    });
+
+  const appointment = await Appointment.findOne({
+    _id: req.params.id,
+    student: req.user.id,
+  }).select("+reservationToken +proposedMeetingLink +meetingLink");
   if (!appointment)
-    return res
-      .status(409)
-      .json({ message: "This appointment cannot be cancelled." });
+    return res.status(404).json({ message: "Appointment not found." });
+  if (!STUDENT_CANCELLABLE_STATUSES.includes(appointment.status))
+    return res.status(409).json({
+      message: "This consultation is no longer eligible for cancellation.",
+    });
+
+  const now = new Date();
+  const startAt = new Date(appointment.startAt);
+  if (!Number.isFinite(startAt.getTime()) || startAt <= now)
+    return res.status(409).json({
+      message: "This consultation has already started and can no longer be cancelled.",
+    });
+  if (appointment.status === "Reschedule Proposed") {
+    const proposedStartAt = new Date(appointment.proposedStartAt);
+    if (!Number.isFinite(proposedStartAt.getTime()) || proposedStartAt <= now)
+      return res.status(409).json({
+        message: "This reschedule proposal has expired and can no longer be cancelled.",
+      });
+  }
+
+  const historyId = new mongoose.Types.ObjectId();
+  const statusHistory = {
+    _id: historyId,
+    previousStatus: appointment.status,
+    newStatus: "Cancelled",
+    reason,
+    changedBy: req.user.id,
+    changedByRole: "Student",
+    changedAt: now,
+  };
+  const proposalHistoryId = new mongoose.Types.ObjectId();
+  const proposalHistory =
+    appointment.status === "Reschedule Proposed"
+      ? {
+          _id: proposalHistoryId,
+          previous: manilaScheduleSnapshot({
+            startAt: appointment.startAt,
+            endAt: appointment.endAt,
+            mode: appointment.consultationMode,
+            location: appointment.location,
+            meetingPlatform: appointment.meetingPlatform,
+          }),
+          next: manilaScheduleSnapshot({
+            startAt: appointment.proposedStartAt,
+            endAt: appointment.proposedEndAt,
+            mode: appointment.proposedConsultationMode,
+            location: appointment.proposedLocation,
+            meetingPlatform: appointment.proposedMeetingPlatform,
+          }),
+          reason:
+            appointment.proposalNote || "Schedule adjustment proposed by Faculty.",
+          initiatedByRole: "Faculty",
+          initiatedBy: appointment.proposedBy || appointment.faculty,
+          createdAt: appointment.proposedAt || appointment.updatedAt,
+          response: "Cancelled",
+          respondedAt: now,
+          respondedBy: req.user.id,
+        }
+      : null;
+  const proposalFields = {
+    proposedAvailability: 1,
+    proposedStartAt: 1,
+    proposedEndAt: 1,
+    proposedConsultationMode: 1,
+    proposedLocation: 1,
+    proposedMeetingPlatform: 1,
+    proposedMeetingLink: 1,
+    proposalNote: 1,
+    proposedAt: 1,
+    proposedBy: 1,
+  };
+  const update = {
+    $set: {
+      status: "Cancelled",
+      cancellationReason: reason,
+      cancelledBy: req.user.id,
+      cancelledByRole: "Student",
+      cancelledAt: now,
+    },
+    $push: {
+      statusHistory,
+      ...(proposalHistory && { scheduleHistory: proposalHistory }),
+    },
+    ...(proposalHistory && { $unset: proposalFields }),
+  };
+  const cancelled = await Appointment.findOneAndUpdate(
+    {
+      _id: appointment._id,
+      student: req.user.id,
+      status: appointment.status,
+      startAt: { $gt: now },
+      updatedAt: appointment.updatedAt,
+      ...(appointment.status === "Reschedule Proposed" && {
+        proposedAt: appointment.proposedAt,
+        proposedStartAt: { $gt: now },
+      }),
+    },
+    update,
+    { new: true, runValidators: true },
+  );
+  if (!cancelled)
+    return res.status(409).json({
+      message: "This consultation changed and can no longer be cancelled.",
+    });
+
+  try {
+    if (appointment.availability && appointment.reservationToken)
+      await Availability.updateOne(
+        {
+          _id: appointment.availability,
+          reservationToken: appointment.reservationToken,
+        },
+        { $unset: { reservationToken: 1 } },
+      );
+  } catch (error) {
+    const restoreSet = {
+      status: appointment.status,
+      ...(appointment.status === "Reschedule Proposed" && {
+        proposedAvailability: appointment.proposedAvailability,
+        proposedStartAt: appointment.proposedStartAt,
+        proposedEndAt: appointment.proposedEndAt,
+        proposedConsultationMode: appointment.proposedConsultationMode,
+        proposedLocation: appointment.proposedLocation,
+        proposedMeetingPlatform: appointment.proposedMeetingPlatform,
+        proposedMeetingLink: appointment.proposedMeetingLink,
+        proposalNote: appointment.proposalNote,
+        proposedAt: appointment.proposedAt,
+        proposedBy: appointment.proposedBy,
+      }),
+    };
+    await Appointment.updateOne(
+      {
+        _id: appointment._id,
+        student: req.user.id,
+        status: "Cancelled",
+        cancelledAt: now,
+      },
+      {
+        $set: restoreSet,
+        $unset: {
+          cancellationReason: 1,
+          cancelledBy: 1,
+          cancelledByRole: 1,
+          cancelledAt: 1,
+        },
+        $pull: {
+          statusHistory: { _id: historyId },
+          ...(proposalHistory && { scheduleHistory: { _id: proposalHistoryId } }),
+        },
+      },
+    );
+    throw error;
+  }
+
   await Promise.all([
     logActivity(
       "appointment_cancelled",
       req.user.id,
       "Appointment",
       appointment.id,
+      { previousStatus: appointment.status, newStatus: "Cancelled" },
     ),
     notify(
       appointment.faculty,
       "appointment",
       "Consultation Cancelled",
-      `${req.user.name} cancelled a consultation.`,
-      appointment.id,
-    ),
-    notify(
-      req.user.id,
-      "appointment",
-      "Consultation Cancelled",
-      "Your consultation was cancelled.",
+      `${req.user.name} cancelled a consultation.${reason ? ` Reason: ${reason}` : ""}`,
       appointment.id,
     ),
   ]);
-  res.json({ message: "Appointment cancelled.", appointment });
+  const safe = cancelled.toObject ? cancelled.toObject() : cancelled;
+  delete safe.reservationToken;
+  delete safe.meetingLink;
+  delete safe.proposedMeetingLink;
+  res.json({ message: "Consultation cancelled.", appointment: safe });
 });
 router.put("/:id/reschedule-response", authorize("student"), async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id))
     return res.status(400).json({ message: "Invalid appointment ID." });
   const decision = String(req.body.decision || "").toLowerCase();
-  if (!["accept", "reject", "cancel"].includes(decision))
+  if (!["accept", "reject"].includes(decision))
     return res.status(400).json({ message: "Select a valid proposal response." });
 
   const appointment = await Appointment.findOne({
@@ -821,12 +981,7 @@ router.put("/:id/reschedule-response", authorize("student"), async (req, res) =>
     initiatedByRole: "Faculty",
     initiatedBy: appointment.proposedBy || appointment.faculty,
     createdAt: appointment.proposedAt || appointment.updatedAt,
-    response:
-      decision === "accept"
-        ? "Accepted"
-        : decision === "reject"
-          ? "Rejected"
-          : "Cancelled",
+    response: decision === "accept" ? "Accepted" : "Rejected",
     respondedAt,
     respondedBy: req.user.id,
   };
@@ -897,8 +1052,7 @@ router.put("/:id/reschedule-response", authorize("student"), async (req, res) =>
     }
   }
 
-  const nextStatus =
-    decision === "accept" ? "Confirmed" : decision === "reject" ? "Pending" : "Cancelled";
+  const nextStatus = decision === "accept" ? "Confirmed" : "Pending";
   const set = { status: nextStatus, responseNote: "" };
   if (decision === "accept") {
     Object.assign(set, {
@@ -961,10 +1115,9 @@ router.put("/:id/reschedule-response", authorize("student"), async (req, res) =>
   }
 
   const shouldReleaseOriginal =
-    decision === "cancel" ||
-    (decision === "accept" &&
-      String(appointment.availability || "") !==
-        String(appointment.proposedAvailability || ""));
+    decision === "accept" &&
+    String(appointment.availability || "") !==
+      String(appointment.proposedAvailability || "");
   if (shouldReleaseOriginal && appointment.availability && appointment.reservationToken)
     await Availability.updateOne(
       { _id: appointment.availability, reservationToken: appointment.reservationToken },
@@ -996,9 +1149,7 @@ router.put("/:id/reschedule-response", authorize("student"), async (req, res) =>
     message:
       decision === "accept"
         ? "Reschedule proposal accepted. Your consultation is confirmed."
-        : decision === "reject"
-          ? "Reschedule proposal rejected. The consultation is pending Faculty action."
-          : "Consultation cancelled.",
+        : "Reschedule proposal rejected. The consultation is pending Faculty action.",
     appointment: safe,
   });
 });

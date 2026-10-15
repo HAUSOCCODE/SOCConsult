@@ -64,7 +64,8 @@ test("canonical Student consultations UI uses revised groups and no legacy actio
   ]) {
     assert.doesNotMatch(page + view + details, new RegExp(legacy));
   }
-  assert.match(view, /appointment\.status === "Pending"/);
+  assert.match(view, /canStudentCancelAppointment\(appointment\)/);
+  assert.match(view, /Cancel Consultation/);
   assert.doesNotMatch(view, /Accept|Reject|Download|Attendance Response/);
   assert.match(details, /allowLink=\{\["Confirmed", "Completed"\]/);
   assert.doesNotMatch(details, /reservationToken|StudentAvailability/);

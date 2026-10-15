@@ -5,6 +5,7 @@ import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import {
+  canStudentCancelAppointment,
   getAppointmentDisplayStatus,
   isAwaitingFacultyUpdate,
 } from "../../utils/appointmentStatus";
@@ -23,6 +24,7 @@ export default function StudentAppointmentDetailsModal({
   appointment,
   onClose,
   onRespondToProposal,
+  onCancelConsultation,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
   useEffect(() => {
@@ -161,7 +163,7 @@ export default function StudentAppointmentDetailsModal({
             <Section title="Status Details">
               <Detail
                 label="Cancellation Reason"
-                value={appointment.responseNote || "Not provided"}
+                value={appointment.cancellationReason || "Not provided"}
                 wide
               />
             </Section>
@@ -261,6 +263,11 @@ export default function StudentAppointmentDetailsModal({
           </Section>
         </div>
         <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
+          {canStudentCancelAppointment(appointment) && onCancelConsultation && (
+            <button type="button" onClick={onCancelConsultation} className="min-h-10 w-full rounded-lg bg-red-700 px-4 text-sm font-bold text-white hover:bg-red-800 sm:w-auto">
+              Cancel Consultation
+            </button>
+          )}
           {appointment.status === "Reschedule Proposed" && onRespondToProposal && (
             <button type="button" onClick={onRespondToProposal} className="btn-primary w-full sm:w-auto">
               View Proposal / Respond
