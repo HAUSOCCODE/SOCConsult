@@ -28,3 +28,27 @@ export function legacyFacultyDestination(pathname, search = "", hash = "") {
   }
   return `/dean/faculty/${page === "appointments" ? "consultations" : page || "dashboard"}${search}${hash}`;
 }
+
+// Compatibility redirects keep only validated monitoring filters, never arbitrary targets.
+export function monitoringQuery(search = "") {
+  const input = new URLSearchParams(search), output = new URLSearchParams();
+  const statuses = ["Pending", "Reschedule Proposed", "Confirmed", "Rejected", "Cancelled", "Expired", "Awaiting Attendance Update", "Completed", "Attendance Review", "Awaiting Faculty Schedule", "Approved", "Needs Reschedule", "Rescheduled", "No Show"];
+  for (const key of ["search", "facultyId", "studentId", "status", "mode", "page", "limit", "sort"]) {
+    const values = input.getAll(key), value = values[0];
+    if (values.length !== 1) continue;
+    const valid = key === "search" ? value.length <= 150 && !/[\x00-\x1f\x7f]/.test(value)
+      : ["facultyId", "studentId"].includes(key) ? /^[a-f\d]{24}$/i.test(value)
+      : key === "status" ? statuses.includes(value)
+      : key === "mode" ? ["Online", "Face-to-Face"].includes(value)
+      : key === "sort" ? ["newest", "oldest"].includes(value)
+      : /^[1-9]\d*$/.test(value) && Number.isSafeInteger(+value) && +value <= (key === "limit" ? 100 : 1000000);
+    if (valid) output.set(key, value);
+  }
+  const start = input.get("start"), end = input.get("end");
+  const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || "") && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (input.getAll("start").length === 1 && input.getAll("end").length === 1 && validDate(start) && validDate(end)) {
+    const days = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
+    if (days > 0 && days <= 366) { output.set("start", start); output.set("end", end); }
+  }
+  return output.size ? `?${output}` : "";
+}

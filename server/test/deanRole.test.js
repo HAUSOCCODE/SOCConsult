@@ -77,6 +77,15 @@ test("Dean login uses username and the stored role remains authoritative", async
 
 test("HTTP Dean management is read-only while personal Faculty actions remain owner-scoped", async () => {
   const h = await appointmentHttp();
+  const restores = [];
+  patch(Appointment, "aggregate", () => ({ option: async () => [{ records: [], count: [{ total: 0 }] }] }), restores);
+  patch(Appointment, "populate", async rows => rows, restores);
+  const findDocumentAppointment = Appointment.findById;
+  patch(Appointment, "findById", id => {
+    const query = findDocumentAppointment(id);
+    query.maxTimeMS = () => query;
+    return query;
+  }, restores);
   try {
     const record = fixture({ student: h.users.student.id, faculty: h.users.dean.id,
       supportingDocument: { name: "test.txt", data: "data:text/plain;base64,dGVzdA==",
@@ -92,7 +101,7 @@ test("HTTP Dean management is read-only while personal Faculty actions remain ow
     assert.equal((await h.request('/appointments/'+record._id+'/status', "dean", "PUT", { status: "Completed" })).status, 400);
     assert.equal(h.state.appointments[0].status, "Confirmed");
     assert.equal(h.state.audits.length, 1);
-  } finally { await h.close(); }
+  } finally { restores.reverse().forEach(restore => restore()); await h.close(); }
 });
 
 function migrationHarness(accounts) {
