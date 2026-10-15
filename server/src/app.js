@@ -14,6 +14,7 @@ import taskRoutes from "./routes/taskRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import facultyRoutes from "./routes/facultyRoutes.js";
 import studentAvailabilityRoutes from "./routes/studentAvailabilityRoutes.js";
+import calendarRoutes from "./routes/calendarRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -34,6 +35,7 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/faculty", facultyRoutes);
 app.use("/api/student-availability", studentAvailabilityRoutes);
+app.use("/api/calendar", calendarRoutes);
 app.use(notFound);
 app.use(errorHandler);
 export default app;
