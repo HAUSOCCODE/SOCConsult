@@ -1,4 +1,5 @@
 import AttendanceResponse from "../../src/models/AttendanceResponse.js";
+import AttendanceReview from "../../src/models/AttendanceReview.js";
 import mongoose from "mongoose";
 import Appointment from "../../src/models/Appointment.js";
 import Availability from "../../src/models/Availability.js";
@@ -43,7 +44,7 @@ const query = (work) => {
     });
     return limit == null ? value : value.slice(0, limit);
   }).then(resolve, reject) };
-  for (const method of ["select", "session", "populate", "lean"]) result[method] = () => result;
+  for (const method of ["select", "session", "populate", "lean", "maxTimeMS"]) result[method] = () => result;
   result.sort = (value) => { sort = value; return result; };
   result.limit = (value) => { limit = value; return result; };
   return result;
@@ -57,7 +58,7 @@ const update = (record, changes) => {
 
 export function appointmentHarness() {
   const restores = [];
-  const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [], responses: [] };
+  const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [], responses: [], reviews: [] };
   let failAt, retryOnce = false, queue = Promise.resolve();
   const patch = (object, key, value) => { const old = object[key]; object[key] = value; restores.push(() => { object[key] = old; }); };
   const failure = (name) => { if (failAt === name) throw new Error(`Injected ${name} failure`); };
@@ -73,7 +74,7 @@ export function appointmentHarness() {
       } catch (error) { Object.assign(state, before); throw error; } finally { done(); }
     }, endSession: async () => {},
   }));
-  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [OneTimeScheduleHold, "holds"], [User, "users"], [AttendanceResponse, "responses"]]) {
+  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [OneTimeScheduleHold, "holds"], [User, "users"], [AttendanceResponse, "responses"], [AttendanceReview, "reviews"]]) {
     patch(model, "findOne", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));
     patch(model, "findById", (id) => query(() => clone(state[key].find((record) => same(record._id, id)) || null)));
     patch(model, "exists", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));
@@ -93,6 +94,16 @@ export function appointmentHarness() {
     patch(model, "deleteMany", async (filter) => { failure(key); state[key] = state[key].filter((record) => !matches(record, filter)); });
   }
   patch(AttendanceResponse.collection, "indexes", async () => [{ key: { appointment: 1, participant: 1 }, unique: true }, { key: { appointment: 1, participantRole: 1 }, unique: true }]);
+  patch(AttendanceReview.collection, "indexes", async () => [{ key: { appointment: 1 }, unique: true, partialFilterExpression: { isFinal: true } }]);
+  patch(AttendanceReview, "create", async records => {
+    failure("reviews");
+    for (const record of records) {
+      if (record.isFinal && state.reviews.some(old => same(old.appointment, record.appointment) && old.isFinal)) throw Object.assign(new Error("Duplicate final review"), { code: 11000 });
+      const model = new AttendanceReview(record); await model.validate();
+      state.reviews.push(clone({ ...record, _id: String(model._id) }));
+    }
+    return clone(state.reviews.slice(-records.length));
+  });
   patch(AttendanceResponse, "create", async records => {
     failure("responses");
     for (const r of records) {
