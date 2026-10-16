@@ -26,3 +26,30 @@ export async function api(path, options = {}) {
   }
   return data;
 }
+
+api.download = async function download(path, options = {}) {
+  const token = sessionStorage.getItem("consultio_token");
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+  });
+  if (!response.ok) {
+    const contentType = response.headers.get("Content-Type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json().catch(() => ({}))
+      : {};
+    const error = new Error(data.message || "Unable to download the file.");
+    error.status = response.status;
+    error.code = data.code || null;
+    throw error;
+  }
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="([^"\r\n]+)"/i);
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] || "",
+  };
+};
