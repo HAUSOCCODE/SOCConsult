@@ -1,0 +1,39 @@
+import { useRef, useState } from "react";
+import { api } from "../../api/apiClient";
+
+const disclaimer = "This narrative was generated from authorized aggregate SOCConsult data. It must be reviewed by the Dean before inclusion in an official report.";
+export default function ReportNarrativePanel({ filters }) {
+  const [summary, setSummary] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+  const input = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
+  const matches = summary && ["start", "end", "facultyId", "status", "attendanceOutcome", "mode"].every(key => (summary.filters[key] || "") === (input[key] || ""));
+  async function perform(review = false) {
+    if (pending.current) return;
+    pending.current = true; setBusy(true); setError("");
+    try {
+      const result = await api(review ? `/dean/reports/ai-summaries/${summary.id}/review` : "/dean/reports/ai-summaries", { method: "POST", body: JSON.stringify(review ? { expectedVersion: summary.version } : input) });
+      setSummary(result);
+    } catch (failure) { setError(failure.message || "AI summary is unavailable. PDF reports remain available."); }
+    finally { pending.current = false; setBusy(false); }
+  }
+  return <section className="space-y-3 rounded-2xl border bg-white p-6" aria-label="Optional AI Summary" aria-busy={busy}>
+    <h2 className="text-lg font-semibold">Optional AI Summary</h2>
+    <p className="text-sm">AI-assisted narrative. PDF reports work independently and do not include this narrative.</p>
+    <p className="text-sm">{disclaimer}</p>
+    <button type="button" className="btn-primary" disabled={busy} onClick={() => perform()}>{summary ? "Generate new AI Summary" : "Generate AI Summary"}</button>
+    {busy && <p role="status">Processing AI summary…</p>}
+    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {summary && <div className="space-y-3">
+      <p>AI-assisted · {summary.reviewState === "reviewed" ? "Reviewed" : "Unreviewed"}</p>
+      <p>Date range: {summary.filters.start} to {summary.filters.end}</p>
+      <p>Generated: {summary.generatedAt}</p>
+      <p>Snapshot filters: {Object.entries(summary.filters).map(([key, value]) => `${key}: ${key === "facultyId" ? "Selected faculty" : value}`).join("; ")}</p>
+      {!matches && <p role="status">This narrative uses different filters from the current report.</p>}
+      <p className="whitespace-pre-wrap">{summary.narrative}</p>
+      {summary.reviewedAt && <p>Reviewed: {summary.reviewedAt}</p>}
+      {summary.reviewState === "unreviewed" && <button type="button" className="btn-primary" disabled={busy || !matches} onClick={() => perform(true)}>I have reviewed and approve this narrative</button>}
+    </div>}
+  </section>;
+}

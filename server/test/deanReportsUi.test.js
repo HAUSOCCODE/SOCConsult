@@ -54,6 +54,7 @@ async function harness() {
       return state[slot];
     },
     useEffect: (fn) => effects.push(fn),
+    ReportNarrativePanel: () => null,
     api,
     APPOINTMENT_STATUSES: ["Pending", "Completed"],
     URL: {
@@ -105,15 +106,12 @@ const find = (tree, type) =>
   elements(tree).filter((node) => node.type === type);
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-test("reports UI has exactly two CTAs, defers AI, submits filters and guards duplicate clicks", async () => {
+test("reports UI isolates PDF from optional AI panel, submits filters and guards duplicate clicks", async () => {
   const h = await harness();
   let tree = h.render();
   const buttons = find(tree, "button");
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 1);
   assert.equal(buttons[0].props.children, "Generate PDF Report");
-  assert.equal(buttons[1].props.children, "Generate AI Summary");
-  assert.equal(buttons[1].props.disabled, true);
-  assert.match(JSON.stringify(tree), /deferred pending/);
   h.effects[0]();
   assert.equal(h.requests.length, 1);
   assert.match(h.requests[0].path, /role=faculty/);

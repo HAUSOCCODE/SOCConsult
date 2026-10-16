@@ -253,6 +253,8 @@ test("real Unicode PDFs contain safe report content, landscape pages, repeated h
 });
 
 test("HTTP report authorization, bounded projection, atomic metadata/audit and sanitized failures", async () => {
+  const previousGroqKey = process.env.GROQ_API_KEY;
+  delete process.env.GROQ_API_KEY;
   const restores = [],
     staged = [],
     committed = [],
@@ -436,6 +438,8 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     }
     assert.ok(ended >= 4);
   } finally {
+    if (previousGroqKey === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = previousGroqKey;
     await new Promise((resolve) => server.close(resolve));
     restores.reverse().forEach((restore) => restore());
   }

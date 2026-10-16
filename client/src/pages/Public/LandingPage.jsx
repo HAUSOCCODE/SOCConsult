@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Footer, Navbar } from "../../components/public/PublicLayout";
-import SOCConsultPublicAIGuide from "../../components/public/SOCConsultPublicAIGuide";
 import { api } from "../../api/apiClient";
 
 const features = [
@@ -276,7 +275,6 @@ export default function LandingPage() {
         </section>
       </main>
       <Footer />
-      <SOCConsultPublicAIGuide />
     </div>
   );
 }
