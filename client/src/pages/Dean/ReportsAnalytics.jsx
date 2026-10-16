@@ -1,465 +1,257 @@
-import AttendanceSummary from "../../components/appointments/AttendanceSummary";
-import { ChevronDown, FileText, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
-import { EmptyState, ErrorState, Loading } from "../../components/UI";
-import { formatPersonName } from "../../utils/formatPersonName";
+import { APPOINTMENT_STATUSES } from "../../utils/appointmentStatus";
 
-const displayDate = (value) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "—"
-    : date.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
-};
-
-const safeCsvCell = (value) => {
-  let text = String(value ?? "");
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
-};
-
-const downloadCsv = (rows, filename) => {
-  const content = rows.map((row) => row.map(safeCsvCell).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF", content], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-};
-
-const fileDate = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
-
-const inputDate = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const summaryRangeLabel = ({ start, end }) => {
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  const options = { month: "long", day: "numeric", year: "numeric" };
-  return `${startDate.toLocaleDateString("en-US", options)} – ${endDate.toLocaleDateString("en-US", options)}`;
-};
-
-const approvalMethodLabel = (user) => {
-  if (user.registrationStatus === "Pending") return "Pending Dean Approval";
-  if (user.registrationStatus === "Rejected") return "Rejected by Dean";
-  if (["email_verification", "system"].includes(user.approvalMethod))
-    return "Automatic - Email Verification";
-  if (user.approvalMethod === "dean" || user.approvedBy)
-    return "Dean Approval";
-  return "Not Available";
-};
-
-const auditorLabel = (user) => {
-  if (["email_verification", "system"].includes(user.approvalMethod))
-    return "System";
-  const auditor =
-    user.registrationStatus === "Rejected" ? user.rejectedBy : user.approvedBy;
-  return formatPersonName(auditor?.name) || auditor?.email || "—";
-};
+const manilaDate = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+const outcomes = ["Completed", "Student No-show", "Faculty No-show"];
 
 export default function ReportsAnalytics() {
-  const [items, setItems] = useState(null);
-  const [registrations, setRegistrations] = useState(null);
+  const [filters, setFilters] = useState(() => {
+    const end = manilaDate();
+    return {
+      start: `${end.slice(0, 7)}-01`,
+      end,
+      facultyId: "",
+      status: "",
+      attendanceOutcome: "",
+      mode: "",
+    };
+  });
+  const [search, setSearch] = useState("");
+  const [faculty, setFaculty] = useState([]);
+  const [optionsState, setOptionsState] = useState("loading");
+  const [hasMore, setHasMore] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [registrationError, setRegistrationError] = useState("");
-  const today = new Date();
-  const [summaryStart, setSummaryStart] = useState(
-    inputDate(new Date(today.getFullYear(), today.getMonth(), 1)),
-  );
-  const [summaryEnd, setSummaryEnd] = useState(inputDate(today));
-  const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState("");
-
-  const load = () => {
+  const [message, setMessage] = useState("");
+  const pending = useRef(false);
+  useEffect(() => {
+    let active = true;
+    setOptionsState("loading");
+    const timer = setTimeout(() => {
+      api(
+        `/dean/consultations/filter-options?${new URLSearchParams({ role: "faculty", search, limit: "50" })}`,
+      )
+        .then((data) => {
+          if (active) {
+            setFaculty(data.options);
+            setHasMore(data.hasMore);
+            setOptionsState("ready");
+          }
+        })
+        .catch(() => {
+          if (active) setOptionsState("error");
+        });
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [search]);
+  const change = (key, value) => {
+    setFilters((current) => ({ ...current, [key]: value }));
     setError("");
-    setRegistrationError("");
-    setItems(null);
-    setRegistrations(null);
-    Promise.allSettled([
-      api("/dean/appointments"),
-      api("/dean/reports/user-registrations"),
-    ]).then(([appointmentsResult, registrationsResult]) => {
-      if (appointmentsResult.status === "fulfilled") {
-        setItems(
-          Array.isArray(appointmentsResult.value?.appointments)
-            ? appointmentsResult.value.appointments
-            : [],
-        );
-      } else setError("Unable to generate reports. Please try again.");
-
-      if (registrationsResult.status === "fulfilled") {
-        setRegistrations(
-          Array.isArray(registrationsResult.value?.users)
-            ? registrationsResult.value.users
-            : [],
-        );
-      } else {
-        setRegistrations([]);
-        setRegistrationError(
-          "The user registration report is temporarily unavailable.",
-        );
-      }
-    });
+    setMessage("");
   };
-
-  useEffect(load, []);
-  if (error) return <ErrorState message={error} onRetry={load} />;
-  if (!items) return <Loading />;
-
-  const completed = items.filter((item) => item.status === "Completed" && (item.attendanceSummary || item.attendance)?.finalOutcome === "Completed" && (item.attendanceSummary || item.attendance)?.finalizationSource === "participant_agreement");
-  const attendanceCounts = items.reduce((counts, item) => {
-    const a = item.attendanceSummary || item.attendance;
-    if (item.status === "Attendance Review") counts.attendanceReview++;
-    if (item.status === "Completed") {
-      const key = a?.finalizationSource === "participant_agreement"
-        ? { Completed: "verifiedCompleted", "Student No-show": "studentNoShow", "Faculty No-show": "facultyNoShow" }[a.finalOutcome] : null;
-      counts[key || "historicalUnverifiedCompleted"]++;
-    }
-    return counts;
-  }, { verifiedCompleted: 0, studentNoShow: 0, facultyNoShow: 0, historicalUnverifiedCompleted: 0, attendanceReview: 0 });
-  const exportConsultations = () => {
-    const rows = [
-      ["Student", "Faculty", "Subject", "Date", "Status"],
-      ...items.map((item) => [
-        formatPersonName(item.student?.name),
-        formatPersonName(item.faculty?.name),
-        item.subject,
-        item.startAt
-          ? new Date(item.startAt).toLocaleString("en-PH", {
-              timeZone: "Asia/Manila",
-            })
-          : "Not scheduled",
-        item.status,
-      ]),
-    ];
-    downloadCsv(rows, "socconsult-report.csv");
-  };
-
-  const exportRegistrations = () => {
-    const rows = [
-      [
-        "Name",
-        "Email",
-        "Role",
-        "Registered Date",
-        "Email Verification",
-        "Verified Date",
-        "Approval Status",
-        "Approval Method",
-        "Approved By",
-        "Approved Date",
-        "Account Status",
-      ],
-      ...registrations.map((user) => [
-        formatPersonName(user),
-        user.email,
-        user.role
-          ? `${user.role.charAt(0).toUpperCase()}${user.role.slice(1)}`
-          : "Not Available",
-        displayDate(user.createdAt),
-        typeof user.emailVerified === "boolean"
-          ? user.emailVerified
-            ? "Verified"
-            : "Not Verified"
-          : "Not Available",
-        user.emailVerifiedAt ? displayDate(user.emailVerifiedAt) : "—",
-        user.registrationStatus || "Not Available",
-        approvalMethodLabel(user),
-        auditorLabel(user),
-        user.approvedAt ? displayDate(user.approvedAt) : "—",
-        user.accountStatus || "Not Available",
-      ]),
-    ];
-    downloadCsv(rows, `SOCConsult_User_Registration_Report_${fileDate()}.csv`);
-  };
-
-  const setSummaryPreset = (preset) => {
-    const now = new Date();
-    let start;
-    let end = now;
-    if (preset === "week") {
-      start = new Date(now);
-      start.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    } else if (preset === "month") {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else {
-      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      end = new Date(now.getFullYear(), now.getMonth(), 0);
-    }
-    setSummaryStart(inputDate(start));
-    setSummaryEnd(inputDate(end));
-    setSummary(null);
-    setSummaryError("");
-  };
-
-  const generateSummary = async () => {
-    setSummaryError("");
-    setSummary(null);
-    if (!summaryStart || !summaryEnd) {
-      setSummaryError("Select a start date and end date.");
+  const generate = async (event) => {
+    event.preventDefault();
+    if (pending.current) return;
+    const start = Date.parse(`${filters.start}T00:00:00Z`),
+      end = Date.parse(`${filters.end}T00:00:00Z`);
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      end < start ||
+      (end - start) / 86400000 + 1 > 366
+    ) {
+      setError("Select a valid date range of at most 366 days.");
       return;
     }
-    if (summaryEnd < summaryStart) {
-      setSummaryError("End date must be on or after the start date.");
-      return;
-    }
-    setSummaryLoading(true);
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("");
     try {
-      const query = new URLSearchParams({
-        startDate: summaryStart,
-        endDate: summaryEnd,
+      const input = Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== ""),
+      );
+      const result = await api.download("/dean/reports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
       });
-      setSummary(await api(`/dean/reports/ai-summary?${query}`));
-    } catch (requestError) {
-      setSummaryError(
-        requestError.message || "Unable to generate the summary.",
+      if (result.blob.type !== "application/pdf")
+        throw new Error(
+          "The report could not be downloaded. Please try again.",
+        );
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `SOCConsult_Report_${input.start}_${input.end}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(
+        result.total === 0
+          ? "No consultations match these filters. An empty PDF report was downloaded."
+          : "PDF report downloaded.",
+      );
+    } catch (failure) {
+      setError(
+        failure.message || "Unable to generate the report. Please try again.",
       );
     } finally {
-      setSummaryLoading(false);
+      pending.current = false;
+      setBusy(false);
     }
   };
-
   return (
-    <div className="space-y-6 pb-20 md:pb-16">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-maroon-900">
-            Reports &amp; Analytics
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Generate consultation and account audit reports from live system
-            data.
-          </p>
-        </div>
-        <details className="group relative w-full sm:w-auto">
-          <summary className="btn-primary w-full list-none gap-2 sm:w-auto [&::-webkit-details-marker]:hidden">
-            Export Reports <ChevronDown size={17} aria-hidden="true" />
-          </summary>
-          <div className="absolute right-0 z-20 mt-2 w-full min-w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl sm:w-80">
-            <ReportOption
-              icon={FileText}
-              title="Consultation Report"
-              description="Appointment and consultation activity records."
-              onClick={exportConsultations}
-            />
-            <ReportOption
-              icon={Users}
-              title="User Registration & Account Report"
-              description="Registration, verification, approval, and account-status audit records."
-              onClick={exportRegistrations}
-              disabled={Boolean(registrationError) || registrations === null}
-            />
-          </div>
-        </details>
-      </div>
-
-      {registrationError && (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          {registrationError} The consultation report remains available.
+    <div className="space-y-6 pb-16">
+      <div>
+        <h1 className="text-2xl font-bold text-maroon-900">
+          School of Computing PDF Reports
+        </h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Generate an authorized SOC-wide consultation report. Dates use request
+          creation time in Asia/Manila.
         </p>
-      )}
-      {items.length === 0 && <EmptyState title="No reports generated yet." />}
-      <AttendanceSummary counts={attendanceCounts} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Metric label="Total consultations" value={items.length} />
-        <Metric label="Verified completed attendance" value={completed.length} />
-        <Metric
-          label="Verified attendance rate"
-          value={`${items.length ? Math.round((completed.length / items.length) * 100) : 0}%`}
-        />
       </div>
-      <section className="rounded-2xl border bg-white p-4 sm:p-6">
-        <h2 className="font-bold text-maroon-900">
-          AI-Assisted Report Summary
-        </h2>
-        <p className="mt-2 text-sm text-slate-500">
-          Generate a narrative summary of verified completed consultations for a selected
-          date range.
-        </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <label className="text-sm font-semibold">
+      <form
+        onSubmit={generate}
+        className="space-y-5 rounded-2xl border bg-white p-6"
+        aria-busy={busy}
+      >
+        <fieldset
+          disabled={busy}
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          <legend className="mb-3 font-semibold">Report filters</legend>
+          <label>
             Start date
             <input
-              type="date"
               className="field mt-1"
-              value={summaryStart}
-              onChange={(event) => {
-                setSummaryStart(event.target.value);
-                setSummary(null);
-              }}
+              type="date"
+              required
+              value={filters.start}
+              onChange={(e) => change("start", e.target.value)}
             />
           </label>
-          <label className="text-sm font-semibold">
+          <label>
             End date
             <input
-              type="date"
               className="field mt-1"
-              value={summaryEnd}
-              onChange={(event) => {
-                setSummaryEnd(event.target.value);
-                setSummary(null);
-              }}
+              type="date"
+              required
+              value={filters.end}
+              onChange={(e) => change("end", e.target.value)}
             />
           </label>
-          <button
-            type="button"
-            className="btn-primary h-11"
-            disabled={summaryLoading}
-            onClick={generateSummary}
-          >
-            {summaryLoading
-              ? "Analyzing consultation records…"
-              : "Generate Consultation Summary"}
-          </button>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            onClick={() => setSummaryPreset("week")}
-          >
-            This Week
-          </button>
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            onClick={() => setSummaryPreset("month")}
-          >
-            This Month
-          </button>
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            onClick={() => setSummaryPreset("previous")}
-          >
-            Previous Month
-          </button>
-        </div>
-        {summaryError && (
-          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {summaryError}
-          </p>
-        )}
-        {summary && (
-          <div className="mt-6 border-t border-slate-200 pt-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="font-bold text-maroon-900">
-                  Consultation Summary
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {summaryRangeLabel(summary.dateRange)}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                disabled={summaryLoading}
-                onClick={generateSummary}
+          <div>
+            <label>
+              Find faculty
+              <input
+                className="field mt-1"
+                type="search"
+                maxLength={100}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            <label className="mt-2 block">
+              Faculty
+              <select
+                className="field mt-1"
+                value={filters.facultyId}
+                onChange={(e) => change("facultyId", e.target.value)}
               >
-                Regenerate Summary
-              </button>
-            </div>
-            <p className="mt-4 leading-7 text-slate-700">{summary.summary}</p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Insight
-                label="Verified completed attendance"
-                value={summary.insights.totalConsultations}
-              />
-              <Insight
-                label="Most active faculty"
-                value={summary.insights.mostActiveFaculty || "—"}
-              />
-              <Insight
-                label="Most active year level"
-                value={summary.insights.mostActiveYearLevel || "—"}
-              />
-              <Insight
-                label="Common topics"
-                value={summary.insights.commonTopics?.join(", ") || "—"}
-              />
-              <Insight
-                label="Meeting modes"
-                value={
-                  Object.entries(summary.insights.modeDistribution || {})
-                    .map(([mode, count]) => `${mode}: ${count}`)
-                    .join(" · ") || "—"
-                }
-              />
-              <Insight
-                label="Average duration"
-                value={
-                  summary.insights.averageDurationMinutes
-                    ? `${summary.insights.averageDurationMinutes} minutes`
-                    : "—"
-                }
-              />
-            </div>
-            <p className="mt-5 text-xs text-slate-500">
-              AI-generated for administrative reference. Appointment and
-              academic decisions remain human-controlled.
+                <option value="">All faculty</option>
+                {filters.facultyId &&
+                  !faculty.some(
+                    (item) => item.userId === filters.facultyId,
+                  ) && (
+                    <option value={filters.facultyId}>Selected faculty</option>
+                  )}
+                {faculty.map((item) => (
+                  <option key={item.userId} value={item.userId}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              {optionsState === "loading"
+                ? "Loading faculty…"
+                : optionsState === "error"
+                  ? "Faculty options unavailable. Change the search to retry."
+                  : hasMore
+                    ? "Refine the search to find more faculty."
+                    : faculty.length === 0
+                      ? "No matching faculty."
+                      : "Includes historical faculty and Dean providers."}
             </p>
           </div>
+          {[
+            ["status", "Appointment status", APPOINTMENT_STATUSES],
+            ["attendanceOutcome", "Attendance outcome", outcomes],
+            ["mode", "Consultation mode", ["Online", "Face-to-Face"]],
+          ].map(([key, label, values]) => (
+            <label key={key}>
+              {label}
+              <select
+                className="field mt-1"
+                value={filters[key]}
+                onChange={(e) => change(key, e.target.value)}
+              >
+                <option value="">All</option>
+                {values.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </fieldset>
+        <p className="text-sm text-slate-600">
+          Maximum 366 days and 1,000 records. Completed status alone does not
+          establish attendance. Historical records are labeled separately.
+          Counts are not Faculty rankings or disciplinary findings.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button className="btn-primary" type="submit" disabled={busy}>
+            Generate PDF Report
+          </button>
+          <button
+            className="btn-primary"
+            type="button"
+            disabled
+            aria-describedby="ai-deferred"
+          >
+            Generate AI Summary
+          </button>
+        </div>
+        <p id="ai-deferred" className="text-sm text-slate-500">
+          AI Summary is deferred pending a separately reviewed workflow.
+        </p>
+        {busy && <p role="status">Generating PDF report…</p>}
+        {error && (
+          <p role="alert" className="text-red-700">
+            {error}
+          </p>
         )}
-      </section>
-    </div>
-  );
-}
-
-function ReportOption({ icon: Icon, title, description, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full min-w-0 items-start gap-3 rounded-lg p-3 text-left hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-200 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <Icon size={18} className="mt-0.5 shrink-0 text-maroon-700" />
-      <span className="min-w-0">
-        <strong className="block text-sm text-maroon-900">{title}</strong>
-        <span className="mt-0.5 block text-xs leading-4 text-slate-500">
-          {description}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function Metric({ label, value }) {
-  return (
-    <div className="rounded-2xl border bg-white p-5">
-      <p className="text-sm text-slate-500">{label}</p>
-      <strong className="mt-2 block text-3xl text-maroon-900">{value}</strong>
-    </div>
-  );
-}
-
-function Insight({ label, value }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-bold text-maroon-900">
-        {value}
-      </p>
+        {message && (
+          <p role="status" className="text-slate-700">
+            {message}
+          </p>
+        )}
+      </form>
     </div>
   );
 }

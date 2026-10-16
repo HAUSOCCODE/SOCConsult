@@ -1,5 +1,6 @@
 import { getReviews, getReviewOptions, getReview, postReview } from "../controllers/attendanceReviewController.js";
 import { Router } from "express";
+import { postDeanReport } from "../controllers/deanReportController.js";
 import { getConsultations, getConsultationOptions, getConsultation, getConsultationDocument } from "../controllers/deanConsultationController.js";
 import accountImportRoutes from "./accountImportRoutes.js";
 import { rateLimit } from "express-rate-limit";
@@ -22,6 +23,7 @@ import {
 } from "../controllers/deanController.js";
 
 const router = Router();
+router.use("/reports/pdf", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(["/consultations", "/appointments"], (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use("/users", (req, res, next) => {
   res.set("Cache-Control", "no-store");
@@ -33,6 +35,7 @@ router.use("/account-imports", (_req, res, next) => {
 });
 router.use("/attendance-review", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+router.post("/reports/pdf", rateLimit({ windowMs: 60000, limit: 4, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false }), postDeanReport);
 router.get("/attendance-review", getReviews);
 router.get("/attendance-review/filter-options", getReviewOptions);
 router.get("/attendance-review/:id", getReview);

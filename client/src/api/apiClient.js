@@ -51,5 +51,6 @@ api.download = async function download(path, options = {}) {
   return {
     blob: await response.blob(),
     filename: filenameMatch?.[1] || "",
+    total: response.headers.has("X-Report-Total") ? Number(response.headers.get("X-Report-Total")) : null,
   };
 };

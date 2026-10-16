@@ -1,4 +1,13 @@
 import AuditLog from "../models/AuditLog.js";
+
+// Strict report audit: caller must commit this together with append-only metadata.
+export async function recordReportExportAudit({ actor, report, summary, session }) {
+  await AuditLog.create([{ subjectUser: actor, subjectRole: "dean", actorUser: actor, actorRole: "dean", actor,
+    action: "report_generated", category: "Consultation", description: "School of Computing PDF report generated",
+    relatedEntityType: "ReportExport", relatedEntityId: report._id,
+    metadata: { reportType: "soc_consultations_pdf", total: summary.total, generatedAt: report.generatedAt },
+  }], { session });
+}
 import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
 import Task from "../models/Task.js";
