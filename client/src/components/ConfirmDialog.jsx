@@ -19,6 +19,7 @@ export default function ConfirmDialog({
   onInputChange,
   inputPlaceholder,
   inputMaxLength = 500,
+  portalTarget,
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -132,6 +133,6 @@ export default function ConfirmDialog({
         </div>
       </section>
     </div>,
-    document.body,
+    portalTarget || document.body,
   );
 }

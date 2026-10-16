@@ -1,3 +1,4 @@
+import AttendanceReview from "./pages/Dean/AttendanceReview";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/Public/LandingPage";
@@ -137,8 +138,9 @@ export default function App() {
             <Route path="import" element={<CsvImport />} />
             <Route
               path="attendance-review"
-              element={<DeferredFeaturePage title="Attendance Review" />}
+              element={<AttendanceReview />}
             />
+            <Route path="attendance-review/:reviewId" element={<AttendanceReview />} />
             <Route path="faculty">
               <Route
                 index

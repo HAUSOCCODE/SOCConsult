@@ -1,3 +1,4 @@
+import { getReviews, getReviewOptions, getReview, postReview } from "../controllers/attendanceReviewController.js";
 import { Router } from "express";
 import { getConsultations, getConsultationOptions, getConsultation, getConsultationDocument } from "../controllers/deanConsultationController.js";
 import accountImportRoutes from "./accountImportRoutes.js";
@@ -30,7 +31,12 @@ router.use("/account-imports", (_req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
+router.use("/attendance-review", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+router.get("/attendance-review", getReviews);
+router.get("/attendance-review/filter-options", getReviewOptions);
+router.get("/attendance-review/:id", getReview);
+router.post("/attendance-review/:id/actions", postReview);
 router.use("/account-imports", accountImportRoutes);
 router.use(["/consultations", "/appointments"], (req, res, next) => {
   if (!["GET", "HEAD"].includes(req.method)) return res.status(403).json({ message: "Dean management access is read-only." });

@@ -114,7 +114,7 @@ export async function consultationDetails(id) {
     return { from: entry.previousStatus, to: entry.newStatus,
       actorRole: ["Student", "Faculty", "Dean", "System"].includes(entry.changedByRole) ? entry.changedByRole : "Unknown",
       actorType: entry.actorType === "system" ? "system" : "user", timestamp: entry.changedAt, reason,
-      source: entry.migrationVersion || /migration/i.test(entry.source || "") ? "Legacy migration" : ["request", "confirm", "reject", "propose", "accept_proposal", "reject_proposal", "cancel", "expire", "attendance_open", "attendance_finalize", "attendance_review"].includes(entry.source) ? entry.source : "Legacy record" };
+      source: entry.migrationVersion || /migration/i.test(entry.source || "") ? "Legacy migration" : ["request", "confirm", "reject", "propose", "accept_proposal", "reject_proposal", "cancel", "expire", "attendance_open", "attendance_finalize", "attendance_review", "attendance_review_resolved"].includes(entry.source) ? entry.source : "Legacy record" };
   });
   const accepted = (row.scheduleHistory || []).filter(entry => entry.response === "Accepted").sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   return { consultation: { ...listRecord(row), concern: row.reason, bookingMethod: row.bookingMethod,

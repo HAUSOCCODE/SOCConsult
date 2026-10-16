@@ -26,5 +26,5 @@ export const TRANSITION_RULES = Object.freeze({
 export const ATTENDANCE_TRANSITIONS = Object.freeze({
   "Confirmed": ["Awaiting Attendance Update"],
   "Awaiting Attendance Update": ["Completed", "Attendance Review"],
-  "Attendance Review": [], // Resolution requires the later authorized Dean workflow.
+  "Attendance Review": [], // Only the separate Dean review service can resolve this state.
 });

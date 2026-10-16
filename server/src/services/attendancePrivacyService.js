@@ -23,7 +23,7 @@ export function participantAttendance(row, responses, role, now = new Date()) {
     eligible: enrolled && !own && ["Confirmed", "Awaiting Attendance Update"].includes(row.status) &&
       now >= new Date(row.endAt) && now < new Date(a.responseDeadlineAt),
     ownResponse: own ? { outcome: own.outcome, reason: own.reason || "", submittedAt: own.submittedAt } : null,
-    waiting: Boolean(own && responses.length < 2 && row.status !== "Attendance Review"),
+    waiting: Boolean(own && responses.length < 2 && ["Confirmed", "Awaiting Attendance Update"].includes(row.status)),
     outcomes: own && responses.length === 2 ? Object.fromEntries(responses.map(r => [r.participantRole, r.outcome])) : undefined,
     finalOutcome: a?.finalOutcome ?? null };
 }

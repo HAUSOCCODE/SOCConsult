@@ -1,10 +1,10 @@
 import Appointment from "../models/Appointment.js";
 import mongoose from "mongoose";
-export const verifiedCompletedFilter = { status: "Completed", "attendance.finalOutcome": "Completed", "attendance.finalizationSource": "participant_agreement" };
+export const verifiedCompletedFilter = { status: "Completed", "attendance.finalOutcome": "Completed", "attendance.finalizationSource": { $in: ["participant_agreement", "dean_review"] } };
 export function attendanceClassification(row) {
   if (row.status === "Attendance Review") return "attendanceReview";
   if (row.status !== "Completed") return "other";
-  if (row.attendance?.finalizationSource !== "participant_agreement") return "historicalUnverifiedCompleted";
+  if (!["participant_agreement", "dean_review"].includes(row.attendance?.finalizationSource)) return "historicalUnverifiedCompleted";
   return { Completed: "verifiedCompleted", "Student No-show": "studentNoShow", "Faculty No-show": "facultyNoShow" }[row.attendance.finalOutcome] || "historicalUnverifiedCompleted";
 }
 export async function attendanceCounts(filter = {}) {

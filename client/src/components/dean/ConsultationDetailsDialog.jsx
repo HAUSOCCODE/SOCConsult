@@ -36,7 +36,7 @@ export default function ConsultationDetailsDialog({ recordId, onClose }) {
         ["Original/requested schedule", schedule(data.originalSchedule)], ["Current/requested schedule", schedule(data.currentSchedule)],
         ["Proposed schedule", schedule(data.proposedSchedule)], ["Created — Asia/Manila", monitoringDate(data.createdAt)], ["Updated — Asia/Manila", monitoringDate(data.updatedAt)],
       ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-sm font-semibold text-slate-500">{label}</dt><dd className="whitespace-pre-wrap break-words">{value || "Unavailable"}</dd></div>)}</dl>
-      {data.status === "Attendance Review" && <p className="rounded border p-3">Attendance Review is handled separately. <Link className="underline" to="/dean/attendance-review">Open Attendance Review</Link> (workflow pending).</p>}
+      {(data.status === "Attendance Review" || data.attendance?.finalizationSource === "dean_review") && <p className="rounded border p-3">Attendance Review is handled separately. <Link className="underline" to={`/dean/attendance-review/${recordId}`}>Open Attendance Review</Link>.</p>}
       <section><h3 className="font-bold">Status history</h3>{!data.statusHistory.length ? <p>No recorded status history.</p> : <ol className="space-y-3">{data.statusHistory.map((entry, index) => <li key={index} className="rounded border p-3">
         <p>{entry.from} → {entry.to}</p><p className="text-sm">{entry.actorRole} · {entry.actorType} · {monitoringDate(entry.timestamp)} · {entry.source}</p>{entry.reason && <p className="break-words">{entry.reason}</p>}
       </li>)}</ol>}</section>
