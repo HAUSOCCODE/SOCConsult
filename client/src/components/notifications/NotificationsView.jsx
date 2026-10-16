@@ -15,7 +15,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
 import { EmptyState, ErrorState, StatusBadge } from "../UI";
@@ -36,12 +36,20 @@ const iconFor = (notification) => {
   return Bell;
 };
 
-export default function NotificationsPage({
+const NotificationPageContext = createContext(null);
+export default function NotificationsPage(props) {
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const [category, setCategory] = useState("");
+  return <NotificationPageContext.Provider value={{ pagination, setPagination, category, setCategory }}><NotificationsPageContent {...props} /></NotificationPageContext.Provider>;
+}
+function NotificationsPageContent({
   compact = false,
   dean = false,
   student = false,
   faculty = false,
 }) {
+  const { setPagination, category, setCategory } = useContext(NotificationPageContext);
+  const requestVersion = useRef(0);
   const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -55,28 +63,35 @@ export default function NotificationsPage({
   const [markingUnread, setMarkingUnread] = useState(false);
 
   const load = (background = false) => {
+    const request = ++requestVersion.current;
     if (!background) setLoading(true);
     setError("");
-    return api("/notifications")
+    return api(`/notifications?${new URLSearchParams({ page: String(currentPage), limit: String(ITEMS_PER_PAGE), readState: filter.toLowerCase(), ...(category && { category }) })}`)
       .then((data) => {
+        if (request !== requestVersion.current) return;
+        setPagination(data.pagination);
+        if (currentPage > Math.max(1, data.pagination.totalPages)) setCurrentPage(Math.max(1, data.pagination.totalPages));
         setNotifications(
           Array.isArray(data?.notifications) ? data.notifications : [],
         );
         setUnreadCount(Number(data?.unreadCount) || 0);
       })
-      .catch(() => setError("Unable to load notifications. Please try again."))
-      .finally(() => !background && setLoading(false));
+      .catch(() => { if (request === requestVersion.current) setError("Unable to load notifications. Please try again."); })
+      .finally(() => { if (request === requestVersion.current) setLoading(false); });
   };
+  const latestLoad = useRef(load);
+  latestLoad.current = load;
   useEffect(() => {
     void load();
     const refresh = () => void load(true);
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     return () => {
+      ++requestVersion.current;
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [currentPage, filter, category]);
 
   const refreshBadge = (nextUnreadCount) =>
     window.dispatchEvent(
@@ -103,6 +118,7 @@ export default function NotificationsPage({
       );
       setUnreadCount((current) => Math.max(0, current - 1));
       refreshBadge();
+      await latestLoad.current(true);
     } catch {
       toast.error("Unable to update this notification. Please try again.");
     }
@@ -119,6 +135,7 @@ export default function NotificationsPage({
       );
       setUnreadCount(0);
       refreshBadge();
+      await latestLoad.current(true);
     } catch {
       toast.error("Unable to update notifications. Please try again.");
     }
@@ -142,6 +159,7 @@ export default function NotificationsPage({
       setUnreadCount(nextUnreadCount);
       toast.success(data.message || "All notifications marked as unread.");
       refreshBadge(nextUnreadCount);
+      await latestLoad.current(true);
     } catch {
       toast.error("Unable to update notifications. Please try again.");
     } finally {
@@ -181,6 +199,7 @@ export default function NotificationsPage({
       }
       setConfirmation(null);
       refreshBadge();
+      await latestLoad.current(true);
     } catch {
       toast.error(
         confirmation.type === "delete"
@@ -197,6 +216,12 @@ export default function NotificationsPage({
   if (compact)
     return (
       <>
+        <label className="mb-3 block text-sm font-semibold">Category
+          <select aria-label="Notification category" className="ml-2 rounded border p-2" value={category} onChange={event => { setCategory(event.target.value); setCurrentPage(1); }}>
+            <option value="">All categories</option>
+            {["Management", "Consultation", "Attendance", "Report"].map(value => <option key={value}>{value}</option>)}
+          </select>
+        </label>
         {student || faculty ? (
           <StudentNotificationsContent
             notifications={notifications}
@@ -254,7 +279,7 @@ export default function NotificationsPage({
         <div>
           <h1 className="page-title">Notifications</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Stay updated with your consultation activities.
+            Stay updated with your activities.
           </p>
         </div>
         <NotificationActions
@@ -373,19 +398,11 @@ function StudentNotificationsContent({
   faculty = false,
 }) {
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
-  const shown = notifications.filter((notification) =>
-    filter === "Unread"
-      ? !notification.isRead
-      : filter === "Read"
-        ? notification.isRead
-        : true,
-  );
-  const totalPages = Math.max(1, Math.ceil(shown.length / ITEMS_PER_PAGE));
+  const { pagination } = useContext(NotificationPageContext);
+  const shown = notifications;
+  const totalPages = Math.max(1, pagination.totalPages);
   const safePage = Math.min(currentPage, totalPages);
-  const pageNotifications = shown.slice(
-    (safePage - 1) * ITEMS_PER_PAGE,
-    safePage * ITEMS_PER_PAGE,
-  );
+  const pageNotifications = notifications;
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -424,7 +441,7 @@ function StudentNotificationsContent({
   };
   const typeLabel = (notification) =>
     notification.type
-      ? notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
+      ? notification.category || notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
       : "Update";
   const notificationDateParts = (value) => {
     const parsed = new Date(value);
@@ -783,7 +800,7 @@ function StudentNotificationsContent({
 
           <Pagination
             currentPage={safePage}
-            totalItems={shown.length}
+            totalItems={pagination.total}
             onPageChange={changePage}
             itemLabel="notifications"
             itemsPerPage={ITEMS_PER_PAGE}
@@ -982,19 +999,11 @@ function CompactNotifications({
   confirmClear,
   dean,
 }) {
-  const shown = notifications.filter((notification) =>
-    filter === "Unread"
-      ? !notification.isRead
-      : filter === "Read"
-        ? notification.isRead
-        : true,
-  );
-  const totalPages = Math.max(1, Math.ceil(shown.length / ITEMS_PER_PAGE));
+  const { pagination } = useContext(NotificationPageContext);
+  const shown = notifications;
+  const totalPages = Math.max(1, pagination.totalPages);
   const safePage = Math.min(currentPage, totalPages);
-  const pageNotifications = shown.slice(
-    (safePage - 1) * ITEMS_PER_PAGE,
-    safePage * ITEMS_PER_PAGE,
-  );
+  const pageNotifications = notifications;
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, setCurrentPage, totalPages]);
@@ -1016,7 +1025,7 @@ function CompactNotifications({
   };
   const typeLabel = (notification) =>
     notification.type
-      ? notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
+      ? notification.category || notification.type.charAt(0).toUpperCase() + notification.type.slice(1)
       : "Update";
 
   if (dean)
@@ -1228,7 +1237,7 @@ function CompactNotifications({
           <div className="overflow-hidden rounded-b-2xl border border-t-0 border-slate-200">
             <Pagination
               currentPage={safePage}
-              totalItems={shown.length}
+              totalItems={pagination.total}
               onPageChange={setCurrentPage}
               itemLabel="notifications"
               itemsPerPage={ITEMS_PER_PAGE}
@@ -1272,6 +1281,7 @@ function DeanNotificationsContent({
   date,
   typeLabel,
 }) {
+  const { pagination } = useContext(NotificationPageContext);
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
 
   useEffect(() => {
@@ -1365,7 +1375,7 @@ function DeanNotificationsContent({
           </div>
           <Pagination
             currentPage={safePage}
-            totalItems={shown.length}
+            totalItems={pagination.total}
             onPageChange={(page) => {
               setExpandedNotificationId(null);
               setCurrentPage(page);
@@ -1776,7 +1786,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
               href={notification.actionUrl}
               className="btn-primary w-full text-center sm:w-auto"
             >
-              View My Appointments
+              View details
             </a>
           )}
         </footer>

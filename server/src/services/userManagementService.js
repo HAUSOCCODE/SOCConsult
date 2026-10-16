@@ -1,3 +1,4 @@
+import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
@@ -266,6 +267,7 @@ export async function changeManagedUserStatus(id, body, actor) {
           reason,
           session,
         });
+        await createEventNotification({ recipient: actor, event: body.accountStatus === "Active" ? "account_reactivated" : "account_deactivated", relatedEntityId: updated._id, actionUrl: `/dean/users?userId=${updated._id}`, key: `${updated._id}:${updated.updatedAt.toISOString()}`, session });
       },
       {
         readConcern: { level: "snapshot" },

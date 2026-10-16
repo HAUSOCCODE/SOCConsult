@@ -207,11 +207,12 @@ export async function logActivity(
 export const notify = (recipient, type, title, message, relatedEntityId) =>
   Notification.create({
     recipient,
+    category: type === "registration" ? "Management" : "Consultation",
     type,
     title,
     message,
     relatedEntityId,
-  }).catch(console.error);
+  }).catch(() => { console.warn("[Notification] Delivery failed."); return false; });
 
 // Status and audit must commit together. Reason stays in authorized audit history.
 export async function recordUserStatusAudit({ user, actor, previousStatus, previousRegistrationStatus, normalizedRegistration, reason, session }) {

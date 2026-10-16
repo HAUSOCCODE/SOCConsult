@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
+import Notification from "../src/models/Notification.js";
 import AccountImport from "../src/models/AccountImport.js";
 const csv =
   "institutional_id,first_name,last_name,official_email,role\n0001,Juan,Santos,j@student.hau.edu.ph,student";
@@ -19,6 +20,8 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
   let role = "dean",
     activeId = owner;
   const previews = [];
+  const notifications = [];
+  patch(Notification, "create", async records => { notifications.push(...records); return records; });
   patch(User, "findById", async () => ({
     _id: activeId,
     id: String(activeId),
@@ -161,6 +164,9 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("Retry-After")) > 0);
     assert.equal(previews.length, 2);
+    assert.equal(notifications.length, 2);
+    assert.ok(notifications.every(n => n.type === "import_failed" && n.recipient === String(owner) && n.actionUrl === "/dean/import"));
+    assert.doesNotMatch(JSON.stringify(notifications.map(({ title, message }) => ({ title, message }))), /0001|student.hau|bad|buffer|password/);
     assert.ok(
       AccountImport.schema
         .indexes()

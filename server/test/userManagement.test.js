@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
+import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 import Appointment from "../src/models/Appointment.js";
 import { authenticate } from "../src/middleware/auth.js";
@@ -80,13 +81,13 @@ function harness(initial = [account()]) {
       }
       assert.equal(options.readConcern.level, "snapshot");
       assert.equal(options.writeConcern.w, "majority");
-      const before = structuredClone({ users: h.users, audits: h.audits });
+      const before = structuredClone({ users: h.users, audits: h.audits, notifications: h.notifications });
       try {
         if (h.unsupported) throw new Error("private topology detail");
         await work();
         if (h.retry) {
           h.users = structuredClone(before.users);
-          h.audits = structuredClone(before.audits);
+          h.audits = structuredClone(before.audits); h.notifications = structuredClone(before.notifications);
           await work();
         }
         if (h.uncertain)
@@ -97,7 +98,7 @@ function harness(initial = [account()]) {
       } catch (error) {
         if (!h.uncertain) {
           h.users = before.users;
-          h.audits = before.audits;
+          h.audits = before.audits; h.notifications = before.notifications;
         }
         throw error;
       } finally {
@@ -190,6 +191,17 @@ function harness(initial = [account()]) {
       return structuredClone(user);
     },
   }));
+  h.notifications = [];
+  patch(Notification, "create", async (records, options) => {
+    assert.equal(options.session, session);
+    if (h.notificationFailure) throw new Error("private notification detail");
+    h.notifications.push(...records); return records;
+  });
+  patch(Notification, "updateOne", async (filter, update) => {
+    if (h.notificationFailure) throw new Error("private notification detail");
+    if (!h.notifications.some(n => n.deduplicationKey === filter.deduplicationKey)) h.notifications.push(update.$setOnInsert);
+    return { modifiedCount: 1 };
+  });
   patch(AuditLog, "create", async (records, options) => {
     assert.equal(options.session, session);
     if (h.auditFailure) throw new Error("private audit detail");
@@ -905,4 +917,26 @@ test("legacy missing/null timestamps support a single fenced activation and whit
       h.restore();
     }
   }
+});
+
+
+test("account status notifications preserve distinct reactivation cycles and rollback on delivery failure", async () => {
+  const h = harness();
+  try {
+    for (const status of ["Inactive", "Active", "Inactive"]) {
+      const current = h.users[0];
+      const result = await changeManagedUserStatus(current._id, { accountStatus: status, expectedStatus: current.accountStatus, version: current.updatedAt.toISOString(), reason: "PRIVATE_REASON" }, actor);
+      assert.equal(result.statusCode, 200);
+    }
+    assert.equal(h.notifications.length, 3);
+    assert.equal(new Set(h.notifications.map(n => n.deduplicationKey)).size, 3);
+    assert.ok(h.notifications.every(n => n.recipient === actor && n.category === "Management"));
+    assert.doesNotMatch(JSON.stringify(h.notifications), /PRIVATE|SECRET|000123/);
+    h.notificationFailure = true;
+    const current = h.users[0];
+    const failed = await changeManagedUserStatus(current._id, { accountStatus: "Active", expectedStatus: current.accountStatus, version: current.updatedAt.toISOString() }, actor);
+    assert.equal(failed.statusCode, 503);
+    assert.equal(h.users[0].accountStatus, "Inactive");
+    assert.equal(h.notifications.length, 3);
+  } finally { h.restore(); }
 });

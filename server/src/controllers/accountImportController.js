@@ -1,3 +1,4 @@
+import { bestEffortNotification } from "../services/notificationService.js";
 import { randomUUID } from "node:crypto";
 import AccountImport from "../models/AccountImport.js";
 import { env } from "../config/env.js";
@@ -28,6 +29,7 @@ export async function validateAccountImport(req, res) {
     });
     return res.json(publicAccountImport(preview));
   } catch (error) {
+    if (error instanceof CsvValidationError) await bestEffortNotification({ recipient: req.user.id, event: "import_failed", actionUrl: "/dean/import" });
     return res
       .status(error instanceof CsvValidationError ? 400 : 500)
       .json({
