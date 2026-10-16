@@ -2,6 +2,12 @@ export const notFound = (_req, res) =>
   res.status(404).json({ message: "Route not found." });
 
 export const errorHandler = (err, _req, res, _next) => {
+  // Report parser errors can carry arbitrary private input; never log or echo it.
+  if (/^\/api\/dean\/reports\/pdf\/?(?:\?|$)/.test(_req.originalUrl || "")) {
+    res.set("Cache-Control", "no-store");
+    const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 503;
+    return res.status(status).json({ message: status === 503 ? "Report generation is temporarily unavailable." : "Invalid report request." });
+  }
   if (/^\/api\/appointments\/[^/]+\/attendance(?:-responses)?\/?(?:\?|$)/.test(_req.originalUrl || "")) {
     res.set("Cache-Control", "no-store");
     const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400
