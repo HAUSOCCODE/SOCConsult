@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Badge,
   CalendarDays,
@@ -297,7 +297,7 @@ export default function ProfilePage() {
   );
 }
 
-export function SecuritySettings() {
+export function SecuritySettings({ onPasswordChanged } = {}) {
   const toast = useToast();
   const empty = { currentPassword: "", newPassword: "", confirmPassword: "" };
   const [passwords, setPasswords] = useState(empty);
@@ -308,6 +308,7 @@ export function SecuritySettings() {
   });
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const pending = useRef(false);
 
   const change = (key, value) =>
     setPasswords((current) => ({ ...current, [key]: value }));
@@ -321,6 +322,7 @@ export function SecuritySettings() {
   };
   const submit = async (event) => {
     event.preventDefault();
+    if (pending.current) return;
     setValidationError("");
     if (passwords.newPassword !== passwords.confirmPassword) {
       setValidationError("New passwords do not match.");
@@ -342,6 +344,7 @@ export function SecuritySettings() {
       );
       return;
     }
+    pending.current = true;
     setSubmitting(true);
     try {
       const data = await api("/auth/change-password", {
@@ -353,10 +356,12 @@ export function SecuritySettings() {
         }),
       });
       clear();
+      onPasswordChanged?.();
       toast.success(data.message || "Password changed successfully.");
     } catch (error) {
       toast.error(error.message || "Unable to change password.");
     } finally {
+      pending.current = false;
       setSubmitting(false);
     }
   };
@@ -429,6 +434,7 @@ export function SecuritySettings() {
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
+            disabled={submitting}
             onClick={() => {
               clear();
               setValidationError("");

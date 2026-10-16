@@ -1,7 +1,5 @@
-import bcrypt from "bcryptjs";
 import { createManualAccount } from "../services/manualAccountService.js";
 import User from "../models/User.js";
-import { logActivity } from "../services/activityService.js";
 
 import {
   listManagedUsers,
@@ -47,18 +45,4 @@ export async function updateUserStatus(req, res) {
     req.user.id,
   );
   return res.status(result.statusCode).json(result.body);
-}
-export async function changeDeanPassword(req, res) {
-  const user = await User.findById(req.user.id).select("+password");
-  if (!(await bcrypt.compare(req.body.currentPassword || "", user.password)))
-    return res.status(400).json({ message: "Current password is incorrect." });
-  if ((req.body.newPassword || "").length < 8)
-    return res
-      .status(400)
-      .json({ message: "New password must contain at least 8 characters." });
-  user.password = await bcrypt.hash(req.body.newPassword, 12);
-  user.passwordChangedAt = new Date();
-  await user.save();
-  await logActivity("password_changed", user.id, "User", user.id);
-  res.json({ message: "Password changed successfully." });
 }

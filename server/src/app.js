@@ -17,7 +17,10 @@ import studentAvailabilityRoutes from "./routes/studentAvailabilityRoutes.js";
 import calendarRoutes from "./routes/calendarRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
+import { accountNoStore } from "./middleware/accountSecurity.js";
+
 const app = express();
+app.use(accountNoStore);
 app.use(helmet());
 app.use(cors({ origin: env.clientUrl }));
 app.use("/api/dean/reports/ai-summaries", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); }, express.json({ limit: "2kb" }));
