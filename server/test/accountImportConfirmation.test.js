@@ -13,7 +13,7 @@ import { confirmAccountImport, sanitizeFilename } from "../src/services/accountI
 import { institutionalIndex } from "../src/services/accountImportMigrationService.js";
 import { accountImportConfig } from "../src/config/accountImport.js";
 import { validateAccountRows } from "../src/services/csvValidationService.js";
-import { login, register, changePassword } from "../src/controllers/authController.js";
+import { login, changePassword } from "../src/controllers/authController.js";
 
 const owner = new mongoose.Types.ObjectId().toString();
 const previewId = "00000000-0000-4000-8000-000000000001";
@@ -401,25 +401,6 @@ test("HTTP confirmation requires active Dean, empty body, ownership and supports
     assert.equal((await request()).status, 409); assert.equal(h.users.length, 1);
   } finally { await new Promise((resolve) => server.close(resolve)); User.findById = oldById; h.restore(); }
 });
-
-test("self-registration populates canonical IDs, preserves approval workflow, and handles duplicate-key races", async () => {
-  const h = await harness(["student"]);
-  const oldOne = User.findOne, oldCreate = User.create, oldById = User.findById;
-  const created = [];
-  User.findOne = async () => null;
-  User.create = async (data) => { created.push(data); return { ...data, id: owner }; };
-  User.findById = async () => null;
-  try {
-    const req = { params: { role: "student" }, body: { firstName: "Juan", lastName: "Santos", email: `r@${env.studentDomain}`,
-      studentId: " 0001 ", program: "Bachelor of Science in Information Technology", password: "Registration1" } };
-    let res = response(); await register(req, res);
-    assert.equal(res.statusCode, 201); assert.equal(created[0].institutionalId, "0001");
-    assert.equal(created[0].accountSource, "self_registration"); assert.equal(created[0].registrationStatus, "Pending");
-    User.create = async () => { throw Object.assign(new Error("private collision details"), { code: 11000 }); };
-    res = response(); await register(req, res); assert.equal(res.statusCode, 409); assert.doesNotMatch(JSON.stringify(res.body), /private/);
-  } finally { User.findOne = oldOne; User.create = oldCreate; User.findById = oldById; h.restore(); }
-});
-
 
 test("import event notifications follow confirmed outcomes and do not report uncertain commits as failures", async () => {
   for (const mode of ["success", "failure", "notificationFailure", "uncertain"]) {

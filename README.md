@@ -46,15 +46,19 @@ and preview belong to DEA-06; database writes and bulk account creation belong
 to DEA-07. Mapping these six CSV fields to complete User records, generating
 initial passwords, and determining account lifecycle behavior belong to DEA-06
 and DEA-07. The current model uses `studentId` or `employeeId`, camelCase name
-fields, and `email`; it also requires `name` and `password`. Existing registration
-requires Student `program` or Faculty `position` and applies its own validation
-and Pending/Inactive lifecycle. These fields and behaviors are not added to this
-CSV format, and existing registration remains unchanged.
+fields, and `email`; it also requires `name` and `password`. Public registration is removed. Student and Faculty accounts are provisioned through CSV import or Dean manual creation. Account sources and approval metadata remain internal legacy compatibility.
 
 SOCConsult does not connect directly to Campus++. Campus++ is only an external
 source from which an authorized administrator may export a CSV. Its actual
 column names are not assumed; column mapping must be updated after an authorized
 sample export becomes available.
+
+DEA-18 removes public account registration. Active accounts can sign in with
+Approved or missing/null legacy registration state; explicit Pending, Rejected,
+or unknown states are denied. Login, session validation, startup, and account
+activation do not fill or approve legacy registration state. Existing accounts
+using only old boolean flags need separately reviewed reconciliation. See
+[DEA-18](server/DEA18.md) for retained history, aliases, and validation results.
 
 ## Setup
 
@@ -101,8 +105,8 @@ control and command output.
 
 Management API consumers must use `/api/dean/*` and `/api/dashboard/dean`.
 Old `/api/admin/*` paths return 404, including mutations; no API redirects are
-installed. Old frontend `/admin/*` links redirect to the matching Dean path.
-School-wide document access lives under `/api/dean/appointments/*`; personal
+installed. Old frontend `/admin/*` routes are removed. Historical notification destinations are normalized to allowlisted current Dean routes when read; stored records are preserved.
+School-wide document access lives under `/api/dean/consultations/*` (read-only `/api/dean/appointments/*` aliases remain temporarily); personal
 `/api/appointments/*` document access requires consultation ownership.
 
 ### Dean password reset (DEA-10)

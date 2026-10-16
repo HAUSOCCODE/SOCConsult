@@ -5,7 +5,7 @@ import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
 import { migrateDeanAccount } from "../services/deanAccountMigrationService.js";
 import { env } from "../config/env.js";
-import { STUDENT_PROGRAMS } from "../config/programs.js";
+import { eligibleRegistrationState } from "../services/accountEligibility.js";
 import {
   formatFullName,
   validatePersonName,
@@ -16,16 +16,9 @@ import {
   uploadBuffer,
 } from "../services/cloudinaryStorage.js";
 
-import { logActivity, notify, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
+import { logActivity, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
 
 const normalize = (value = "") => value.trim().toLowerCase();
-const validEmail = (email, domain) => {
-  const normalized = normalize(email);
-  const emailDomain = normalized.slice(normalized.lastIndexOf("@") + 1);
-  return (
-    /^[^\s@]+@[^\s@]+$/.test(normalized) && emailDomain === normalize(domain)
-  );
-};
 const validPassword = (password) =>
   password.length >= 8 &&
   !/\s/.test(password) &&
@@ -58,111 +51,6 @@ const publicUser = (user) => ({
 });
 const tokenFor = (user) =>
   jwt.sign({ sub: user.id }, env.jwtSecret, { expiresIn: "8h" });
-
-export async function register(req, res) {
-  const role = req.params.role;
-  if (!["student", "faculty"].includes(role))
-    return res
-      .status(404)
-      .json({ message: "Registration is unavailable for this role." });
-  const nameValidation = validatePersonName(req.body);
-  const email = normalize(req.body.email);
-  const password = req.body.password || "";
-  const domain = role === "student" ? env.studentDomain : env.facultyDomain;
-  const roleLabel = role === "student" ? "student" : "faculty";
-  if (!nameValidation.valid)
-    return res.status(400).json({
-      message: "Please correct the highlighted name fields.",
-      errors: nameValidation.errors,
-    });
-  const { firstName, middleName, lastName } = nameValidation.values;
-  const name = formatFullName(nameValidation.values);
-  if (!validEmail(email, domain)) {
-    return res.status(400).json({
-      message: `Please use your official Holy Angel University ${roleLabel} email (@${domain}).`,
-    });
-  }
-  if (!validPassword(password))
-    return res.status(400).json({ message: passwordValidationMessage });
-  const existing = await User.findOne({ email });
-  if (existing?.registrationStatus === "Pending")
-    return res.status(409).json({
-      message:
-        "An account with this email has already been created and is awaiting dean approval. You do not need to register again.",
-    });
-  if (existing?.registrationStatus === "Approved")
-    return res.status(409).json({
-      message: "An account with this email already exists. Please log in.",
-    });
-  if (existing)
-    return res.status(409).json({
-      message:
-        "A registration with this email already exists. Please contact the School of Computing dean.",
-    });
-  const idField = role === "student" ? "studentId" : "employeeId";
-  const idValue = (req.body[idField] || "").trim();
-  if (!idValue)
-    return res.status(400).json({
-      message: `${role === "student" ? "Student" : "Employee"} ID is required.`,
-    });
-  if (Buffer.byteLength(idValue, "utf8") > 72)
-    return res.status(400).json({ message: "Institutional ID must be 72 UTF-8 bytes or fewer." });
-  if (await User.findOne({ $or: [{ institutionalId: idValue }, { studentId: idValue }, { employeeId: idValue }] }))
-    return res.status(409).json({ message: "An account with this institutional ID already exists." });
-  const program =
-    role === "student" ? (req.body.program || "").trim() : undefined;
-  if (role === "student" && !STUDENT_PROGRAMS.includes(program))
-    return res.status(400).json({ message: "Please select your program." });
-  const position =
-    role === "faculty" ? (req.body.position || "").trim() : undefined;
-  if (role === "faculty" && !position)
-    return res
-      .status(400)
-      .json({ message: "Position / Designation is required." });
-  let user;
-  try {
-    user = await User.create({
-      name,
-      firstName,
-      middleName,
-      lastName,
-      email,
-      password: await bcrypt.hash(password, 12),
-      role,
-      [idField]: idValue,
-      institutionalId: idValue,
-      accountSource: "self_registration",
-      program,
-      position,
-      registrationStatus: "Pending",
-      accountStatus: "Inactive",
-    });
-  } catch (error) {
-    if (error.code === 11000)
-      return res.status(409).json({ message: "An account with this email or institutional ID already exists." });
-    throw error;
-  }
-  await logActivity(`${role}_registered`, user.id, "User", user.id, { role });
-  const deans = await User.find({
-    role: "dean",
-    accountStatus: "Active",
-  }).select("_id");
-  await Promise.all(
-    deans.map((dean) =>
-      notify(
-        dean.id,
-        "registration",
-        `New ${role} registration`,
-        `${name} is awaiting approval.`,
-        user.id,
-      ),
-    ),
-  );
-  res.status(201).json({
-    message: "Registration submitted and awaiting dean approval.",
-    user: publicUser(user),
-  });
-}
 
 export async function login(req, res) {
   const requestedRole = req.params.role;
@@ -212,16 +100,8 @@ export async function login(req, res) {
     return res
       .status(403)
       .json({ message: "This account cannot access the selected portal." });
-  if (user.role === "faculty" && user.registrationStatus === "Pending")
-    return res.status(403).json({
-      message:
-        "Your account has already been created. Please wait for a Dean to approve your registration before you can access SOCConsult. You do not need to register again.",
-    });
-  if (user.role === "faculty" && user.registrationStatus === "Rejected")
-    return res.status(403).json({
-      message:
-        "Your registration was not approved. Please contact the Dean if you believe this requires review.",
-    });
+  if (!eligibleRegistrationState(user))
+    return res.status(403).json({ message: "Account access is unavailable. Please contact the Dean for assistance." });
   if (user.accountStatus !== "Active")
     return res.status(403).json({
       message:

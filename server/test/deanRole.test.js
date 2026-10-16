@@ -13,7 +13,7 @@ import Appointment from "../src/models/Appointment.js";
 import Availability from "../src/models/Availability.js";
 import Task from "../src/models/Task.js";
 import Notification from "../src/models/Notification.js";
-import { register, login, ensureDean } from "../src/controllers/authController.js";
+import { login, ensureDean } from "../src/controllers/authController.js";
 import { migrateDeanAccount } from "../src/services/deanAccountMigrationService.js";
 
 const response = () => ({ statusCode: 200, status(value) { this.statusCode = value; return this; }, json(body) { this.body = body; return this; } });
@@ -30,31 +30,6 @@ test("User and audit validation recognize Dean and reject Admin as a current rol
   assert.deepEqual(User.schema.path("role").enumValues, ["student", "faculty", "dean"]);
   assert.deepEqual(AuditLog.schema.path("actorRole").enumValues, ["student", "faculty", "dean", "system"]);
   assert.ok(AuditLog.schema.path("subjectRole").enumValues.includes("dean"));
-});
-
-test("public registration rejects Dean and cannot elevate Student or Faculty using body.role", async () => {
-  let res = response();
-  await register({ params: { role: "dean" }, body: {} }, res);
-  assert.equal(res.statusCode, 404);
-  const restores = [], created = [];
-  patch(User, "findOne", async () => null, restores);
-  patch(User, "create", async (data) => { created.push(data); return { ...data, id: "account" }; }, restores);
-  patch(User, "findById", async () => null, restores);
-  patch(AuditLog, "create", async record => record, restores);
-  patch(User, "find", () => chain([]), restores);
-  try {
-    for (const role of ["student", "faculty"]) {
-      res = response();
-      await register({ params: { role }, body: {
-        role: "dean", firstName: "Test", lastName: "Person", password: "TestingPassword1",
-        email: role === "student" ? `test@${env.studentDomain}` : `test@${env.facultyDomain}`,
-        studentId: "ST-1", employeeId: "FA-1", position: "Professor",
-        program: "Bachelor of Science in Information Technology",
-      } }, res);
-      assert.equal(res.statusCode, 201);
-      assert.equal(created.at(-1).role, role);
-    }
-  } finally { restores.reverse().forEach(fn => fn()); }
 });
 
 test("Dean login uses username and the stored role remains authoritative", async () => {

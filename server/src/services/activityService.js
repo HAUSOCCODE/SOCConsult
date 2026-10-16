@@ -190,15 +190,14 @@ export const notify = (recipient, type, title, message, relatedEntityId) =>
   }).catch(() => { console.warn("[Notification] Delivery failed."); return false; });
 
 // Status and audit must commit together. Free-text reasons never enter the audit log.
-export async function recordUserStatusAudit({ user, actor, previousStatus, previousRegistrationStatus, normalizedRegistration, session }) {
+export async function recordUserStatusAudit({ user, actor, previousStatus, session }) {
   await AuditLog.create([{
     subjectUser: user._id, subjectRole: user.role, actorUser: actor, actorRole: "dean", actor,
     action: user.accountStatus === "Active" ? "account_activated" : "account_deactivated",
     category: "Account", description: user.accountStatus === "Active" ? "Account activated" : "Account deactivated",
     relatedEntityType: "User", relatedEntityId: user._id,
     changes: { before: { status: previousStatus }, after: { status: user.accountStatus } },
-    metadata: { role: user.role, previousStatus, newStatus: user.accountStatus,
-      ...(normalizedRegistration && { previousRegistrationStatus: previousRegistrationStatus ?? "Not recorded", newRegistrationStatus: "Approved" }) },
+    metadata: { role: user.role, previousStatus, newStatus: user.accountStatus },
   }], { session });
 }
 

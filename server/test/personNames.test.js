@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import User from "../src/models/User.js";
 import AuditLog from "../src/models/AuditLog.js";
-import { register } from "../src/controllers/authController.js";
+import { updateProfile } from "../src/controllers/authController.js";
 import {
   formatFullName,
   validatePersonName,
@@ -117,131 +117,33 @@ test("legacy accounts remain valid and use name or fullName fallback", () => {
   );
 });
 
-test("registration and profile flows persist separate fields and compose legacy name on the backend", () => {
-  const source = fs.readFileSync(
-    new URL("../src/controllers/authController.js", import.meta.url),
-    "utf8",
-  );
-  assert.match(source, /validatePersonName\(req\.body\)/);
-  assert.match(source, /firstName,/);
-  assert.match(source, /middleName,/);
-  assert.match(source, /lastName,/);
-  assert.match(source, /name: formatFullName|const name = formatFullName/);
-  assert.doesNotMatch(source, /const name = \(req\.body\.name/);
-});
 
-test("student and faculty registration endpoints persist structured names with optional middle names", async () => {
-  const restores = [];
-  const created = [];
-  let currentRole = "student";
-  patch(User, "findOne", async () => null, restores);
-  patch(
-    User,
-    "create",
-    async (record) => {
-      const saved = {
-        ...record,
-        _id: "507f1f77bcf86cd799439011",
-        id: "507f1f77bcf86cd799439011",
-      };
-      created.push(saved);
-      currentRole = saved.role;
-      return saved;
-    },
-    restores,
-  );
-  patch(User, "find", () => ({ select: async () => [] }), restores);
-  patch(
-    User,
-    "findById",
-    async () => ({
-      _id: "507f1f77bcf86cd799439011",
-      id: "507f1f77bcf86cd799439011",
-      role: currentRole,
-    }),
-    restores,
-  );
-  patch(AuditLog, "create", async (record) => record, restores);
+test("Student and Faculty profile updates persist structured names and return field errors", async () => {
+  const restores = [], writes = [];
+  patch(User, "findById", () => ({ select: async () => ({ firstName: "Old", lastName: "Name" }) }), restores);
+  patch(User, "findByIdAndUpdate", (_id, updates) => {
+    writes.push(updates);
+    return { select: async () => ({ id: "profile", ...updates }) };
+  }, restores);
+  patch(AuditLog, "create", async record => record, restores);
   try {
-    const cases = [
-      {
-        role: "student",
-        body: {
-          firstName: "Mikko",
-          middleName: "E.",
-          lastName: "Pangilinan",
-          email: "mikko@student.hau.edu.ph",
-          password: "Password1",
-          studentId: "2026-001",
-          program: "Bachelor of Science in Information Technology",
-        },
-        expected: "Mikko E. Pangilinan",
-      },
-      {
-        role: "student",
-        body: {
-          firstName: "Ana",
-          middleName: "",
-          lastName: "Reyes",
-          email: "ana@student.hau.edu.ph",
-          password: "Password1",
-          studentId: "2026-002",
-          program: "Bachelor of Science in Computer Science",
-        },
-        expected: "Ana Reyes",
-      },
-      {
-        role: "faculty",
-        body: {
-          firstName: "Maria",
-          middleName: "L.",
-          lastName: "Santos",
-          email: "maria@hau.edu.ph",
-          password: "Password1",
-          employeeId: "FAC-001",
-          position: "Professor",
-        },
-        expected: "Maria L. Santos",
-      },
-      {
-        role: "faculty",
-        body: {
-          firstName: "Juan",
-          lastName: "Dela Cruz",
-          email: "juan@hau.edu.ph",
-          password: "Password1",
-          employeeId: "FAC-002",
-          position: "Instructor",
-        },
-        expected: "Juan Dela Cruz",
-      },
-    ];
-    for (const item of cases) {
-      const res = response();
-      await register({ params: { role: item.role }, body: item.body }, res);
-      assert.equal(res.statusCode, 201);
-      assert.equal(res.body.user.name, item.expected);
-      assert.equal(res.body.user.firstName, item.body.firstName);
-      assert.equal(res.body.user.middleName, item.body.middleName || "");
-      assert.equal(res.body.user.lastName, item.body.lastName);
+    for (const role of ["student", "faculty"]) {
+      for (const middleName of ["E.", ""]) {
+        const res = response();
+        await updateProfile({ user: { id: "profile", role }, body: { firstName: " Mikko ", middleName, lastName: " Pangilinan " } }, res);
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.user.firstName, "Mikko");
+        assert.equal(res.body.user.middleName, middleName);
+        assert.equal(res.body.user.lastName, "Pangilinan");
+        assert.equal(writes.at(-1).name, middleName ? "Mikko E. Pangilinan" : "Mikko Pangilinan");
+      }
+      for (const body of [{ firstName: "", lastName: "Reyes" }, { firstName: "Ana", lastName: "" }, { firstName: "<b>Ana</b>", lastName: "Reyes" }]) {
+        const before = writes.length, res = response();
+        await updateProfile({ user: { id: "profile", role }, body }, res);
+        assert.equal(res.statusCode, 400);
+        assert.ok(res.body.errors.firstName || res.body.errors.lastName);
+        assert.equal(writes.length, before);
+      }
     }
-    assert.equal(created.length, 4);
-    assert.equal(created[0].name, "Mikko E. Pangilinan");
-    assert.equal(created[1].middleName, "");
-  } finally {
-    restores.reverse().forEach((restore) => restore());
-  }
-});
-
-test("registration returns field-specific errors before writing invalid names", async () => {
-  for (const body of [
-    { firstName: "", lastName: "Reyes" },
-    { firstName: "Ana", lastName: "" },
-    { firstName: "<b>Ana</b>", lastName: "Reyes" },
-  ]) {
-    const res = response();
-    await register({ params: { role: "student" }, body }, res);
-    assert.equal(res.statusCode, 400);
-    assert.ok(res.body.errors.firstName || res.body.errors.lastName);
-  }
+  } finally { restores.reverse().forEach(restore => restore()); }
 });

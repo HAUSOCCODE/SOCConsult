@@ -80,16 +80,16 @@ test("HTTP logout authentication, audit and existing Dean login limiter", async 
     assert.deepEqual(events[0].metadata, { role: "dean" });
     assert.ok(!JSON.stringify(events[0]).includes(token));
     assert.equal((await request("/register/dean")).status, 404);
-    // Registration and login share the existing 50-request budget.
-    for (let i = 0; i < 49; i++) assert.equal((await request("/login/dean", { username: "unknown", password: "wrong" })).status, 401);
-    assert.equal(queries, 49);
+    // Removed registration requests do not consume the login-only budget.
+    for (let i = 0; i < 50; i++) assert.equal((await request("/login/dean", { username: "unknown", password: "wrong" })).status, 401);
+    assert.equal(queries, 50);
     for (const username of ["unknown", "management"]) {
       const limited = await request("/login/dean", { username, password: "wrong" });
       assert.equal(limited.status, 429);
       assert.deepEqual(await limited.json(), { message: "Too many authentication attempts. Please try again later." });
       assert.ok(Number(limited.headers.get("Retry-After")) > 0);
     }
-    assert.equal(queries, 49);
+    assert.equal(queries, 50);
   } finally { await new Promise(resolve => server.close(resolve)); User.findById = originalFind; User.findOne = originalOne; AuditLog.create = originalCreate; }
 });
 
@@ -107,8 +107,8 @@ test("workspace source contracts preserve one session and wait for hydration", a
   assert.match(context, /finally \{[\s\S]*sessionStorage.removeItem\("consultio_token"\)/);
   assert.match(context, /setTimeout\(\(\) => controller.abort\(\), 5000\)/);
   assert.match(layout, /await logout\(\);\s*navigate/);
-  assert.match(form, /password: mode === "login" \? e.target.value :/);
-  assert.match(form, /minLength=\{mode === "register" \? 8 : undefined\}/);
+  assert.match(form, /password: e.target.value/);
+  assert.doesNotMatch(form, /mode === "register"|auth\/register/);
 });
 
 test("client logout clears its session after success, server failure, or timeout", async () => {

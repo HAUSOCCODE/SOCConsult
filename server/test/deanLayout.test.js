@@ -146,6 +146,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
   );
   components.ProtectedRoute = ProtectedRoute;
   components.DeanLayout = () => React.createElement(router.Outlet);
+  components.StudentLayout = () => React.createElement(router.Outlet);
   const icons = Object.fromEntries(
     [
       "Bell",
@@ -199,6 +200,9 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
       if (role === "dean") assert.ok(html.includes(component), page);
       else assert.ok(!html.includes(component), `${role}: ${page}`);
     }
+    for (const path of ["/admin/dashboard", "/admin/registrations"]) assert.match(render(path), /NotFoundPage/);
+    assert.match(render(`/${role}/register`), /NotFoundPage/);
+    if (role === "dean") assert.match(render("/dean/registrations"), /NotFoundPage/);
     const html = render("/faculty/dashboard");
     assert.equal(html.includes("FacultyDashboard"), role === "faculty");
   }
@@ -295,6 +299,6 @@ test("personal documents, deferred pages, component reuse and AI mount contracts
   assert.match(app, /<FacultyDashboard\s+routeBase="\/dean\/faculty"/);
   assert.match(app, /<FacultyAppointments \/>/);
   assert.doesNotMatch(app, /initialTab="Pending Registrations"|tab=pending/);
-  assert.match(app, /DeanRouteRedirect to="\/dean\/users"/);
+  assert.doesNotMatch(app, /path="registrations"|\/admin\/|FacultyRegister/);
   assert.match(app, /DeanRouteRedirect to="\/dean\/account"/);
 });

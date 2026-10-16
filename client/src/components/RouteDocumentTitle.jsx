@@ -43,7 +43,6 @@ const titles = {
   "/dean/dashboard": "Dean Dashboard | SOCConsult",
   "/dean/audit-logs": "Audit Logs | SOCConsult",
   "/dean/users": "User Management | SOCConsult",
-  "/dean/registrations": "User Management | SOCConsult",
   "/dean/consultations": "Consultation Monitoring | SOCConsult",
   "/dean/appointments": "Consultation Monitoring | SOCConsult",
   "/dean/consultation-overview": "Consultation Monitoring | SOCConsult",

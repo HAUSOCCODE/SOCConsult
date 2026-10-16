@@ -17,7 +17,6 @@ import {
   createUser,
   getUser,
   getUsers,
-  getUserRegistrationReport,
   resetUserPassword,
   updateUserStatus,
 } from "../controllers/deanController.js";
@@ -80,7 +79,6 @@ router.post(
   }),
   createUser,
 );
-router.get("/reports/user-registrations", getUserRegistrationReport);
 router.get("/users/:id", getUser);
 router.post("/users/:id/reset-password", resetUserPassword);
 router.patch("/users/:id/status", updateUserStatus);
