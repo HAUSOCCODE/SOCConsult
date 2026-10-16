@@ -184,7 +184,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     "attendance-review/1234567890abcdef12345678": "AttendanceReview",
     reports: "ReportsAnalytics",
     notifications: "DeanNotifications",
-    account: "SystemSettings",
+    account: "DeanAccountSettings",
     "faculty/dashboard": "FacultyDashboard",
     "faculty/requests": "AppointmentRequests",
     "faculty/availability": "ManageAvailability",

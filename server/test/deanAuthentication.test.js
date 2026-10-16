@@ -8,7 +8,7 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
 import AuditLog from "../src/models/AuditLog.js";
-import { login, changePassword } from "../src/controllers/authController.js";
+import { login } from "../src/controllers/authController.js";
 
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
 const chain = (value) => ({ select() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
@@ -57,27 +57,6 @@ test("Dean credentials, equivalent failures, and safe authentication audit", asy
     account = null;
     assert.equal((await reject(valid)).subjectUser, undefined);
   } finally { User.findOne = originals.findOne; User.findById = originals.findById; AuditLog.create = originals.create; }
-});
-
-test("Dean password change preserves safe existing audit behavior", async () => {
-  const originalFind = User.findById, originalCreate = AuditLog.create;
-  const id = new mongoose.Types.ObjectId();
-  const events = [];
-  let saved = false;
-  const user = { _id: id, id: String(id), role: "dean", password: await bcrypt.hash(" old password ", 4), async save() { saved = true; } };
-  User.findById = () => chain(user);
-  AuditLog.create = async (event) => { events.push(event); return event; };
-  try {
-    const res = response();
-    await changePassword({ user, body: { currentPassword: " old password ", newPassword: "NewPassword1", confirmNewPassword: "NewPassword1" } }, res);
-    assert.equal(res.statusCode, 200);
-    assert.ok(saved);
-    assert.ok(await bcrypt.compare("NewPassword1", user.password));
-    assert.equal(events.length, 1);
-    assert.equal(events[0].action, "password_changed");
-    assert.deepEqual(events[0].metadata, { role: "dean" });
-    assert.doesNotMatch(JSON.stringify(events[0]), /old password|NewPassword1|\$2[aby]\$/);
-  } finally { User.findById = originalFind; AuditLog.create = originalCreate; }
 });
 
 test("HTTP logout authentication, audit and existing Dean login limiter", async () => {

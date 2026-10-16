@@ -14,6 +14,7 @@ export default function ProfilePictureEditor() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const inputRef = useRef(null);
+  const pending = useRef(false);
   const [selection, setSelection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +49,8 @@ export default function ProfilePictureEditor() {
     setSelection({ file, preview: URL.createObjectURL(file) });
   };
   const save = async () => {
-    if (!selection || busy) return;
+    if (!selection || pending.current) return;
+    pending.current = true;
     setBusy(true);
     try {
       const body = new FormData();
@@ -59,24 +61,29 @@ export default function ProfilePictureEditor() {
       });
       updateUser(data.user);
       toast.success("Profile picture updated successfully.");
+      pending.current = false;
       setBusy(false);
       resetDialog();
     } catch (error) {
       toast.error(error.message || "Unable to upload profile picture.");
+      pending.current = false;
       setBusy(false);
     }
   };
   const remove = async () => {
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     try {
       const data = await api("/auth/me/profile-picture", { method: "DELETE" });
       updateUser(data.user);
       toast.success("Profile picture removed successfully.");
+      pending.current = false;
       setBusy(false);
       resetDialog();
     } catch (error) {
       toast.error(error.message || "Unable to remove profile picture.");
+      pending.current = false;
       setBusy(false);
     }
   };

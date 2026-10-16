@@ -34,7 +34,7 @@ import UserManagement from "./pages/Dean/UserManagement";
 import ConsultationMonitoring from "./pages/Dean/ConsultationMonitoring";
 import { monitoringQuery } from "./utils/deanWorkspace";
 import ReportsAnalytics from "./pages/Dean/ReportsAnalytics";
-import SystemSettings from "./pages/Dean/SystemSettings";
+import DeanAccountSettings from "./pages/Dean/DeanAccountSettings";
 import DeanNotifications from "./pages/Dean/DeanNotifications";
 import AuditLogs from "./pages/Dean/AuditLogs";
 import NotFoundPage from "./pages/Public/NotFoundPage";
@@ -134,7 +134,7 @@ export default function App() {
               path="settings"
               element={<DeanRouteRedirect to="/dean/account" />}
             />
-            <Route path="account" element={<SystemSettings />} />
+            <Route path="account" element={<DeanAccountSettings />} />
             <Route path="import" element={<CsvImport />} />
             <Route
               path="attendance-review"

@@ -180,7 +180,7 @@ test("imported users immediately log in and can change their initial password th
   const h = await harness();
   try {
     assert.equal((await confirmAccountImport(previewId, owner)).statusCode, 201);
-    const oldOne = User.findOne, oldById = User.findById;
+    const oldOne = User.findOne, oldById = User.findById, oldUpdate = User.updateOne;
     User.findOne = (query) => chain(() => h.users.find((user) => user.email === query.email));
     User.findById = () => chain(() => null); // unrelated login activity is best-effort.
     try {
@@ -195,13 +195,13 @@ test("imported users immediately log in and can change their initial password th
         assert.equal(res.statusCode, 401);
       }
       const user = h.users[0];
-      user.save = async () => {};
+      User.updateOne = async (filter, update, options) => { assert.equal(options.session, h.session); assert.equal(filter.password, user.password); Object.assign(user, update.$set); return { modifiedCount: 1 }; };
       User.findById = () => chain(() => user);
-      AuditLog.create = async () => {}; // regular password-change audit is outside the batch transaction.
+      // Password change uses the same transaction-aware audit mock.
       const res = response();
       await changePassword({ user, body: { currentPassword: user.institutionalId, newPassword: "Replacement1", confirmNewPassword: "Replacement1" } }, res);
       assert.equal(res.statusCode, 200); assert.ok(await bcrypt.compare("Replacement1", user.password));
-    } finally { User.findOne = oldOne; User.findById = oldById; }
+    } finally { User.findOne = oldOne; User.findById = oldById; User.updateOne = oldUpdate; }
   } finally { h.restore(); }
 });
 

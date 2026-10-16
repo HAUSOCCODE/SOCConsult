@@ -50,7 +50,7 @@ const titles = {
   "/dean/reports": "Reports & Analytics | SOCConsult",
   "/dean/notifications": "Notifications | SOCConsult",
   "/dean/logs": "Dean Dashboard | SOCConsult",
-  "/dean/settings": "System Settings | SOCConsult",
+  "/dean/settings": "Account Settings | SOCConsult",
 };
 
 export default function RouteDocumentTitle() {

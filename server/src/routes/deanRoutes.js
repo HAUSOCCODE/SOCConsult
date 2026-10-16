@@ -13,7 +13,6 @@ import {
 } from "../controllers/auditController.js";
 import {
   createUser,
-  changeDeanPassword,
   getUser,
   getUsers,
   getUserRegistrationReport,
@@ -85,6 +84,6 @@ router.get("/audit-users", getAuditUsers);
 router.get("/audit-users/:userId/logs", getAuditUserLogs);
 router.get("/audit-logs/export", exportAuditLogs);
 
-router.put("/settings/password", changeDeanPassword);
+
 
 export default router;

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
@@ -15,6 +16,8 @@ import {
   uploadBuffer,
 } from "../services/cloudinaryStorage.js";
 
+import { logActivity, notify, recordAuditEvent } from "../services/activityService.js";
+
 const normalize = (value = "") => value.trim().toLowerCase();
 const validEmail = (email, domain) => {
   const normalized = normalize(email);
@@ -30,7 +33,6 @@ const validPassword = (password) =>
   /[0-9]/.test(password);
 const passwordValidationMessage =
   "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed.";
-import { logActivity, notify, recordAuditEvent } from "../services/activityService.js";
 const publicUser = (user) => ({
   id: user.id,
   firstName: user.firstName || "",
@@ -48,6 +50,7 @@ const publicUser = (user) => ({
   office: user.office,
   specialization: user.specialization,
   contactNumber: user.contactNumber,
+  ...(user.role === "dean" ? { institutionalId: user.institutionalId, accountSource: user.accountSource, accountStatus: user.accountStatus, passwordChangedAt: user.passwordChangedAt } : {}),
   profilePicture:
     typeof user.profilePicture === "string"
       ? user.profilePicture
@@ -236,21 +239,22 @@ export async function logout(req, res) {
 
 export async function me(req, res) {
   const user = await User.findById(req.user.id).select("+profilePicture");
+  if (!user) return res.status(401).json({ message: "Authentication required." });
   res.json({ user: publicUser(user) });
 }
 
 export async function updateProfile(req, res) {
-  const allowed = [
-    "program",
-    "yearLevel",
-    "position",
-    "office",
-    "specialization",
-    "contactNumber",
-  ];
+  const allowed = req.user.role === "dean"
+    ? ["firstName", "middleName", "lastName", "office", "contactNumber"]
+    : ["firstName", "middleName", "lastName", "program", "yearLevel", "position", "office", "specialization", "contactNumber"];
+  if (!req.body || Array.isArray(req.body) || typeof req.body !== "object" ||
+      Object.keys(req.body).some(key => !allowed.includes(key)) ||
+      Object.entries(req.body).some(([key, value]) => typeof value !== "string" ||
+        value.length > (["office", "contactNumber"].includes(key) ? 100 : 500) || /[\x00-\x1f\x7f-\x9f]/.test(value)))
+    return res.status(400).json({ message: "Invalid profile update." });
   const updates = Object.fromEntries(
     allowed
-      .filter((key) => req.body[key] !== undefined)
+      .filter((key) => !["firstName", "middleName", "lastName"].includes(key) && req.body[key] !== undefined)
       .map((key) => [key, String(req.body[key]).trim()]),
   );
   const hasNameUpdate = ["firstName", "middleName", "lastName"].some(
@@ -289,6 +293,7 @@ export async function updateProfile(req, res) {
     new: true,
     runValidators: true,
   }).select("-password +profilePicture");
+  if (!user) return res.status(409).json({ message: "Account changed. Refresh before trying again." });
   await logActivity("profile_updated", req.user.id, "User", req.user.id, {
     role: req.user.role,
     fieldNames: Object.keys(updates),
@@ -300,6 +305,8 @@ export async function updateProfile(req, res) {
 }
 
 export async function updateProfilePicture(req, res) {
+  if (req.body && Object.keys(req.body).length)
+    return res.status(400).json({ message: "Invalid profile picture request." });
   if (!req.file)
     return res
       .status(400)
@@ -307,8 +314,9 @@ export async function updateProfilePicture(req, res) {
   const currentUser = await User.findById(req.user.id).select(
     "+profilePicture",
   );
+  if (!currentUser) return res.status(401).json({ message: "Authentication required." });
   const uploaded = await uploadBuffer(req.file.buffer, {
-    folder: `consultio/profile-pictures/${req.user.role === "student" ? "students" : "faculty"}`,
+    folder: `consultio/profile-pictures/${req.user.role === "student" ? "students" : req.user.role === "dean" ? "deans" : "faculty"}`,
     resource_type: "image",
     transformation: [
       { width: 1000, height: 1000, crop: "limit", quality: "auto" },
@@ -317,8 +325,8 @@ export async function updateProfilePicture(req, res) {
   const profilePicture = cloudinaryReference(uploaded);
   let user;
   try {
-    user = await User.findByIdAndUpdate(
-      req.user.id,
+    user = await User.findOneAndUpdate(
+      { _id: req.user.id, profilePicture: currentUser?.profilePicture ?? null },
       { profilePicture },
       { new: true, runValidators: true },
     ).select("+profilePicture");
@@ -344,14 +352,17 @@ export async function updateProfilePicture(req, res) {
 }
 
 export async function removeProfilePicture(req, res) {
+  if (req.body && Object.keys(req.body).length)
+    return res.status(400).json({ message: "Invalid profile picture request." });
   const currentUser = await User.findById(req.user.id).select(
     "+profilePicture",
   );
-  const user = await User.findByIdAndUpdate(
-    req.user.id,
+  const user = await User.findOneAndUpdate(
+    { _id: req.user.id, profilePicture: currentUser?.profilePicture ?? null },
     { $unset: { profilePicture: 1 } },
     { new: true },
   ).select("+profilePicture");
+  if (!user) return res.status(409).json({ message: "Account changed. Refresh before trying again." });
   const previous = currentUser?.profilePicture;
   if (previous && typeof previous !== "string")
     await destroyAsset(previous).catch(() => {});
@@ -369,36 +380,47 @@ export async function removeProfilePicture(req, res) {
 }
 
 export async function changePassword(req, res) {
-  const currentPassword = req.body.currentPassword || "";
-  const newPassword = req.body.newPassword || "";
-  const confirmNewPassword = req.body.confirmNewPassword || "";
-  if (!currentPassword || !newPassword || !confirmNewPassword)
-    return res.status(400).json({
-      message:
-        "Current password, new password, and password confirmation are required.",
-    });
+  const keys = ["currentPassword", "newPassword", "confirmNewPassword"];
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !keys.includes(key)) ||
+      keys.some(key => typeof req.body[key] !== "string" || !req.body[key]))
+    return res.status(400).json({ message: "Current password, new password, and password confirmation are required." });
+  const { currentPassword, newPassword, confirmNewPassword } = req.body;
   if (newPassword !== confirmNewPassword)
-    return res.status(400).json({
-      message: "New password and confirmation do not match.",
-    });
+    return res.status(400).json({ message: "New password and confirmation do not match." });
   if (!validPassword(newPassword))
     return res.status(400).json({ message: passwordValidationMessage });
-
-  const user = await User.findById(req.user.id).select("+password");
-  if (!user || !(await bcrypt.compare(currentPassword, user.password)))
-    return res.status(400).json({ message: "Current password is incorrect." });
-  if (await bcrypt.compare(newPassword, user.password))
-    return res.status(400).json({
-      message: "New password must be different from your current password.",
-    });
-
-  user.password = await bcrypt.hash(newPassword, 12);
-  user.passwordChangedAt = new Date();
-  await user.save();
-  await logActivity("password_changed", user.id, "User", user.id, {
-    role: user.role,
-  });
-  res.json({ message: "Password changed successfully." });
+  let session;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user.id).select("+password").session(session);
+      if (!user || user.accountStatus !== "Active" || user.role !== req.user.role ||
+          !(await bcrypt.compare(currentPassword, user.password))) {
+        const error = new Error("Unable to change password. Check your input and try again.");
+        error.statusCode = 400; throw error;
+      }
+      if (await bcrypt.compare(newPassword, user.password)) {
+        const error = new Error("New password must be different from your current password.");
+        error.statusCode = 400; throw error;
+      }
+      const timestamp = new Date();
+      const updated = await User.updateOne({ _id: user._id, password: user.password, accountStatus: "Active", role: user.role },
+        { $set: { password: await bcrypt.hash(newPassword, 12), passwordChangedAt: timestamp } }, { session, runValidators: true });
+      if (updated.modifiedCount !== 1) throw new Error("Concurrent password update");
+      await AuditLog.create([{
+        subjectUser: user._id, subjectRole: user.role, actorUser: user._id, actorRole: user.role,
+        action: "password_changed", category: "Account", description: "Password changed",
+        relatedEntityType: "User", relatedEntityId: user._id,
+      }], { session });
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
+    res.json({ message: "Password changed successfully." });
+  } catch (error) {
+    const uncertain = error.hasErrorLabel?.("UnknownTransactionCommitResult");
+    res.status(error.statusCode === 400 ? 400 : 503).json({ message: error.statusCode === 400 ? error.message :
+      uncertain ? "Unable to confirm password change. Try signing in before retrying." : "Password change is temporarily unavailable." });
+  } finally {
+    if (session) await session.endSession().catch(() => {});
+  }
 }
 
 export async function ensureDean() {
