@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { APPOINTMENT_STATUSES } from "../../utils/appointmentStatus";
 
+import ReportNarrativePanel from "../../components/dean/ReportNarrativePanel";
+
 const manilaDate = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
@@ -228,18 +230,7 @@ export default function ReportsAnalytics() {
           <button className="btn-primary" type="submit" disabled={busy}>
             Generate PDF Report
           </button>
-          <button
-            className="btn-primary"
-            type="button"
-            disabled
-            aria-describedby="ai-deferred"
-          >
-            Generate AI Summary
-          </button>
         </div>
-        <p id="ai-deferred" className="text-sm text-slate-500">
-          AI Summary is deferred pending a separately reviewed workflow.
-        </p>
         {busy && <p role="status">Generating PDF report…</p>}
         {error && (
           <p role="alert" className="text-red-700">
@@ -252,6 +243,7 @@ export default function ReportsAnalytics() {
           </p>
         )}
       </form>
+      <ReportNarrativePanel filters={filters} />
     </div>
   );
 }

@@ -4,8 +4,6 @@ import { readFile } from "node:fs/promises";
 import { appointmentHttp } from "./helpers/appointmentHttp.js";
 import { fixture, clone } from "./helpers/appointmentHarness.js";
 import { LEGACY_APPOINTMENT_STATUSES, getAppointmentDisplayStatus, getStudentConsultationGroup, canStudentCancelAppointment } from "../../client/src/utils/appointmentStatus.js";
-import User from "../src/models/User.js";
-import { reportingTools } from "../src/services/aiReportingService.js";
 
 test("legacy labels preserve exact status and unsupported actions remain disabled without mutation", async () => {
   const h = await appointmentHttp();
@@ -25,14 +23,4 @@ test("legacy labels preserve exact status and unsupported actions remain disable
     const dashboardSource = await readFile(new URL("../src/routes/dashboardRoutes.js", import.meta.url), "utf8");
     assert.doesNotMatch(availabilitySource + dashboardSource, /processExpiredAvailability/);
   } finally { await h.close(); }
-});
-
-test("account-registration reporting accepts Approved and rejects appointment Confirmed", async () => {
-  const original = User.countDocuments; let filter;
-  User.countDocuments = async (query) => { filter = query; return 1; };
-  try {
-    await reportingTools.getUserCounts({ registrationStatus: "Approved" });
-    assert.equal(filter.registrationStatus, "Approved");
-    await assert.rejects(reportingTools.getUserCounts({ registrationStatus: "Confirmed" }));
-  } finally { User.countDocuments = original; }
 });

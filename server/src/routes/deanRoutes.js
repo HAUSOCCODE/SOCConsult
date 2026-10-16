@@ -5,7 +5,7 @@ import { getConsultations, getConsultationOptions, getConsultation, getConsultat
 import accountImportRoutes from "./accountImportRoutes.js";
 import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
-import { chatWithAi } from "../controllers/aiController.js";
+import { postNarrative, getNarrative, postNarrativeReview } from "../controllers/reportNarrativeController.js";
 import {
   exportAuditLogs,
   getAuditUserLogs,
@@ -14,7 +14,6 @@ import {
 import {
   createUser,
   changeDeanPassword,
-  getAiConsultationSummary,
   getUser,
   getUsers,
   getUserRegistrationReport,
@@ -34,7 +33,12 @@ router.use("/account-imports", (_req, res, next) => {
   next();
 });
 router.use("/attendance-review", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+router.use("/reports/ai-summaries", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+const narrativeLimit = (limit) => rateLimit({ windowMs: 60000, limit, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Too many narrative requests. Please wait before retrying." } });
+router.post("/reports/ai-summaries", narrativeLimit(4), postNarrative);
+router.get("/reports/ai-summaries/:id", narrativeLimit(30), getNarrative);
+router.post("/reports/ai-summaries/:id/review", narrativeLimit(8), postNarrativeReview);
 router.post("/reports/pdf", rateLimit({ windowMs: 60000, limit: 4, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false }), postDeanReport);
 router.get("/attendance-review", getReviews);
 router.get("/attendance-review/filter-options", getReviewOptions);
@@ -52,26 +56,7 @@ router.get("/consultations/:consultationId/document", getConsultationDocument);
 router.get("/consultations/:consultationId", getConsultation);
 router.get("/appointments/:id/documents/:documentId", getConsultationDocument);
 router.get("/appointments/:id/document", getConsultationDocument);
-const aiRateLimit = rateLimit({
-  windowMs: 60 * 1000,
-  limit: 8,
-  keyGenerator: (req) => String(req.user.id),
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  handler: (req, res) => {
-    const resetTime =
-      req.rateLimit?.resetTime?.getTime?.() || Date.now() + 60000;
-    const retryAfter = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000));
-    console.warn("[Dean AI] AI_RATE_LIMIT");
-    res.set("Retry-After", String(retryAfter));
-    return res.status(429).json({
-      message:
-        "You're sending requests a little too quickly. Please wait a moment and try again.",
-      retryAfter,
-    });
-  },
-});
-router.post("/ai/chat", aiRateLimit, chatWithAi);
+
 router.get("/users", getUsers);
 router.post(
   "/users",
@@ -99,7 +84,7 @@ router.get("/appointments", getConsultations);
 router.get("/audit-users", getAuditUsers);
 router.get("/audit-users/:userId/logs", getAuditUserLogs);
 router.get("/audit-logs/export", exportAuditLogs);
-router.get("/reports/ai-summary", aiRateLimit, getAiConsultationSummary);
+
 router.put("/settings/password", changeDeanPassword);
 
 export default router;

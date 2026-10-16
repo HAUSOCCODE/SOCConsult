@@ -2,7 +2,6 @@ import bcrypt from "bcryptjs";
 import { createManualAccount } from "../services/manualAccountService.js";
 import User from "../models/User.js";
 import { logActivity } from "../services/activityService.js";
-import { createConsultationSummary } from "../services/consultationSummaryService.js";
 
 import {
   listManagedUsers,
@@ -48,26 +47,6 @@ export async function updateUserStatus(req, res) {
     req.user.id,
   );
   return res.status(result.statusCode).json(result.body);
-}
-export async function getAiConsultationSummary(req, res) {
-  try {
-    const report = await createConsultationSummary(
-      req.query.startDate,
-      req.query.endDate,
-    );
-    return res.json(report);
-  } catch (error) {
-    const status = Number(error.statusCode) || 502;
-    if (status >= 500) console.error("[Dean AI Summary]", error.message);
-    return res.status(status).json({
-      message:
-        status === 503
-          ? "AI summary is currently unavailable because the AI service is not configured."
-          : status >= 500
-            ? "AI summary is temporarily unavailable. Please try again later."
-            : error.message,
-    });
-  }
 }
 export async function changeDeanPassword(req, res) {
   const user = await User.findById(req.user.id).select("+password");

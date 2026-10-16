@@ -291,10 +291,7 @@ test("personal documents, deferred pages, component reuse and AI mount contracts
   assert.doesNotMatch(deferred, /\bapi\b|fetch\(|<form|<button/);
   assert.match(deferred, /scheduled for a later development task/);
   assert.doesNotMatch(dean, /AIAssistant/);
-  assert.ok(
-    faculty.indexOf('user?.role === "dean"') <
-      faculty.indexOf("<SOCConsultFacultyAIAssistant"),
-  );
+  assert.doesNotMatch(faculty, /AIAssistant/);
   assert.match(app, /<FacultyDashboard\s+routeBase="\/dean\/faculty"/);
   assert.match(app, /<FacultyAppointments \/>/);
   assert.doesNotMatch(app, /initialTab="Pending Registrations"|tab=pending/);

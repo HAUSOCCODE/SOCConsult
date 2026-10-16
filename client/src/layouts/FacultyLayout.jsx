@@ -12,7 +12,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import { legacyFacultyDestination } from "../utils/deanWorkspace";
 import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
-import SOCConsultFacultyAIAssistant from "../components/faculty/SOCConsultFacultyAIAssistant";
 const navigation = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/faculty/dashboard" },
   {
@@ -57,7 +56,6 @@ export default function FacultyLayout() {
   return (
     <>
       <RoleLayout role="faculty" navigation={navigation} />
-      <SOCConsultFacultyAIAssistant />
     </>
   );
 }
