@@ -16,7 +16,7 @@ import {
   uploadBuffer,
 } from "../services/cloudinaryStorage.js";
 
-import { logActivity, notify, recordAuditEvent } from "../services/activityService.js";
+import { logActivity, notify, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
 
 const normalize = (value = "") => value.trim().toLowerCase();
 const validEmail = (email, domain) => {
@@ -227,13 +227,15 @@ export async function login(req, res) {
       message:
         "Your account is currently inactive. Please contact the Dean for assistance.",
     });
-  await logActivity("login", user.id, "User", user.id, { role: user.role });
+  if (user.role === "dean") { try { await recordAuthenticationAudit(user, "login"); } catch { return res.status(503).json({ message: "Sign-in temporarily unavailable." }); }
+  } else await logActivity("login", user.id, "User", user.id, { role: user.role });
   res.json({ token: tokenFor(user), user: publicUser(user) });
 }
 
 // Logout records activity; JWT expiry remains the existing session boundary.
 export async function logout(req, res) {
-  await logActivity("logout", req.user.id, "User", req.user.id, { role: req.user.role });
+  if (req.user.role === "dean") { try { await recordAuthenticationAudit(req.user, "logout"); } catch { return res.status(503).json({ message: "Unable to record sign-out." }); }
+  } else await logActivity("logout", req.user.id, "User", req.user.id, { role: req.user.role });
   res.json({ message: "Signed out successfully." });
 }
 

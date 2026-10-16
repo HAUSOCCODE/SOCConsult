@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -248,6 +248,7 @@ export default function UserManagement() {
     <div className="w-full min-w-0 space-y-5 pb-16">
       <div>
         <h1 className="text-2xl font-bold text-maroon-900">User Accounts</h1>
+        <details className="text-sm"><summary className="cursor-pointer">Advanced</summary><Link className="text-maroon-800 underline" to="/dean/audit-logs">Audit Logs</Link></details>
         <p className="mt-2 text-sm text-slate-500">
           Search and manage Student and Faculty accounts.
         </p>

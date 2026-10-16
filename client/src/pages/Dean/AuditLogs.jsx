@@ -1,3 +1,4 @@
+import ManagementAuditFeed from "./ManagementAuditFeed";
 import {
   ArrowLeft,
   CalendarClock,
@@ -219,6 +220,7 @@ export default function AuditLogs() {
           Review detailed activity records for registered students and faculty.
         </p>
       </header>
+      <ManagementAuditFeed />
       <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div
           role="tablist"

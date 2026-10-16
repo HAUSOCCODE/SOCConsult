@@ -471,7 +471,7 @@ test("eligible activation/deactivation across all sources is atomic, preserves m
           assert.equal(audit.metadata.role, role);
           assert.equal(
             audit.metadata.reason,
-            status === "Active" ? "Maintenance review" : undefined,
+            undefined,
           );
           assert.doesNotMatch(
             JSON.stringify(audit),

@@ -1,3 +1,4 @@
+import { AUDIT_ACTIONS, AUDIT_PROJECTION, safeMetadata, safeChanges } from "../services/auditPolicy.js";
 import mongoose from "mongoose";
 import AuditLog from "../models/AuditLog.js";
 import User from "../models/User.js";
@@ -54,6 +55,7 @@ const ACTION_LABELS = {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const positiveInteger = (value, fallback, max) => {
+  if (value !== undefined && (typeof value !== "string" && typeof value !== "number" || !/^\d+$/.test(String(value)))) return null;
   const parsed = Number(value ?? fallback);
   return Number.isInteger(parsed) && parsed > 0 && parsed <= max
     ? parsed
@@ -112,77 +114,50 @@ const categoryFor = (log) =>
           : /appointment|schedule|reschedul/.test(log.action)
             ? "Appointment"
             : "Account");
-const actorName = (log) => {
+const safeRole = role => role === "admin" ? "dean" : ["student", "faculty", "dean", "system"].includes(role) ? role : "system";
+const targetTypes = ["User", "Appointment", "Task", "SupportingDocument", "AccountImport", "ReportExport", "ReportNarrative", "AuditAttempt"];
+const objectId = value => /^[a-f\d]{24}$/i.test(String(value || ""));
+const publicLog = log => {
+  const action = AUDIT_ACTIONS.includes(log.action) ? log.action : "legacy_activity";
+  const label = ACTION_LABELS[action] || (action === "legacy_activity" ? "Historical activity" : action.replaceAll("_", " "));
   const actor = log.actorUser || log.actor;
-  if (actor?.name) return actor.name;
-  if (log.actorRole === "system") return "SOCConsult System";
-  return "SOCConsult System";
+  const type = log.relatedEntityType || log.targetType;
+  const target = log.relatedEntityId || log.targetId;
+  return { id: String(log._id), action, title: label, description: label,
+    category: CATEGORIES.includes(log.category) ? log.category : categoryFor({ action }),
+    actor: { id: objectId(actor?._id || actor) ? String(actor?._id || actor) : null, name: safeRole(log.actorRole) === "system" ? "SOCConsult System" : "Recorded account", role: safeRole(log.actorRole || actor?.role) },
+    relatedRecord: targetTypes.includes(type) && objectId(target) ? { type, id: String(target) } : null,
+    changes: safeChanges(action, log.changes), metadata: safeMetadata(action, log.metadata || log.details), createdAt: log.createdAt };
 };
-const PUBLIC_METADATA_KEYS = new Set([
-  "appointmentId",
-  "facultyName",
-  "studentName",
-  "topic",
-  "previousSchedule",
-  "newSchedule",
-  "reason",
-  "initiatedBy",
-]);
-const publicMetadata = (metadata) => {
-  if (!metadata || typeof metadata !== "object") return null;
-  const safe = Object.fromEntries(
-    Object.entries(metadata)
-      .filter(([key, value]) => PUBLIC_METADATA_KEYS.has(key) && value != null)
-      .map(([key, value]) => [key, String(value).slice(0, 500)]),
-  );
-  return Object.keys(safe).length ? safe : null;
-};
-const publicLog = (log) => ({
-  id: String(log._id),
-  action: log.action,
-  title: ACTION_LABELS[log.action] || log.description || "Activity recorded",
-  category: categoryFor(log),
-  description:
-    log.description || ACTION_LABELS[log.action] || "Activity recorded.",
-  actor: {
-    name: actorName(log),
-    role: log.actorRole || log.actorUser?.role || log.actor?.role || "system",
-  },
-  relatedRecord:
-    log.relatedEntityId || log.targetId
-      ? {
-          type: log.relatedEntityType || log.targetType || "Record",
-          id: String(log.relatedEntityId || log.targetId),
-        }
-      : null,
-  changes: {
-    before: log.changes?.before || null,
-    after: log.changes?.after || null,
-  },
-  metadata: publicMetadata(log.metadata || log.details),
-  createdAt: log.createdAt,
-});
-
+const commonKeys = ["page", "limit", "category", "startDate", "endDate"];
+export function auditRequestGuard(req, res, next) {
+  res.set("Cache-Control", "no-store");
+  if (req.user?.role !== "dean" || req.user.accountStatus !== "Active") return res.status(403).json({ message: "Active Dean required." });
+  const path = req.originalUrl.split("?")[0];
+  const queryKeys = new Set(path.endsWith("/audit-users") ? ["page", "limit", "role", "search"]
+    : path.endsWith("/export") ? [...commonKeys, "userId"]
+    : path.endsWith("/logs") ? commonKeys : [...commonKeys, "action", "actorRole", "targetType", "targetId"]);
+  if (Object.entries(req.query).some(([key, value]) => !queryKeys.has(key) || typeof value !== "string" || value.length > 100)) return res.status(400).json({ message: "Invalid audit filters." });
+  next();
+}
 const validatedFilters = (req, res) => {
-  const page = positiveInteger(req.query.page, 1, 100000);
+  const page = positiveInteger(req.query.page, 1, 1000);
   const limit = positiveInteger(req.query.limit, 20, 100);
   const category = req.query.category || "";
-  const start = parseDate(req.query.startDate);
-  const end = parseDate(req.query.endDate, true);
+  const end = parseDate(req.query.endDate, true) || (!req.query.endDate ? new Date() : false);
+  const start = parseDate(req.query.startDate) || (!req.query.startDate && end ? new Date(+end - 366 * 86400000) : false);
   if (!page || !limit)
-    return res
-      .status(400)
-      .json({ message: "Page and limit must be positive numbers." });
+    { res.status(400).json({ message: "Page and limit must be positive numbers." }); return null; }
   if (category && !CATEGORIES.includes(category))
-    return res.status(400).json({ message: "Invalid activity category." });
-  if (start === false || end === false || (start && end && start >= end))
-    return res.status(400).json({ message: "Choose a valid date range." });
+    { res.status(400).json({ message: "Invalid activity category." }); return null; }
+  if (start === false || end === false || (start && end && (start >= end || end - start > 366 * 86400000)))
+    { res.status(400).json({ message: "Choose a valid date range of at most 366 days." }); return null; }
   return { page, limit, category, start, end };
 };
 
 export async function getAuditUsers(req, res) {
   const role = req.query.role || "student";
-  const page = positiveInteger(req.query.page, 1, 100000);
+  const page = positiveInteger(req.query.page, 1, 1000);
   const limit = positiveInteger(req.query.limit, 8, 50);
   if (!ROLES.includes(role))
     return res
@@ -294,17 +269,15 @@ export async function getAuditUserLogs(req, res) {
   const [logs, total, latest] = await Promise.all([
     AuditLog.find(query)
       .select(
-        "action category description actorUser actorRole actor relatedEntityType relatedEntityId targetType targetId changes metadata details createdAt",
+        AUDIT_PROJECTION,
       )
-      .populate("actorUser", "name role")
-      .populate("actor", "name role")
       .sort({ createdAt: -1, _id: -1 })
       .skip((filters.page - 1) * filters.limit)
       .limit(filters.limit)
       .lean(),
     AuditLog.countDocuments(query),
     AuditLog.findOne(logQueryFor(user._id))
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .select("createdAt")
       .lean(),
   ]);
@@ -352,10 +325,8 @@ export async function exportAuditLogs(req, res) {
   }
   const logs = await AuditLog.find(query)
     .select(
-      "action category description actorUser actorRole actor relatedEntityType relatedEntityId targetType targetId changes createdAt",
+      AUDIT_PROJECTION,
     )
-    .populate("actorUser", "name role")
-    .populate("actor", "name role")
     .sort({ createdAt: -1, _id: -1 })
     .limit(5000)
     .lean();
@@ -393,7 +364,7 @@ export async function exportAuditLogs(req, res) {
       log.category,
       log.title,
       log.description,
-      log.actor.name,
+      log.actor.id || log.actor.name,
       log.relatedRecord
         ? `${log.relatedRecord.type} ${log.relatedRecord.id}`
         : "",
@@ -406,3 +377,33 @@ export async function exportAuditLogs(req, res) {
 }
 
 export const auditControllerInternals = { publicLog, parseDate, CATEGORIES };
+
+export async function getManagementAuditLogs(req, res) {
+  const filters = validatedFilters(req, res);
+  if (!filters) return;
+  const query = { createdAt: { $gte: filters.start, $lt: filters.end } };
+  if (filters.category) query.category = filters.category;
+  if (req.query.action) {
+    if (!AUDIT_ACTIONS.includes(req.query.action)) return res.status(400).json({ message: "Invalid audit action." });
+    query.action = req.query.action;
+  }
+  if (req.query.actorRole) {
+    if (!["student", "faculty", "dean", "system"].includes(req.query.actorRole)) return res.status(400).json({ message: "Invalid actor role." });
+    query.actorRole = req.query.actorRole === "dean" ? { $in: ["dean", "admin"] } : req.query.actorRole;
+  }
+  if (req.query.targetType) {
+    if (!targetTypes.includes(req.query.targetType)) return res.status(400).json({ message: "Invalid target type." });
+    query.$and = [{ $or: [{ relatedEntityType: req.query.targetType }, { relatedEntityType: { $exists: false }, targetType: req.query.targetType }] }];
+  }
+  if (req.query.targetId) {
+    if (!objectId(req.query.targetId)) return res.status(400).json({ message: "Invalid target reference." });
+    const id = new mongoose.Types.ObjectId(req.query.targetId);
+    (query.$and ||= []).push({ $or: [{ relatedEntityId: id }, { relatedEntityId: { $exists: false }, targetId: id }] });
+  }
+  const [logs, total] = await Promise.all([
+    AuditLog.find(query).select(AUDIT_PROJECTION)
+      .sort({ createdAt: -1, _id: -1 }).skip((filters.page - 1) * filters.limit).limit(filters.limit).maxTimeMS(10000).lean(),
+    AuditLog.countDocuments(query).maxTimeMS(10000),
+  ]);
+  res.json({ logs: logs.map(publicLog), pagination: { page: filters.page, limit: filters.limit, total, pages: Math.max(1, Math.ceil(total / filters.limit)) } });
+}

@@ -7,6 +7,8 @@ import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { postNarrative, getNarrative, postNarrativeReview } from "../controllers/reportNarrativeController.js";
 import {
+  auditRequestGuard,
+  getManagementAuditLogs,
   exportAuditLogs,
   getAuditUserLogs,
   getAuditUsers,
@@ -33,7 +35,10 @@ router.use("/account-imports", (_req, res, next) => {
 });
 router.use("/attendance-review", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use("/reports/ai-summaries", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+router.use(["/audit-users", "/audit-logs"], (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+router.use(["/audit-users", "/audit-logs"], auditRequestGuard);
+router.get("/audit-logs", getManagementAuditLogs);
 const narrativeLimit = (limit) => rateLimit({ windowMs: 60000, limit, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Too many narrative requests. Please wait before retrying." } });
 router.post("/reports/ai-summaries", narrativeLimit(4), postNarrative);
 router.get("/reports/ai-summaries/:id", narrativeLimit(30), getNarrative);

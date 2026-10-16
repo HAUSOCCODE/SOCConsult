@@ -1,3 +1,4 @@
+import AuditLog from "../src/models/AuditLog.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import jwt from "jsonwebtoken";
@@ -20,6 +21,17 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
   let role = "dean",
     activeId = owner;
   const previews = [];
+  const audits = [];
+  const session = { async withTransaction(work) { return work(); }, async endSession() {} };
+  patch(mongoose, "startSession", async () => session);
+  patch(AuditLog, "create", async (values, options) => {
+    const records = Array.isArray(values) ? values : [values];
+    for (const record of records) {
+      if (record.relatedEntityType === "AccountImport") assert.equal(options.session, session);
+      await new AuditLog(record).validate(); audits.push(record);
+    }
+    return values;
+  });
   const notifications = [];
   patch(Notification, "create", async records => { notifications.push(...records); return records; });
   patch(User, "findById", async () => ({
@@ -52,7 +64,8 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
   ])
     patch(User, method, () => assert.fail(`User write: ${method}`));
   patch(User.prototype, "save", () => assert.fail("User save"));
-  patch(AccountImport, "create", async (data) => {
+  patch(AccountImport, "create", async ([data], options) => {
+    assert.equal(options.session, session);
     const model = new AccountImport(data);
     assert.equal(model.validateSync(), undefined);
     assert.doesNotMatch(
@@ -60,7 +73,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
       /password|token|originalname|buffer/i,
     );
     previews.push(data);
-    return model;
+    return [model];
   });
   patch(AccountImport, "findOne", (query) => ({
     select() {
@@ -164,6 +177,9 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("Retry-After")) > 0);
     assert.equal(previews.length, 2);
+    assert.equal(audits.length, 4);
+    assert.deepEqual(audits.map(record => record.metadata.outcome), ["valid", "rejected", "rejected", "invalid"]);
+    assert.doesNotMatch(JSON.stringify(audits), /Juan|Santos|0001|student.hau|buffer|password/);
     assert.equal(notifications.length, 2);
     assert.ok(notifications.every(n => n.type === "import_failed" && n.recipient === String(owner) && n.actionUrl === "/dean/import"));
     assert.doesNotMatch(JSON.stringify(notifications.map(({ title, message }) => ({ title, message }))), /0001|student.hau|bad|buffer|password/);

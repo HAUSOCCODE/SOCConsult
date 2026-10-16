@@ -81,8 +81,8 @@ describe("Dean audit logs", () => {
       category: "Profile",
       description: "Profile information updated",
       changes: {
-        before: { status: "Old", password: "hidden" },
-        after: { status: "New", token: "hidden" },
+        before: { status: "Pending", password: "hidden" },
+        after: { status: "Confirmed", token: "hidden" },
       },
       metadata: {
         fieldNames: ["yearLevel"],
@@ -125,9 +125,10 @@ describe("Dean audit logs", () => {
       { previousStatus: "Pending", newStatus: "Approved" },
     );
     assert.deepEqual(
-      new Set(created.map((item) => item.subjectRole)),
-      new Set(["student", "faculty"]),
+      new Set(created[0].subjectUsers.map(String)),
+      new Set([String(studentId), String(facultyId)]),
     );
+    assert.equal(created.length, 1);
     assert.equal(created[0].changes.before.status, "Pending");
     assert.equal(created[0].changes.after.status, "Approved");
   });
