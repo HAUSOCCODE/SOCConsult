@@ -123,7 +123,7 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
     category: "Appointment", description: "Appointment status changed",
     relatedEntityType: "Appointment", relatedEntityId: appointment._id,
     changes: { before: { status: from }, after: { status: to } },
-    metadata: { source: action, reason: safeReason(reason) }, createdAt: now,
+    metadata: { source: action }, createdAt: now,
   }], { session });
   const recipient = actor.role === "student" ? appointment.faculty : appointment.student;
   const title = action === "propose" ? "Consultation Reschedule Proposed"

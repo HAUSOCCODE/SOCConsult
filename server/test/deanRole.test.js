@@ -40,6 +40,7 @@ test("public registration rejects Dean and cannot elevate Student or Faculty usi
   patch(User, "findOne", async () => null, restores);
   patch(User, "create", async (data) => { created.push(data); return { ...data, id: "account" }; }, restores);
   patch(User, "findById", async () => null, restores);
+  patch(AuditLog, "create", async record => record, restores);
   patch(User, "find", () => chain([]), restores);
   try {
     for (const role of ["student", "faculty"]) {
@@ -62,6 +63,7 @@ test("Dean login uses username and the stored role remains authoritative", async
   const user = { id: "account", name: "Dean", role: "dean", accountStatus: "Active", registrationStatus: "Approved", password: await bcrypt.hash(password, 4) };
   patch(User, "findOne", query => { queries.push(query); return chain(user); }, restores);
   patch(User, "findById", async () => null, restores);
+  patch(AuditLog, "create", async record => record, restores);
   try {
     let res = response();
     await login({ params: { role: "dean" }, body: { username: "Management", password } }, res);
@@ -123,8 +125,7 @@ test("migration preserves account identity and password, metadata provenance, an
   assert.equal((await migrateDeanAccount(harness)).status, "converted");
   assert.deepEqual(legacy, { _id: "same-id", username: "legacy", role: "dean", password: "opaque-test-hash", approvedBy: "same-reference" });
   assert.equal(accounts[1].approvalMethod, "dean");
-  assert.equal(harness.auditWrites[0][1][0].$set.metadata.$mergeObjects[1].legacyActorRole, "admin");
-  assert.deepEqual(harness.auditWrites[0][0].$or, [{ actorUser: "same-id" }, { actor: "same-id" }]);
+  assert.equal(harness.auditWrites.length, 0);
   assert.equal((await migrateDeanAccount(harness)).status, "already-dean");
   assert.equal(harness.writes.filter(([q]) => q._id).length, 1);
 });
@@ -146,15 +147,12 @@ test("migration conflicts and wrong identifiers stop before any writes; missing 
   assert.equal(harness.writes.length, 0);
 });
 
-test("migration rerun completes metadata after an interrupted conversion", async () => {
+test("migration never touches audit history, including on reruns", async () => {
   const harness = migrationHarness([{ _id: "a", username: "legacy", role: "admin" }]);
-  const update = harness.auditLogs.updateMany;
-  harness.auditLogs.updateMany = async () => { throw new Error("simulated interruption"); };
-  await assert.rejects(migrateDeanAccount(harness), /simulated interruption/);
-  harness.auditLogs.updateMany = update;
+  harness.auditLogs.updateMany = async () => assert.fail("Historical audit mutation");
+  assert.equal((await migrateDeanAccount(harness)).status, "converted");
   assert.equal((await migrateDeanAccount(harness)).status, "already-dean");
-  assert.equal(harness.auditWrites.length, 1);
-  assert.equal(harness.writes.filter(([query]) => query._id).length, 1);
+  assert.equal(harness.auditWrites.length, 0);
 });
 
 test("initialization verifies the existing Dean without creating a duplicate", async () => {

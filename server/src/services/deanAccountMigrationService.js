@@ -1,5 +1,5 @@
 // Uses raw collections so legacy roles can be converted after schema validation changes.
-export async function migrateDeanAccount({ users, auditLogs, username }) {
+export async function migrateDeanAccount({ users, username }) {
   const account = await users.findOne({ username });
   const management = await users.find({ role: { $in: ["admin", "dean"] } }).toArray();
   if (management.some((user) => !account || String(user._id) !== String(account._id))) {
@@ -19,10 +19,6 @@ export async function migrateDeanAccount({ users, auditLogs, username }) {
   }
   // Repeat metadata updates even after conversion, allowing interrupted runs to recover.
   await users.updateMany({ approvalMethod: "admin" }, { $set: { approvalMethod: "dean" } });
-  await auditLogs.updateMany(
-    { actorRole: "admin", $or: [{ actorUser: account._id }, { actor: account._id }] },
-    [{ $set: { actorRole: "dean", metadata: { $mergeObjects: [{ $ifNull: ["$metadata", {}] }, { legacyActorRole: "admin" }] } } }],
-  );
-  // Historical action names, descriptions, timestamps and entity references are retained.
+  // Preserve historical audit roles; legacy interpretation belongs to readers.
   return { status: converted ? "converted" : "already-dean" };
 }

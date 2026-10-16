@@ -140,7 +140,7 @@ export function appointmentHarness() {
     }
   });
   for (const [model, key] of [[AuditLog, "audits"], [Notification, "notifications"]]) patch(model, "create", async (records) => {
-    failure(key); for (const record of records) { const error = new model(record).validateSync(); if (error) throw error; }
+    failure(key); for (const record of records) { await new model(record).validate(); }
     state[key].push(...clone(records)); return clone(records);
   });
   return { state, fail: (name) => { failAt = name; }, retry: () => { retryOnce = true; }, restore: () => restores.reverse().forEach((restore) => restore()) };

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { bestEffortNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
@@ -32,14 +33,29 @@ function response(summary, review = null) {
   const value = summary.toObject ? summary.toObject({ flattenMaps: true }) : summary;
   return { id: String(value._id), filters: value.filters, snapshot: value.snapshot, narrative: value.narrative, generatedAt: value.generatedAt, reviewState: review ? "reviewed" : "unreviewed", reviewedAt: review?.reviewedAt || null, version: review ? 2 : 1, disclaimer: DISCLAIMER };
 }
+// An acknowledged start survives provider errors and database outages during outcome recording.
 export async function createNarrative(input, actor, adapter = generateNarrative) {
   authorize(actor);
   const { filters, summary } = await loadReportData(input, actor);
   const snapshot = aggregateSnapshot(filters, summary);
+  const attemptId = randomUUID(), attemptTarget = new mongoose.Types.ObjectId();
+  const event = (action, metadata, target = attemptTarget, type = "AuditAttempt") => ({
+    subjectUser: actor.id || actor._id, subjectRole: "dean", actorUser: actor.id || actor._id, actorRole: "dean",
+    action, category: "Consultation", relatedEntityType: type, relatedEntityId: target, metadata: { attemptId, ...metadata },
+  });
+  await AuditLog.create([event("ai_generation_started", {})]);
+  const attempt = async (outcome, stage, code) => {
+    try { await AuditLog.create([event("ai_generation_attempt", { outcome, stage, code })]); }
+    catch { console.warn("[Audit] AI outcome recording unavailable; attempt remains unresolved."); }
+  };
   let narrative;
   try { narrative = await adapter(snapshot); }
   catch (error) {
-    await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
+    const timedOut = ["APIConnectionTimeoutError", "APIConnectionError", "AbortError"].includes(error?.name) || ["ETIMEDOUT", "ECONNRESET", "ABORT_ERR"].includes(error?.code);
+    const uncertain = timedOut || !["AI_UNAVAILABLE", "AI_INVALID_OUTPUT"].includes(error?.message) &&
+      !(Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 && error.status !== 408);
+    await attempt(uncertain ? "uncertain" : "failed", "provider", uncertain ? "PROVIDER_UNCERTAIN" : "PROVIDER_FAILED");
+    if (!uncertain) await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
     throw error;
   }
   const generatedAt = new Date();
@@ -47,12 +63,13 @@ export async function createNarrative(input, actor, adapter = generateNarrative)
     return await transaction(actor, async (session, dean) => {
       const [record] = await ReportNarrative.create([{ dean, filters, snapshot, narrative, generatedAt }], { session });
       await audit("report_narrative_generated", dean, record._id, session, generatedAt);
+      await AuditLog.create([event("ai_generation_attempt", { outcome: "success", stage: "persistence", code: "GENERATED" }, record._id, "ReportNarrative")], { session });
       return response(record);
     });
   } catch (error) {
-    if (!error.hasErrorLabel?.("UnknownTransactionCommitResult") && error.statusCode !== 403) {
-      await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
-    }
+    const uncertain = error.hasErrorLabel?.("UnknownTransactionCommitResult");
+    await attempt(uncertain ? "uncertain" : "failed", "persistence", uncertain ? "COMMIT_UNCERTAIN" : "PERSISTENCE_FAILED");
+    if (!uncertain && error.statusCode !== 403) await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
     throw error;
   }
 }

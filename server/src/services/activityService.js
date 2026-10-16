@@ -1,3 +1,4 @@
+import { safeMetadata, safeChanges } from "./auditPolicy.js";
 import AuditLog from "../models/AuditLog.js";
 
 // Strict report audit: caller must commit this together with append-only metadata.
@@ -64,29 +65,6 @@ const ACTIONS = {
   task_completed: ["Follow-up task marked completed", "Tasks"],
 };
 
-const SAFE_DETAIL_KEYS = new Set([
-  "role",
-  "status",
-  "previousStatus",
-  "newStatus",
-  "mode",
-  "previousMode",
-  "newMode",
-  "documentCount",
-  "fieldNames",
-]);
-const sanitizeObject = (value = {}) =>
-  Object.fromEntries(
-    Object.entries(value)
-      .filter(([key, item]) => SAFE_DETAIL_KEYS.has(key) && item != null)
-      .map(([key, item]) => [
-        key,
-        Array.isArray(item)
-          ? item.map(String).slice(0, 20)
-          : String(item).slice(0, 200),
-      ]),
-  );
-
 const subjectsFor = async (targetType, targetId, actorUser) => {
   if (targetType === "User") return [String(targetId)];
   if (targetType === "Appointment") {
@@ -133,37 +111,35 @@ export async function recordAuditEvent({
             (user) => String(user?._id || user?.id) === String(actorUser),
           ) || (await User.findById(actorUser))
         : null;
-    const safeChanges = {
-      before: sanitizeObject(changes?.before),
-      after: sanitizeObject(changes?.after),
+    const filteredChanges = {
+      before: safeChanges(action, changes).before,
+      after: safeChanges(action, changes).after,
     };
-    const safeMetadata = sanitizeObject(metadata);
+    const filteredMetadata = safeMetadata(action, metadata);
     await Promise.all(
-      (subjectlessFailure ? [null] : subjects).map((subject) =>
+      (subjectlessFailure ? [null] : subjects.slice(0, 1)).map((subject) =>
         AuditLog.create({
           subjectUser: subject?._id,
           subjectRole: subject?.role,
+          subjectUsers: subjects.map(user => user._id),
           actorUser: actorUser || undefined,
           actorRole: actorRole || actor?.role || "system",
           actor: actorUser || undefined,
           action,
           category,
-          description: String(description || "Activity recorded.").slice(
-            0,
-            500,
-          ),
+          description: ACTIONS[action]?.[0] || "Activity recorded.",
           relatedEntityType: relatedEntityType || undefined,
           relatedEntityId: relatedEntityId || undefined,
-          changes: safeChanges,
-          metadata: safeMetadata,
+          changes: filteredChanges,
+          metadata: filteredMetadata,
           targetType: relatedEntityType,
           targetId: relatedEntityId,
-          details: safeMetadata,
+          details: {},
         }),
       ),
     );
   } catch (error) {
-    console.error("[Audit] Unable to record activity:", error.message);
+    console.error("[Audit] Unable to record activity.");
   }
 }
 
@@ -199,8 +175,7 @@ export async function logActivity(
     });
   } catch (error) {
     console.error(
-      "[Audit] Unable to resolve activity subjects:",
-      error.message,
+      "[Audit] Unable to resolve activity subjects.",
     );
   }
 }
@@ -214,8 +189,8 @@ export const notify = (recipient, type, title, message, relatedEntityId) =>
     relatedEntityId,
   }).catch(() => { console.warn("[Notification] Delivery failed."); return false; });
 
-// Status and audit must commit together. Reason stays in authorized audit history.
-export async function recordUserStatusAudit({ user, actor, previousStatus, previousRegistrationStatus, normalizedRegistration, reason, session }) {
+// Status and audit must commit together. Free-text reasons never enter the audit log.
+export async function recordUserStatusAudit({ user, actor, previousStatus, previousRegistrationStatus, normalizedRegistration, session }) {
   await AuditLog.create([{
     subjectUser: user._id, subjectRole: user.role, actorUser: actor, actorRole: "dean", actor,
     action: user.accountStatus === "Active" ? "account_activated" : "account_deactivated",
@@ -223,7 +198,7 @@ export async function recordUserStatusAudit({ user, actor, previousStatus, previ
     relatedEntityType: "User", relatedEntityId: user._id,
     changes: { before: { status: previousStatus }, after: { status: user.accountStatus } },
     metadata: { role: user.role, previousStatus, newStatus: user.accountStatus,
-      ...(reason && { reason }), ...(normalizedRegistration && { previousRegistrationStatus: previousRegistrationStatus ?? "Not recorded", newRegistrationStatus: "Approved" }) },
+      ...(normalizedRegistration && { previousRegistrationStatus: previousRegistrationStatus ?? "Not recorded", newRegistrationStatus: "Approved" }) },
   }], { session });
 }
 
@@ -273,4 +248,10 @@ export async function recordPasswordResetAudit({ user, actor, timestamp, session
     relatedEntityType: "User", relatedEntityId: user._id,
     metadata: { role: user.role, context: "dean_user_management" }, createdAt: timestamp,
   }], { session });
+}
+
+export async function recordAuthenticationAudit(user, action) {
+  await AuditLog.create({ subjectUser: user._id || user.id, subjectRole: user.role, actorUser: user._id || user.id, actorRole: user.role,
+    action, category: "Authentication", description: action === "login" ? "Successful sign-in" : "Signed out",
+    relatedEntityType: "User", relatedEntityId: user._id || user.id, metadata: { role: user.role } });
 }

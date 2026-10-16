@@ -63,7 +63,7 @@ test("generation, regeneration, review versions, rollback, filter query parity a
   patch(ReportNarrative, "findById", () => chain(records[0] || null));
   patch(ReportNarrativeReview, "findOne", () => chain(reviews[0] || null));
   patch(ReportNarrativeReview, "create", async ([data]) => { if (failure === "duplicate") throw Object.assign(new Error(), { code: 11000 }); staged.push(() => reviews.push(data)); return [data]; });
-  patch(AuditLog, "create", async ([data]) => { if (failure === "audit") throw new Error("SECRET"); staged.push(() => audits.push(data)); return [data]; });
+  patch(AuditLog, "create", async ([data], options) => { if (failure === "audit" && options?.session) throw new Error("SECRET"); if (options?.session) staged.push(() => audits.push(data)); else audits.push(data); return [data]; });
   const adapter = async snapshot => { calls++; assert.equal(snapshot.totalConsultations, rowCount); return "One consultation was recorded."; };
   try {
     const input = { ...filters, facultyId: id, status: "Completed", mode: "Online", attendanceOutcome: "Completed" };
@@ -90,6 +90,8 @@ test("generation, regeneration, review versions, rollback, filter query parity a
 });
 
 test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/provider failures", async () => {
+  const oldAudit = AuditLog.create;
+  AuditLog.create = async records => records;
   const oldNotify = Notification.create;
   Notification.create = async records => records;
   const old = User.findById;
@@ -112,7 +114,7 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
     assert.equal((await request("/dean/reports/ai-summaries", filters)).status, 429);
     for (let i = 0; i < 8; i++) assert.equal((await request(`/dean/reports/ai-summaries/${id}/review`, {})).status, 400);
     assert.equal((await request(`/dean/reports/ai-summaries/${id}/review`, {})).status, 429);
-  } finally { Notification.create = oldNotify; User.findById = old; Appointment.aggregate = oldAggregate; if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; await new Promise(resolve => server.close(resolve)); }
+  } finally { AuditLog.create = oldAudit; Notification.create = oldNotify; User.findById = old; Appointment.aggregate = oldAggregate; if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; await new Promise(resolve => server.close(resolve)); }
 });
 
 test("only Reports mounts AI UI and only narrative adapter imports Groq", async () => {
@@ -126,7 +128,8 @@ test("AI failure notices preserve original errors and skip uncertain commit outc
   const restores = [], notices = [];
   const patch = (o, k, v) => { const old = o[k]; o[k] = v; restores.push(() => o[k] = old); };
   let mode = "provider", attempts = 0;
-  const raw = new Error("SECRET original error");
+  const raw = new Error("AI_INVALID_OUTPUT");
+  patch(AuditLog, "create", async records => records);
   patch(Appointment, "aggregate", () => chain([]));
   patch(mongoose, "startSession", async () => ({
     async withTransaction() {
