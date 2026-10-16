@@ -20,7 +20,7 @@ const management = [
   { icon: Users, label: "User Management", path: "/dean/users" },
   {
     icon: BarChart3,
-    label: "Consultation Overview",
+    label: "Consultation Monitoring",
     path: "/dean/consultations",
   },
   {

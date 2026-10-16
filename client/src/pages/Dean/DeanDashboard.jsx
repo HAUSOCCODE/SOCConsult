@@ -1,3 +1,4 @@
+import AttendanceSummary from "../../components/appointments/AttendanceSummary";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/apiClient";
@@ -139,7 +140,7 @@ export default function DeanDashboard() {
                   value={data.consultations.byStatus.pending}
                 />
                 <Card
-                  label="Completed records"
+                  label="Finalized records (all outcomes)"
                   value={data.consultations.byStatus.completed}
                 />
               </div>

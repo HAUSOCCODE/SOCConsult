@@ -159,7 +159,7 @@ export default function FacultyScheduleDetailsModal({
                       Schedule Status
                     </p>
                     <div className="mt-1">
-                      <StatusBadge
+                      <StatusBadge appointment
                         status={schedule.isActive ? "Active" : "Inactive"}
                       />
                     </div>
@@ -202,7 +202,7 @@ export default function FacultyScheduleDetailsModal({
                                 "Student"}
                             </h4>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge appointment status={appointment.status} />
                         </div>
                         <p className="mt-3 text-sm text-slate-600">
                           Estimated Time:{" "}
@@ -281,7 +281,7 @@ export default function FacultyScheduleDetailsModal({
                               </p>
                             </div>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge appointment status={appointment.status} />
                         </div>
                         <button
                           type="button"
@@ -332,7 +332,7 @@ export default function FacultyScheduleDetailsModal({
                               </p>
                             </div>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge appointment status={appointment.status} />
                         </div>
                         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                           <Detail

@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+// npm test supplies isolated configuration. Development/production retain normal dotenv loading.
+if (process.env.NODE_ENV !== "test") dotenv.config();
 
 export const env = {
   port: Number(process.env.PORT) || 5000,

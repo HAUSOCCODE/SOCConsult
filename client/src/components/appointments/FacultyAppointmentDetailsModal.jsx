@@ -20,7 +20,6 @@ const clock = (value) =>
 export default function FacultyAppointmentDetailsModal({
   appointment,
   onClose,
-  onComplete,
   showFacultyInfo = false,
 }) {
   useEffect(() => {
@@ -36,9 +35,6 @@ export default function FacultyAppointmentDetailsModal({
     };
   }, [onClose]);
 
-  const canComplete =
-    typeof onComplete === "function" &&
-    appointment.status === "Confirmed";
 
   return createPortal(
     <div
@@ -64,7 +60,7 @@ export default function FacultyAppointmentDetailsModal({
               {appointment.subject || "Consultation"}
             </p>
             <div className="mt-2">
-              <StatusBadge status={appointment.status} />
+              <StatusBadge appointment status={appointment.status} />
             </div>
           </div>
           <button
@@ -123,6 +119,7 @@ export default function FacultyAppointmentDetailsModal({
                 wide
               />
               <Detail label="Status" value={appointment.status} />
+              <Detail label="Final attendance outcome" value={appointment.attendanceSummary?.finalOutcome || "Unresolved / not verified"} />
               <Detail
                 label="Date Request Was Submitted"
                 value={safeDate(appointment.createdAt)}
@@ -241,11 +238,6 @@ export default function FacultyAppointmentDetailsModal({
           <button type="button" onClick={onClose} className="btn-secondary">
             Close
           </button>
-          {canComplete && (
-            <button type="button" onClick={onComplete} className="btn-primary">
-              Complete Consultation
-            </button>
-          )}
         </footer>
       </section>
     </div>,

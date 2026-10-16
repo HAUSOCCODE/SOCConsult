@@ -1,6 +1,6 @@
 import { Router } from "express";
+import { getConsultations, getConsultationOptions, getConsultation, getConsultationDocument } from "../controllers/deanConsultationController.js";
 import accountImportRoutes from "./accountImportRoutes.js";
-import { appointmentDocumentRoutes } from "./appointmentRoutes.js";
 import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { chatWithAi } from "../controllers/aiController.js";
@@ -12,7 +12,6 @@ import {
 import {
   createUser,
   changeDeanPassword,
-  getDeanAppointments,
   getAiConsultationSummary,
   getUser,
   getUsers,
@@ -22,6 +21,7 @@ import {
 } from "../controllers/deanController.js";
 
 const router = Router();
+router.use(["/consultations", "/appointments"], (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use("/users", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
@@ -32,14 +32,17 @@ router.use("/account-imports", (_req, res, next) => {
 });
 router.use(authenticate, authorize("dean"));
 router.use("/account-imports", accountImportRoutes);
-router.use(
-  "/appointments",
-  (req, _res, next) => {
-    req.deanManagementAccess = true;
-    next();
-  },
-  appointmentDocumentRoutes,
-);
+router.use(["/consultations", "/appointments"], (req, res, next) => {
+  if (!["GET", "HEAD"].includes(req.method)) return res.status(403).json({ message: "Dean management access is read-only." });
+  next();
+});
+router.get("/consultations", getConsultations);
+router.get("/consultations/filter-options", getConsultationOptions);
+router.get("/consultations/:consultationId/documents/:documentId", getConsultationDocument);
+router.get("/consultations/:consultationId/document", getConsultationDocument);
+router.get("/consultations/:consultationId", getConsultation);
+router.get("/appointments/:id/documents/:documentId", getConsultationDocument);
+router.get("/appointments/:id/document", getConsultationDocument);
 const aiRateLimit = rateLimit({
   windowMs: 60 * 1000,
   limit: 8,
@@ -83,7 +86,7 @@ router.get("/reports/user-registrations", getUserRegistrationReport);
 router.get("/users/:id", getUser);
 router.post("/users/:id/reset-password", resetUserPassword);
 router.patch("/users/:id/status", updateUserStatus);
-router.get("/appointments", getDeanAppointments);
+router.get("/appointments", getConsultations);
 router.get("/audit-users", getAuditUsers);
 router.get("/audit-users/:userId/logs", getAuditUserLogs);
 router.get("/audit-logs/export", exportAuditLogs);

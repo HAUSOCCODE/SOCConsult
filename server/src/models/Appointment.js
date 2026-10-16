@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { APPOINTMENT_STATUSES, LEGACY_APPOINTMENT_STATUSES } from "../config/appointmentStatus.js";
 
 const scheduleSnapshotSchema = new mongoose.Schema(
   {
@@ -7,7 +8,7 @@ const scheduleSnapshotSchema = new mongoose.Schema(
     endAt: { type: Date, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
-    durationMinutes: { type: Number, required: true, min: 5, max: 240 },
+    durationMinutes: { type: Number, required: true, min: 5, max: 1440 },
     mode: {
       type: String,
       enum: ["Face-to-Face", "Online"],
@@ -21,7 +22,8 @@ const scheduleSnapshotSchema = new mongoose.Schema(
 
 const scheduleHistorySchema = new mongoose.Schema(
   {
-    previous: { type: scheduleSnapshotSchema, required: true },
+    previous: { type: scheduleSnapshotSchema, required: function () { return !this.previousScheduleUnavailable; } },
+    previousScheduleUnavailable: Boolean,
     next: { type: scheduleSnapshotSchema, required: true },
     reason: { type: String, required: true, trim: true, maxlength: 500 },
     initiatedByRole: {
@@ -59,14 +61,17 @@ const statusHistorySchema = new mongoose.Schema(
     changedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function () { return this.actorType !== "system"; },
     },
     changedByRole: {
       type: String,
-      enum: ["Student", "Faculty", "Dean"],
+      enum: ["Student", "Faculty", "Dean", "System"],
       required: true,
     },
     changedAt: { type: Date, default: Date.now, required: true },
+    actorType: { type: String, enum: ["user", "system"], default: "user" },
+    source: { type: String, trim: true, maxlength: 100 },
+    migrationVersion: { type: String, maxlength: 100 },
   },
   { _id: true },
 );
@@ -91,6 +96,7 @@ const appointmentSchema = new mongoose.Schema(
       required: function () {
         return (
           this.bookingMethod !== "schedule_request" &&
+          this.currentScheduleSource !== "faculty_assigned" &&
           this.status !== "Confirmed"
         );
       },
@@ -126,6 +132,7 @@ const appointmentSchema = new mongoose.Schema(
       index: true,
     },
     decisionLock: { type: Boolean, default: false, select: false },
+    currentScheduleSource: { type: String, enum: ["published_slot", "faculty_assigned"] },
     decisionLockAt: { type: Date, select: false },
     reservationToken: { type: String, select: false },
     meetingPlatform: { type: String, trim: true, maxlength: 100 },
@@ -177,21 +184,26 @@ const appointmentSchema = new mongoose.Schema(
     supportingDocuments: [mongoose.Schema.Types.Mixed],
     status: {
       type: String,
-      enum: [
-        "Pending",
-        "Reschedule Proposed",
-        "Confirmed",
-        "Rejected",
-        "Cancelled",
-        "Expired",
-        "Awaiting Attendance Update",
-        "Completed",
-        "Attendance Review",
-      ],
+      // Legacy values remain readable/saveable during rollout, never transition destinations.
+      enum: [...APPOINTMENT_STATUSES, ...LEGACY_APPOINTMENT_STATUSES],
       default: "Pending",
       index: true,
     },
+    attendance: { type: new mongoose.Schema({
+      policyVersion: String, attendanceOpensAt: Date, responseDeadlineAt: Date,
+      studentResponded: Boolean, facultyResponded: Boolean,
+      finalOutcome: { type: String, enum: ["Completed", "Student No-show", "Faculty No-show", null], default: null },
+      finalizedAt: Date, finalizationSource: { type: String, enum: ["participant_agreement"] },
+      reviewReason: { type: String, enum: ["student_response_missing", "faculty_response_missing", "both_responses_missing", "responses_conflict"] },
+      missingRoles: [{ type: String, enum: ["student", "faculty"] }], reviewStartedAt: Date,
+    }, { _id: false }), select: false, default: undefined },
     responseNote: { type: String, trim: true, maxlength: 500 },
+    statusMigration: {
+      version: String,
+      originalStatus: String,
+      migratedAt: Date,
+    },
+    expirationReason: { type: String, maxlength: 100 },
     scheduleHistory: { type: [scheduleHistorySchema], default: [] },
     statusHistory: { type: [statusHistorySchema], default: [] },
     cancellationReason: { type: String, trim: true, maxlength: 500 },
@@ -218,4 +230,6 @@ appointmentSchema.index(
     },
   },
 );
+appointmentSchema.index({ status: 1, "attendance.policyVersion": 1, endAt: 1 });
+appointmentSchema.index({ status: 1, "attendance.responseDeadlineAt": 1 });
 export default mongoose.model("Appointment", appointmentSchema);

@@ -90,8 +90,12 @@ const publicUser = (user, lastActivity = null) => ({
   lastActivity,
 });
 const logQueryFor = (userId) => ({
+  // Retained for the future authorized review workflow, excluded from general
+  // activity so a Dean acting as Faculty cannot discover a counterpart's submission.
+  action: { $ne: "attendance_response_submitted" },
   $or: [
     { subjectUser: userId },
+    { subjectUsers: userId },
     { subjectUser: { $exists: false }, targetType: "User", targetId: userId },
   ],
 });
@@ -220,8 +224,10 @@ export async function getAuditUsers(req, res) {
     ? await AuditLog.aggregate([
         {
           $match: {
+            action: { $ne: "attendance_response_submitted" },
             $or: [
               { subjectUser: { $in: ids } },
+              { subjectUsers: { $in: ids } },
               {
                 subjectUser: { $exists: false },
                 targetType: "User",
@@ -230,9 +236,11 @@ export async function getAuditUsers(req, res) {
             ],
           },
         },
+        { $addFields: { auditSubjects: { $ifNull: ["$subjectUsers", [{ $ifNull: ["$subjectUser", "$targetId"] }]] } } },
+        { $unwind: "$auditSubjects" },
         {
           $group: {
-            _id: { $ifNull: ["$subjectUser", "$targetId"] },
+            _id: "$auditSubjects",
             lastActivity: { $max: "$createdAt" },
           },
         },

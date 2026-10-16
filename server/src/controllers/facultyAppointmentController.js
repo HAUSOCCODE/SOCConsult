@@ -1,10 +1,7 @@
-import mongoose from "mongoose";
-import Appointment from "../models/Appointment.js";
-import Notification from "../models/Notification.js";
-import AuditLog from "../models/AuditLog.js";
+import { transitionAppointment } from "../services/appointmentTransitionService.js";
 
-const ACTIVE_STATUSES = ["Confirmed"];
-const BLOCKING_STATUSES = ["Pending", "Reschedule Proposed", "Confirmed"];
+const ACTIVE_STATUSES = ["Pending", "Confirmed"];
+import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MANILA_OFFSET = "+08:00";
@@ -71,13 +68,6 @@ const snapshot = ({
   };
 };
 
-const readableSchedule = (schedule) =>
-  new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(schedule.startAt);
-
 const validateInput = (body, now = new Date()) => {
   const consultationDate = String(body.consultationDate || "").trim();
   const startTime = String(body.startTime || "").trim();
@@ -129,171 +119,14 @@ const validateInput = (body, now = new Date()) => {
 };
 
 export async function rescheduleFacultyAppointment(req, res) {
-  if (!mongoose.isValidObjectId(req.params.appointmentId))
-    return res.status(400).json({ message: "Invalid appointment ID." });
   const validated = validateInput(req.body);
-  if (validated.error)
-    return res.status(400).json({ message: validated.error });
+  if (validated.error) return res.status(400).json({ message: validated.error });
   const input = validated.value;
-  const appointment = await Appointment.findOne({
-    _id: req.params.appointmentId,
-    faculty: req.user.id,
-  })
-    .select("+meetingLink")
-    .populate("student", "name")
-    .populate("faculty", "name");
-  if (!appointment)
-    return res.status(404).json({ message: "Appointment not found." });
-  if (!ACTIVE_STATUSES.includes(appointment.status))
-    return res.status(409).json({
-      message: "Only confirmed appointments can be rescheduled.",
-    });
-  if (!appointment.startAt || appointment.startAt <= new Date())
-    return res.status(409).json({
-      message:
-        "An appointment that has started or passed cannot be rescheduled.",
-    });
-  const unchanged =
-    appointment.startAt.getTime() === input.startAt.getTime() &&
-    appointment.endAt.getTime() === input.endAt.getTime();
-  if (unchanged)
-    return res.status(409).json({
-      message:
-        "The new consultation schedule must differ from the current schedule.",
-    });
-  const overlap = {
-    _id: { $ne: appointment._id },
-    status: { $in: BLOCKING_STATUSES },
-    startAt: { $lt: input.endAt },
-    endAt: { $gt: input.startAt },
-  };
-  if (await Appointment.exists({ ...overlap, faculty: req.user.id }))
-    return res.status(409).json({
-      message: "The selected time conflicts with another faculty appointment.",
-    });
-  if (
-    await Appointment.exists({ ...overlap, student: appointment.student._id })
-  )
-    return res.status(409).json({
-      message: "The student already has another appointment during this time.",
-    });
-
-  const previous = snapshot({
-    startAt: appointment.startAt,
-    endAt: appointment.endAt,
-    duration:
-      appointment.estimatedDurationMinutes ||
-      Math.round((appointment.endAt - appointment.startAt) / 60000),
-    mode: appointment.consultationMode || "Online",
-    location: appointment.location || "",
-    meetingPlatform: appointment.meetingPlatform || "",
-    meetingLink: appointment.meetingLink || "",
-  });
-  const next = snapshot(input);
-  const proposedAt = new Date();
-  const session = await mongoose.startSession();
-  let updated;
-  try {
-    await session.withTransaction(async () => {
-      updated = await Appointment.findOneAndUpdate(
-        {
-          _id: appointment._id,
-          faculty: req.user.id,
-          status: appointment.status,
-          startAt: appointment.startAt,
-          endAt: appointment.endAt,
-        },
-        {
-          $set: {
-            proposedStartAt: input.startAt,
-            proposedEndAt: input.endAt,
-            proposedConsultationMode: input.mode,
-            proposedLocation:
-              input.mode === "Face-to-Face" ? input.location : "",
-            proposedMeetingPlatform:
-              input.mode === "Online" ? input.meetingPlatform : "",
-            proposedMeetingLink:
-              input.mode === "Online" ? input.meetingLink : "",
-            proposalNote: input.reason,
-            proposedAt,
-            proposedBy: req.user.id,
-            status: "Reschedule Proposed",
-            responseNote: input.reason,
-          },
-        },
-        { new: true, runValidators: true, session },
-      )
-        .select("+meetingLink")
-        .populate("student", "name")
-        .populate("faculty", "name");
-      if (!updated)
-        throw Object.assign(new Error("Appointment changed"), {
-          code: "APPOINTMENT_CHANGED",
-        });
-      const facultyName = updated.faculty?.name || req.user.name || "Faculty";
-      const studentName = updated.student?.name || "Student";
-      const oldLabel = readableSchedule(previous);
-      const newLabel = readableSchedule(next);
-      const destination = input.mode === "Face-to-Face"
-        ? input.location
-        : input.meetingPlatform;
-      await Notification.create(
-        [
-          {
-            recipient: updated.student._id,
-            type: "appointment",
-            title: "Consultation Reschedule Proposed",
-            message: `A new schedule was proposed for your ${updated.subject} consultation with ${facultyName}: ${newLabel}. Mode: ${input.mode}. ${input.mode === "Face-to-Face" ? "Location" : "Meeting"}: ${destination}. Reason: ${input.reason}`,
-            relatedEntityId: updated._id,
-            actionUrl: "/student/consultations",
-          },
-        ],
-        { session },
-      );
-      const audit = {
-        subjectUser: updated.student._id,
-        subjectRole: "student",
-        actorUser: req.user.id,
-        actorRole: req.user.role,
-        actor: req.user.id,
-        action: "appointment_rescheduled",
-        category: "Appointment",
-        description: "Consultation reschedule proposed by faculty",
-        relatedEntityType: "Appointment",
-        relatedEntityId: updated._id,
-        changes: { before: previous, after: next },
-        metadata: {
-          appointmentId: String(updated._id),
-          facultyName,
-          studentName,
-          topic: updated.subject,
-          previousSchedule: oldLabel,
-          newSchedule: newLabel,
-          reason: input.reason,
-          initiatedBy: "Faculty",
-        },
-        targetType: "Appointment",
-        targetId: updated._id,
-      };
-      await AuditLog.create(
-        [audit, { ...audit, subjectUser: req.user.id, subjectRole: req.user.role }],
-        { session },
-      );
-    });
-  } catch (error) {
-    if (error.code === "APPOINTMENT_CHANGED")
-      return res.status(409).json({
-        message:
-          "This appointment changed while you were rescheduling it. Refresh and try again.",
-      });
-    throw error;
-  } finally {
-    await session.endSession();
-  }
-  return res.json({
-    message: "Consultation reschedule proposed and the student was notified.",
-    appointment: updated,
-  });
+  const appointment = await transitionAppointment({ id: req.params.appointmentId, actor: req.user,
+    action: "propose", reason: input.reason, expectedVersion: req.body.expectedVersion,
+    schedule: { startAt: input.startAt, endAt: input.endAt, mode: input.mode,
+      location: input.location, meetingPlatform: input.meetingPlatform, meetingLink: input.meetingLink } });
+  return res.json({ message: "Consultation reschedule proposed and the student was notified.", appointment });
 }
 
 export const facultyAppointmentInternals = {

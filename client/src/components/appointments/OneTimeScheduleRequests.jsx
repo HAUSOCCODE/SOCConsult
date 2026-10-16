@@ -82,7 +82,7 @@ export default function OneTimeScheduleRequests() {
       }
       const data = await api(`/schedule-requests/${selected._id}/${decision}`, {
         method: "PUT",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
       });
       toast.success(data.message);
       setSelected(null);
@@ -129,7 +129,7 @@ export default function OneTimeScheduleRequests() {
                     {request.reason}
                   </p>
                 </div>
-                <StatusBadge status={request.status} allowWrap />
+                <StatusBadge appointment status={request.status} allowWrap />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button

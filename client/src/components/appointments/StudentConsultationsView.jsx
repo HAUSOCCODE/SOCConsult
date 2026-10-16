@@ -4,6 +4,7 @@ import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import { formatPersonName } from "../../utils/formatPersonName";
 import {
+  LEGACY_APPOINTMENT_STATUSES,
   ACTIVE_REQUEST_STATUSES,
   ATTENDANCE_REQUIRED_STATUSES,
   UNDER_REVIEW_STATUSES,
@@ -19,6 +20,7 @@ const TABS = [
   { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultation requests." },
   { id: "attendance", label: "Attendance Required", statuses: ATTENDANCE_REQUIRED_STATUSES, empty: "No consultations currently require your attendance response." },
   { id: "review", label: "Under Review", statuses: UNDER_REVIEW_STATUSES, empty: "No attendance records are currently under review." },
+  { id: "legacy", label: "Legacy", statuses: LEGACY_APPOINTMENT_STATUSES, empty: "No legacy consultations." },
 ];
 const validDate = (value) => {
   const date = new Date(value);
@@ -68,7 +70,7 @@ export default function StudentConsultationsView() {
     try {
       const data = await api(`/appointments/${cancelTarget._id}/cancel`, {
         method: "PUT",
-        body: JSON.stringify({ reason: cancellationReason.trim() }),
+        body: JSON.stringify({ reason: cancellationReason.trim(), expectedVersion: cancelTarget.__v }),
       });
       toast.success(data.message || "Consultation request cancelled.");
       setCancelTarget(null);
@@ -117,7 +119,7 @@ export default function StudentConsultationsView() {
                     <h2 className="break-words text-base font-bold text-slate-900">{appointment.subject || "Subject not provided"}</h2>
                     <p className="mt-1 flex min-w-0 items-center gap-1.5 text-sm text-slate-600"><UserRound size={15} className="shrink-0 text-maroon-700" /><span className="break-words">{providerName}</span></p>
                   </div>
-                  <StatusBadge status={getAppointmentDisplayStatus(appointment)} compact allowWrap />
+                  <StatusBadge appointment status={getAppointmentDisplayStatus(appointment)} compact allowWrap />
                 </div>
                 <p className="mt-3 line-clamp-2 break-words text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-700">Consultation Concern:</span> {appointment.reason || "Not provided"}</p>
                 <div className="mt-4 grid min-w-0 gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2">

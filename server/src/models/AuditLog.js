@@ -7,6 +7,7 @@ const schema = new mongoose.Schema(
       index: true,
     },
     subjectRole: { type: String, enum: ["student", "faculty", "dean"] },
+    subjectUsers: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], default: undefined },
     actorUser: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     actorRole: {
       type: String,
@@ -46,6 +47,7 @@ const schema = new mongoose.Schema(
 );
 schema.index({ createdAt: -1 });
 schema.index({ subjectUser: 1, createdAt: -1 });
+schema.index({ subjectUsers: 1, createdAt: -1 });
 schema.index({ subjectRole: 1, createdAt: -1 });
 schema.index({ action: 1, createdAt: -1 });
 schema.index({ category: 1, createdAt: -1 });

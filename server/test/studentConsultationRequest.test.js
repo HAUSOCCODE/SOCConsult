@@ -1,3 +1,5 @@
+import { appointmentHttp } from "./helpers/appointmentHttp.js";
+import { fixture, addSlot } from "./helpers/appointmentHarness.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import jwt from "jsonwebtoken";
@@ -32,166 +34,26 @@ const startServer = () =>
     const server = app.listen(0, "127.0.0.1", () => resolve(server));
   });
 
-test("selected-slot requests validate authoritative data and reserve atomically", async () => {
-  const restores = [];
-  const ids = Object.fromEntries(
-    ["studentA", "studentB", "faculty", "slot"].map((key) => [
-      key,
-      new mongoose.Types.ObjectId().toString(),
-    ]),
-  );
-  const users = new Map([
-    [ids.studentA, { role: "student", name: "Student A", yearLevel: "3rd Year" }],
-    [ids.studentB, { role: "student", name: "Student B", yearLevel: "2nd Year" }],
-    [ids.faculty, { role: "faculty", name: "Faculty", registrationStatus: "Approved" }],
-  ].map(([id, user]) => [id, { id, _id: id, accountStatus: "Active", ...user }]));
-  const slot = {
-    id: ids.slot,
-    _id: ids.slot,
-    faculty: ids.faculty,
-    startAt: new Date(Date.now() + 3_600_000),
-    endAt: new Date(Date.now() + 7_200_000),
-    isActive: true,
-    mode: "Online",
-    meetingPlatform: "Microsoft Teams",
-    meetingLink: "https://example.invalid/private",
-  };
-  let reservationToken;
-  let failCreation = false;
-  const appointments = [];
-  const notifications = [];
-
-  patch(User, "findById", async (id) => users.get(String(id)) || null, restores);
-  patch(User, "exists", async (query) => {
-    const provider = users.get(String(query._id));
-    return provider?.role === "faculty" && provider.registrationStatus === "Approved"
-      ? { _id: provider.id }
-      : null;
-  }, restores);
-  patch(Availability, "findOne", async (query) =>
-    String(query._id) === ids.slot && !reservationToken ? slot : null,
-  restores);
-  patch(Availability, "findOneAndUpdate", async (query, update) => {
-    if (String(query._id) !== ids.slot || reservationToken) return null;
-    reservationToken = update.$set.reservationToken;
-    return slot;
-  }, restores);
-  patch(Availability, "updateOne", async (query) => {
-    if (query.reservationToken === reservationToken) reservationToken = undefined;
-    return { modifiedCount: 1 };
-  }, restores);
-  patch(Appointment, "exists", async (query) =>
-    appointments.some((item) =>
-      (query.availability && String(item.availability) === String(query.availability)) ||
-      (query.student && String(item.student) === String(query.student) &&
-        item.startAt < query.startAt.$lt && item.endAt > query.endAt.$gt) ||
-      (query.faculty && String(item.faculty) === String(query.faculty) &&
-        item.startAt < query.startAt.$lt && item.endAt > query.endAt.$gt),
-    ) || null,
-  restores);
-  patch(Appointment, "create", async (data) => {
-    if (failCreation) throw new Error("simulated persistence failure");
-    const appointment = {
-      ...data,
-      id: new mongoose.Types.ObjectId().toString(),
-      _id: new mongoose.Types.ObjectId(),
-      save: async () => appointment,
-    };
-    appointments.push(appointment);
-    return appointment;
-  }, restores);
-  patch(Appointment, "findOne", (query) =>
-    chain(appointments.find((item) => String(item.id) === String(query._id)) || null),
-  restores);
-  patch(Appointment, "deleteOne", async (query) => {
-    const index = appointments.findIndex((item) => String(item.id) === String(query._id));
-    if (index >= 0) appointments.splice(index, 1);
-    return { deletedCount: index >= 0 ? 1 : 0 };
-  }, restores);
-  patch(Notification, "create", async (data) => {
-    notifications.push(data);
-    return data;
-  }, restores);
-  patch(AuditLog, "create", async (data) => data, restores);
-
-  const server = await startServer();
-  const base = `http://127.0.0.1:${server.address().port}/api/appointments`;
-  const token = (id) => jwt.sign({ sub: id }, env.jwtSecret);
-  const submit = (student, body = {}) =>
-    fetch(base, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token(student)}`,
-        "Content-Type": "application/json",
-        Connection: "close",
-      },
-      body: JSON.stringify({
-        availabilityId: ids.slot,
-        subject: "  Web Development  ",
-        reason: "  Review the final project  ",
-        student: ids.studentB,
-        faculty: ids.studentB,
-        startAt: new Date(0),
-        endAt: new Date(1),
-        status: "Approved",
-        yearLevel: "5th Year",
-        ...body,
-      }),
-    });
-
+test("selected-slot booking validates authoritative data, rolls back and prevents duplicate reservation", async () => {
+  const h = await appointmentHttp();
   try {
-    let response = await submit(ids.studentA, { subject: " " });
-    assert.equal(response.status, 400);
-    response = await submit(ids.studentA, { subject: "x".repeat(151) });
-    assert.equal(response.status, 400);
-    response = await submit(ids.studentA, { reason: " " });
-    assert.equal(response.status, 400);
-    response = await submit(ids.studentA, { reason: "x".repeat(1001) });
-    assert.equal(response.status, 400);
-    assert.equal(appointments.length, 0);
-
-    failCreation = true;
-    response = await submit(ids.studentA);
-    assert.equal(response.status, 500);
-    assert.equal(reservationToken, undefined, "failed creation releases its own claim");
-    assert.equal(appointments.length, 0);
-    failCreation = false;
-
-    const [first, second] = await Promise.all([
-      submit(ids.studentA),
-      submit(ids.studentB, { subject: "Databases", reason: "Schema review" }),
-    ]);
-    assert.deepEqual([first.status, second.status].sort(), [201, 409]);
-    assert.equal(appointments.length, 1);
-    const created = appointments[0];
-    assert.equal(created.status, "Pending");
-    assert.ok([ids.studentA, ids.studentB].includes(String(created.student)));
-    assert.equal(String(created.faculty), ids.faculty);
-    assert.equal(String(created.availability), ids.slot);
-    assert.equal(created.startAt, slot.startAt);
-    assert.equal(created.endAt, slot.endAt);
-    assert.equal(created.subject, first.status === 201 ? "Web Development" : "Databases");
-    assert.equal(created.reason, first.status === 201 ? "Review the final project" : "Schema review");
-    assert.equal(created.yearLevel, first.status === 201 ? "3rd Year" : "2nd Year");
-    assert.equal(created.consultationMode, "Online");
-    assert.equal(created.meetingPlatform, "Microsoft Teams");
-    assert.equal(created.location, "Microsoft Teams");
-    assert.equal("meetingLink" in created, false);
-    assert.equal(
-      notifications.filter((item) =>
-        String(item.recipient) === ids.faculty && item.title === "New Consultation Request",
-      ).length,
-      1,
-    );
-
-    response = await submit(ids.studentA);
-    assert.equal(response.status, 409);
-    assert.equal(appointments.length, 1);
-    assert.equal(notifications.filter((item) => item.title === "New Consultation Request").length, 1);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-    restores.reverse().forEach((restore) => restore());
-  }
+    const record = fixture({ student: h.users.student.id, faculty: h.users.dean.id }); addSlot(h, { ...record, reservationToken: undefined });
+    const body = { availabilityId: record.availability, subject: " Project ", reason: " Review scope ", status: "Approved", student: h.users.otherStudent.id, startAt: new Date(0) };
+    for (const invalid of [{ subject: " " }, { reason: " " }, { subject: "x".repeat(151) }, { reason: "x".repeat(1001) }])
+      assert.equal((await h.request('/appointments', "student", "POST", { ...body, ...invalid })).status, 400);
+    h.fail("audits");
+    assert.equal((await h.request('/appointments', "student", "POST", body)).status, 500);
+    assert.equal(h.state.appointments.length, 0); assert.equal(h.state.slots[0].reservationToken, undefined);
+    h.fail(undefined);
+    const response = await h.request('/appointments', "student", "POST", body); assert.equal(response.status, 201);
+    const result = (await response.json()).appointment;
+    assert.equal(result.student, h.users.student.id); assert.equal(result.faculty, h.users.dean.id);
+    assert.equal(result.status, "Pending"); assert.equal(result.yearLevel, "3rd Year");
+    assert.equal(result.startAt, record.startAt.toISOString()); assert.equal(result.subject, "Project");
+    assert.equal(result.reservationToken, undefined); assert.equal(result.statusHistory.length, 1);
+    assert.equal((await h.request('/appointments', "otherStudent", "POST", body)).status, 409);
+    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+  } finally { await h.close(); }
 });
 
 test("supporting-document middleware enforces count, file, total, and type limits", async () => {

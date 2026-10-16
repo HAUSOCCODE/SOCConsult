@@ -1,3 +1,4 @@
+import AttendanceSummary from "../../components/appointments/AttendanceSummary";
 import { ChevronDown, FileText, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api/apiClient";
@@ -124,7 +125,17 @@ export default function ReportsAnalytics() {
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
 
-  const completed = items.filter((item) => item.status === "Completed");
+  const completed = items.filter((item) => item.status === "Completed" && (item.attendanceSummary || item.attendance)?.finalOutcome === "Completed" && (item.attendanceSummary || item.attendance)?.finalizationSource === "participant_agreement");
+  const attendanceCounts = items.reduce((counts, item) => {
+    const a = item.attendanceSummary || item.attendance;
+    if (item.status === "Attendance Review") counts.attendanceReview++;
+    if (item.status === "Completed") {
+      const key = a?.finalizationSource === "participant_agreement"
+        ? { Completed: "verifiedCompleted", "Student No-show": "studentNoShow", "Faculty No-show": "facultyNoShow" }[a.finalOutcome] : null;
+      counts[key || "historicalUnverifiedCompleted"]++;
+    }
+    return counts;
+  }, { verifiedCompleted: 0, studentNoShow: 0, facultyNoShow: 0, historicalUnverifiedCompleted: 0, attendanceReview: 0 });
   const exportConsultations = () => {
     const rows = [
       ["Student", "Faculty", "Subject", "Date", "Status"],
@@ -267,11 +278,12 @@ export default function ReportsAnalytics() {
         </p>
       )}
       {items.length === 0 && <EmptyState title="No reports generated yet." />}
+      <AttendanceSummary counts={attendanceCounts} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Metric label="Total consultations" value={items.length} />
-        <Metric label="Completed" value={completed.length} />
+        <Metric label="Verified completed attendance" value={completed.length} />
         <Metric
-          label="Completion rate"
+          label="Verified attendance rate"
           value={`${items.length ? Math.round((completed.length / items.length) * 100) : 0}%`}
         />
       </div>
@@ -280,7 +292,7 @@ export default function ReportsAnalytics() {
           AI-Assisted Report Summary
         </h2>
         <p className="mt-2 text-sm text-slate-500">
-          Generate a narrative summary of completed consultations for a selected
+          Generate a narrative summary of verified completed consultations for a selected
           date range.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
@@ -370,7 +382,7 @@ export default function ReportsAnalytics() {
             <p className="mt-4 leading-7 text-slate-700">{summary.summary}</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Insight
-                label="Completed consultations"
+                label="Verified completed attendance"
                 value={summary.insights.totalConsultations}
               />
               <Insight

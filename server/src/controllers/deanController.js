@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
 import { createManualAccount } from "../services/manualAccountService.js";
 import User from "../models/User.js";
-import Appointment from "../models/Appointment.js";
 import { logActivity } from "../services/activityService.js";
 import { createConsultationSummary } from "../services/consultationSummaryService.js";
 
@@ -50,26 +49,6 @@ export async function updateUserStatus(req, res) {
   );
   return res.status(result.statusCode).json(result.body);
 }
-export async function getDeanAppointments(_req, res) {
-  const records = await Appointment.find()
-    .select("+meetingLink")
-    .populate("student", "name email program")
-    .populate("faculty", "name email position")
-    .populate("availability", "meetingPlatform +meetingLink")
-    .sort({ createdAt: -1 })
-    .lean();
-  const appointments = records.map(({ availability, ...appointment }) => ({
-    ...appointment,
-    availability: availability?._id || availability,
-    meetingPlatform:
-      availability?.meetingPlatform ||
-      appointment.meetingPlatform ||
-      (appointment.consultationMode === "Online" ? appointment.location : ""),
-    meetingLink: availability?.meetingLink || appointment.meetingLink || "",
-  }));
-  res.json({ appointments });
-}
-
 export async function getAiConsultationSummary(req, res) {
   try {
     const report = await createConsultationSummary(

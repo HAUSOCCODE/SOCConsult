@@ -117,6 +117,7 @@ test("dashboard uses exact counts, bounded safe lists, role authorization and sa
   let fail = false;
   patch(Appointment, "aggregate", (pipeline) => {
     if (fail) throw new Error("SECRET_DATABASE_ERROR");
+    if (pipeline[1].$group._id?.status) return chain([{ _id: { status: "Completed" }, count: 1 }]);
     const range = pipeline[0].$match.createdAt;
     const selected = records.filter(
       (record) =>
@@ -221,12 +222,13 @@ test("dashboard uses exact counts, bounded safe lists, role authorization and sa
     assert.equal(body.accounts.activeStudents, 3);
     assert.equal(body.accounts.activeFaculty, 2);
     assert.deepEqual(body.consultations, {
-      total: 10,
+      total: 15, // Canonical and recognized legacy records remain counted.
       byStatus: { pending: 2, completed: 1 },
+      attendanceSummary: { verifiedCompleted: 0, studentNoShow: 0, facultyNoShow: 0, historicalUnverifiedCompleted: 1, attendanceReview: 0 },
     });
     assert.doesNotMatch(
       JSON.stringify(body),
-      /SECRET|pendingRegistrations|confirmed|attendanceReview|expired|meetingLink|supportingDocuments/,
+      /SECRET|pendingRegistrations|confirmed|expired|meetingLink|supportingDocuments/,
     );
     assert.deepEqual(Object.keys(body.recentImports[0]), [
       "importId",
