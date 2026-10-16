@@ -13,6 +13,10 @@ import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload
 import { logActivity, notify } from "../services/activityService.js";
 import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
 import { destroyAsset, uploadBuffer } from "../services/cloudinaryStorage.js";
+import {
+  consultationIcsFilename,
+  generateConsultationIcs,
+} from "../services/icsService.js";
 const router = Router();
 router.use(authenticate);
 
@@ -217,6 +221,44 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     }),
   });
 });
+
+router.get(
+  "/:appointmentId/calendar.ics",
+  authorize("student"),
+  async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.appointmentId))
+      return res.status(400).json({ message: "Invalid appointment ID." });
+
+    const appointment = await Appointment.findOne({
+      _id: req.params.appointmentId,
+      student: req.user.id,
+      status: "Confirmed",
+    })
+      .select(
+        "faculty startAt endAt subject consultationMode location meetingPlatform status",
+      )
+      .populate("faculty", "name")
+      .lean();
+    if (!appointment)
+      return res.status(404).json({
+        message: "Confirmed consultation not found or no longer available.",
+      });
+
+    let calendar;
+    let filename;
+    try {
+      calendar = generateConsultationIcs(appointment);
+      filename = consultationIcsFilename(appointment.startAt);
+    } catch {
+      return res.status(409).json({
+        message: "This consultation does not have a valid calendar schedule.",
+      });
+    }
+    res.set("Content-Type", "text/calendar; charset=utf-8");
+    res.set("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(calendar);
+  },
+);
 router.post(
   "/",
   authorize("student"),
