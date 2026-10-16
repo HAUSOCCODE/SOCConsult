@@ -7,10 +7,18 @@ import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import {
   canStudentCancelAppointment,
   getAppointmentDisplayStatus,
-  isAwaitingFacultyUpdate,
 } from "../../utils/appointmentStatus";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { api } from "../../api/apiClient";
+import StudentAttendanceResponseForm from "../attendance/StudentAttendanceResponseForm";
+import AttendanceResponseSummary from "../attendance/AttendanceResponseSummary";
+
+const ATTENDANCE_STATUSES = new Set([
+  "Awaiting Attendance Update",
+  "Attendance Review",
+  "Completed",
+  "Expired",
+]);
 
 const safeDate = (value, options) => {
   if (!value) return "Not scheduled yet";
@@ -42,13 +50,69 @@ export default function StudentAppointmentDetailsModal({
   onClose,
   onRespondToProposal,
   onCancelConsultation,
+  onAttendanceUpdated,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
   const [downloadingCalendar, setDownloadingCalendar] = useState(false);
   const [calendarMessage, setCalendarMessage] = useState("");
+  const [attendance, setAttendance] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
   const appointmentId = appointment?._id || appointment?.id;
   const canDownloadCalendar =
     appointment?.status === "Confirmed" && Boolean(appointmentId);
+  const shouldLoadAttendance =
+    Boolean(appointmentId) && ATTENDANCE_STATUSES.has(appointment?.status);
+  const appointmentEnd = new Date(appointment?.endAt);
+  const consultationEnded =
+    Number.isFinite(appointmentEnd.getTime()) && Date.now() >= appointmentEnd.getTime();
+  const loadAttendance = async () => {
+    if (!shouldLoadAttendance) return null;
+    setAttendanceLoading(true);
+    setAttendanceError("");
+    try {
+      const data = await api(`/appointments/${appointmentId}/attendance`);
+      setAttendance(data.attendance || null);
+      return data.attendance || null;
+    } catch (error) {
+      setAttendanceError(error.message || "Unable to load attendance information.");
+      return null;
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+  const submitAttendance = async (input) => {
+    try {
+      await api(`/appointments/${appointmentId}/attendance-responses`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    } catch (error) {
+      if (error.status === 409) {
+        const current = await loadAttendance();
+        if (current?.ownResponse) {
+          await onAttendanceUpdated?.();
+          return;
+        }
+      }
+      throw error;
+    }
+    setAttendance((current) => ({
+      ...(current || {}),
+      status: current?.status || appointment.status,
+      eligible: false,
+      waiting: true,
+      ownResponse: {
+        outcome: input.outcome,
+        reason: input.reason,
+        submittedAt: new Date().toISOString(),
+      },
+    }));
+    const refreshed = await loadAttendance();
+    if (!refreshed)
+      setAttendanceError("Your response was submitted, but the latest attendance status could not be refreshed.");
+    await onAttendanceUpdated?.();
+  };
   const downloadCalendar = async () => {
     if (!canDownloadCalendar || downloadingCalendar) return;
     setDownloadingCalendar(true);
@@ -87,6 +151,11 @@ export default function StudentAppointmentDetailsModal({
       document.removeEventListener("keydown", escape);
     };
   }, [onClose]);
+  useEffect(() => {
+    setAttendance(null);
+    setAttendanceError("");
+    if (shouldLoadAttendance) void loadAttendance();
+  }, [appointmentId, appointment?.status]);
 
   return createPortal(
     <div
@@ -186,11 +255,26 @@ export default function StudentAppointmentDetailsModal({
             )}
           </Section>
 
-          {isAwaitingFacultyUpdate(appointment) && (
-            <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
-              This consultation is awaiting your attendance response. Attendance
-              submission is handled by the dedicated attendance workflow.
+          {shouldLoadAttendance && attendanceLoading && !attendance && (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700" role="status">Loading attendance information...</p>
+          )}
+          {shouldLoadAttendance && attendanceError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
+              <p className="break-words">{attendanceError}</p>
+              {!attendance?.ownResponse && <button type="button" onClick={loadAttendance} className="mt-3 font-bold underline">Try again</button>}
+            </div>
+          )}
+          {appointment.status === "Awaiting Attendance Update" && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
+            <StudentAttendanceResponseForm onSubmit={submitAttendance} />
+          )}
+          {appointment.status === "Awaiting Attendance Update" && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
+            <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
+              Attendance submission is not currently available. Responses open after the consultation ends and remain subject to the backend response window.
             </p>
+          )}
+          {attendance?.ownResponse && <AttendanceResponseSummary attendance={attendance} />}
+          {!attendance?.ownResponse && ["Attendance Review", "Completed", "Expired"].includes(appointment.status) && attendance && (
+            <AttendanceResponseSummary attendance={attendance} />
           )}
 
           <OnlineMeetingDetails

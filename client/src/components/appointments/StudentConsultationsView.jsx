@@ -128,7 +128,7 @@ export default function StudentConsultationsView() {
                   <p className="flex min-w-0 items-start gap-2 sm:col-span-2"><ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{mode}</span></p>
                 </div>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> View Details</button>
+                  <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> {appointment.status === "Awaiting Attendance Update" ? "View Attendance" : "View Details"}</button>
                   {appointment.status === "Reschedule Proposed" && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
                   {canStudentCancelAppointment(appointment) && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel Consultation</button>}
                 </div>
@@ -137,7 +137,7 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
       {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
