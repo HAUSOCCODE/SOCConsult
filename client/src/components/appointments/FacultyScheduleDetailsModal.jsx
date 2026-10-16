@@ -298,13 +298,13 @@ export default function FacultyScheduleDetailsModal({
 
               <section>
                 <h3 className="text-lg font-bold text-maroon-900">
-                  Approved Students ({students.length})
+                  Confirmed Students ({students.length})
                 </h3>
                 {students.length === 0 ? (
                   <div className="mt-4">
                     <EmptyState
                       title="No approved students are currently assigned to this schedule."
-                      text="Approved appointments for this exact schedule will appear here."
+                      text="Confirmed appointments for this exact schedule will appear here."
                     />
                   </div>
                 ) : (

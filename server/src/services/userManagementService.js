@@ -204,7 +204,7 @@ export async function changeManagedUserStatus(id, body, actor) {
             ),
           );
         // Activation is not registration approval. Pending/rejected accounts remain visible,
-        // but cannot be activated through this workflow. Missing legacy state is normalized.
+        // but cannot be activated through this workflow. Missing legacy state stays unchanged.
         if (
           body.accountStatus === "Active" &&
           current.registrationStatus != null &&
@@ -213,7 +213,7 @@ export async function changeManagedUserStatus(id, body, actor) {
           throw new ManagementError(
             fail(
               409,
-              "This account cannot be activated because its registration state is incompatible with sign-in.",
+              "This account cannot be activated because its legacy access state is incompatible with sign-in.",
               "REGISTRATION_CONFLICT",
             ),
           );
@@ -226,11 +226,6 @@ export async function changeManagedUserStatus(id, body, actor) {
             ),
           ),
         };
-        if (
-          body.accountStatus === "Active" &&
-          current.registrationStatus == null
-        )
-          set.registrationStatus = "Approved";
         updated = await User.findOneAndUpdate(
           {
             _id: id,
@@ -262,8 +257,6 @@ export async function changeManagedUserStatus(id, body, actor) {
           user: updated,
           actor,
           previousStatus: current.accountStatus,
-          previousRegistrationStatus: current.registrationStatus,
-          normalizedRegistration: Boolean(set.registrationStatus),
           reason,
           session,
         });

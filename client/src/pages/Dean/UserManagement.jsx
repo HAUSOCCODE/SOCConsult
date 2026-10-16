@@ -161,7 +161,7 @@ export default function UserManagement() {
         STATUS_CONFLICT:
           "This account has changed. Refresh the user list before trying again.",
         REGISTRATION_CONFLICT:
-          "This account cannot be activated because its registration state is incompatible with sign-in.",
+          "This account cannot be activated because its legacy access state is incompatible with sign-in.",
         STATUS_CHANGE_UNCERTAIN:
           "Unable to confirm the status change. Refresh the user list before trying again.",
       };

@@ -5,7 +5,6 @@ import LandingPage from "./pages/Public/LandingPage";
 import RoleSelectionPage from "./pages/Public/RoleSelectionPage";
 import StudentLogin from "./pages/Auth/StudentLogin";
 import FacultyLogin from "./pages/Auth/FacultyLogin";
-import FacultyRegister from "./pages/Auth/FacultyRegister";
 import DeanLogin from "./pages/Auth/DeanLogin";
 import StudentLayout from "./layouts/StudentLayout";
 import StudentDashboard from "./pages/Student/StudentDashboard";
@@ -47,31 +46,16 @@ function ConsultationMonitoringRedirect() {
   const location = useLocation();
   return <Navigate to={`/dean/consultations${monitoringQuery(location.search)}`} replace />;
 }
-function LegacyManagementRedirect() {
-  const location = useLocation();
-  return (
-    <Navigate
-      to={`${location.pathname.replace(/^\/admin(?=\/|$)/, "/dean")}${location.search}${location.hash}`}
-      replace
-    />
-  );
-}
 export default function App() {
   return (
     <>
       <RouteDocumentTitle />
       <Routes>
-        <Route path="/admin/*" element={<LegacyManagementRedirect />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/get-started" element={<RoleSelectionPage />} />
         <Route path="/student/login" element={<StudentLogin />} />
         <Route path="/faculty/login" element={<FacultyLogin />} />
-        <Route path="/faculty/register" element={<FacultyRegister />} />
         <Route path="/dean/login" element={<DeanLogin />} />
-        <Route
-          path="/dean/register"
-          element={<Navigate to="/get-started" replace />}
-        />
         <Route element={<ProtectedRoute role="student" />}>
           <Route path="student" element={<StudentLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
@@ -116,10 +100,6 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DeanDashboard />} />
             <Route path="users" element={<UserManagement />} />
-            <Route
-              path="registrations"
-              element={<DeanRouteRedirect to="/dean/users" />}
-            />
             <Route path="consultations" element={<ConsultationMonitoring />} />
             <Route path="appointments" element={<ConsultationMonitoringRedirect />} />
             <Route path="consultation-overview" element={<ConsultationMonitoringRedirect />} />

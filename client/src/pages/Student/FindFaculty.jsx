@@ -190,7 +190,7 @@ export default function FindFaculty() {
           text={
             search.trim()
               ? "Try another Faculty name, position, or specialization."
-              : "Approved Faculty Members will appear here when available."
+              : "Faculty Members will appear here when available."
           }
         />
       ) : (
@@ -366,10 +366,10 @@ export default function FindFaculty() {
                         {schedule.hasActiveRequest ? (
                           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-center">
                             <p className="font-bold text-green-800">
-                              {schedule.requestStatus === "Approved"
-                                ? "✓ Consultation Approved"
-                                : schedule.requestStatus === "Rescheduled"
-                                  ? "✓ Consultation Rescheduled"
+                              {schedule.requestStatus === "Confirmed"
+                                ? "✓ Consultation Confirmed"
+                                : schedule.requestStatus === "Reschedule Proposed"
+                                  ? "✓ Reschedule Proposed"
                                   : "✓ Request Already Sent"}
                             </p>
                             <p className="mt-1 text-sm text-green-700">

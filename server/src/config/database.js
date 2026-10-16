@@ -11,27 +11,7 @@ globalThis.__consultioDatabase = cache;
 
 async function initializeDatabase() {
   await ensureDean();
-  // One-time compatibility migration: only fill fields absent from the initial schema.
-  await mongoose.model("User").updateMany(
-    {
-      role: { $in: ["student", "faculty"] },
-      registrationStatus: { $exists: false },
-    },
-    [
-      {
-        $set: {
-          registrationStatus: {
-            $cond: ["$isApproved", "Approved", "Pending"],
-          },
-          accountStatus: { $cond: ["$isActive", "Active", "Inactive"] },
-        },
-      },
-    ],
-  );
-  await mongoose.model("User").updateMany(
-    { role: "dean", registrationStatus: { $exists: false } },
-    { $set: { registrationStatus: "Approved", accountStatus: "Active" } },
-  );
+  // Existing accounts are read as stored. No implicit eligibility normalization.
 }
 
 export async function connectDatabase() {

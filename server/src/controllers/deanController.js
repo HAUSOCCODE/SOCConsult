@@ -1,5 +1,4 @@
 import { createManualAccount } from "../services/manualAccountService.js";
-import User from "../models/User.js";
 
 import {
   listManagedUsers,
@@ -8,7 +7,6 @@ import {
   resetManagedUserPassword,
 } from "../services/userManagementService.js";
 
-const managedRoles = ["student", "faculty"];
 export async function createUser(req, res) {
   const result = await createManualAccount(req.body, req.user.id);
   return res.status(result.statusCode).json(result.body);
@@ -16,17 +14,6 @@ export async function createUser(req, res) {
 export async function getUsers(req, res) {
   const result = await listManagedUsers(req.query);
   return res.status(result.statusCode).json(result.body);
-}
-export async function getUserRegistrationReport(_req, res) {
-  const users = await User.find({ role: { $in: managedRoles } })
-    .select(
-      "name firstName middleName lastName email role createdAt emailVerified emailVerifiedAt registrationStatus approvalMethod approvedBy approvedAt rejectedBy rejectedAt accountStatus",
-    )
-    .populate("approvedBy", "name email")
-    .populate("rejectedBy", "name email")
-    .sort({ createdAt: -1 })
-    .lean();
-  res.json({ users });
 }
 export async function getUser(req, res) {
   const result = await readManagedUser(req.params.id);

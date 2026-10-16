@@ -11,16 +11,28 @@ export function safeActionUrl(value, user, category) {
   if (user.role === "dean" && value === "/faculty/appointments") value = "/dean/faculty/consultations";
   const base = user.role === "dean" ? "/dean" : user.role === "student" ? "/student" : "/faculty";
   const allowed = user.role === "dean"
-    ? /^\/dean\/(?:import(?:\?preview=[a-f\d-]{36})?|users(?:\?userId=[a-f\d]{24})?|attendance-review(?:\/[a-f\d]{24})?|reports|faculty\/(?:consultations|requests|history))$/i
+    ? /^\/dean\/(?:import(?:\?preview=[a-f\d-]{36})?|users(?:\?userId=[a-f\d]{24})?|attendance-review(?:\/[a-f\d]{24})?|reports|consultations|faculty\/(?:consultations|requests|history))$/i
     : new RegExp(`^${base}/(?:consultations|appointments|requests|history)$`);
   if (!allowed.test(value)) return undefined;
   if (user.role === "dean") {
-    if (category === "Management" && !/^\/dean\/(?:users|import)(?:\?|$)/.test(value)) return undefined;
-    if (category === "Consultation" && !value.startsWith("/dean/faculty/")) return undefined;
+    if (category === "Management" && !/^\/dean\/(?:users|import|consultations)(?:\?|$)/.test(value)) return undefined;
+    if (category === "Consultation" && value !== "/dean/consultations" && !value.startsWith("/dean/faculty/")) return undefined;
     if (category === "Report" && value !== "/dean/reports") return undefined;
     if (category === "Attendance" && !value.startsWith("/dean/attendance-review") && !value.startsWith("/dean/faculty/")) return undefined;
   }
   return value;
+}
+// Historical destinations are normalized only while reading; stored notices stay intact.
+function historicalActionUrl(value, user) {
+  if (user.role !== "dean" || typeof value !== "string") return value;
+  const destinations = {
+    "/admin/registrations": "/dean/users", "/admin/users": "/dean/users",
+    "/admin/appointments": "/dean/consultations",
+    "/admin/consultation-overview": "/dean/consultations",
+    "/admin/reports": "/dean/reports", "/admin/import": "/dean/import",
+    "/admin/attendance-review": "/dean/attendance-review",
+  };
+  return Object.hasOwn(destinations, value) ? destinations[value] : value;
 }
 export function publicNotification(row, user) {
   const value = row.toObject ? row.toObject() : row;
@@ -29,7 +41,7 @@ export function publicNotification(row, user) {
     : "/dean/faculty/consultations";
   return Object.fromEntries(Object.entries({ _id: value._id, type: value.type, category,
     title: value.title, message: value.message, relatedEntityId: value.relatedEntityId,
-    actionUrl: safeActionUrl(value.actionUrl || (user.role === "dean" ? fallback : ""), user, category),
+    actionUrl: safeActionUrl(historicalActionUrl(value.actionUrl, user) || (user.role === "dean" ? fallback : ""), user, category),
     isRead: value.isRead, readAt: value.readAt, createdAt: value.createdAt }).filter(([, v]) => v !== undefined));
 }
 const events = {

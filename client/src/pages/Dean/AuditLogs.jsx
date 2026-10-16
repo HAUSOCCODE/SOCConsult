@@ -510,7 +510,7 @@ function UserSummary({ user, summary }) {
           value={user.yearLevel || user.position || "Not available"}
         />
         <SummaryItem
-          label="Registration date"
+          label="Account creation date"
           value={formatDate(user.registeredAt)}
         />
         <SummaryItem

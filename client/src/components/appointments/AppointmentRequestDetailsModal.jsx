@@ -103,7 +103,7 @@ export default function AppointmentRequestDetailsModal({
                           day: "numeric",
                         },
                       )
-                    : "Awaiting Faculty Schedule"
+                    : "Pending Faculty schedule"
                 }
               />
               <Detail

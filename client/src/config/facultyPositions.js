@@ -6,7 +6,6 @@ export const FACULTY_POSITIONS = [
   "Lecturer",
   "Dean",
   "Associate Dean",
-  "Program Chair",
   "Department Chair",
   "Practicum Coordinator",
   "Internship Coordinator",

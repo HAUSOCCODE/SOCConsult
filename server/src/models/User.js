@@ -59,6 +59,7 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       select: false,
     },
+    // Legacy/internal eligibility and provenance; no public approval workflow.
     registrationStatus: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],

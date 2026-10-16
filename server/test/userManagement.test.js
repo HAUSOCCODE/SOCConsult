@@ -487,7 +487,7 @@ test("eligible activation/deactivation across all sources is atomic, preserves m
       }
 });
 
-test("legacy registration matrix: missing state is normalized for activation; incompatible states conflict without approval", async () => {
+test("legacy registration matrix: missing state is preserved during activation; incompatible states conflict without approval", async () => {
   for (const status of ["Active", "Inactive"])
     for (const registration of [
       "Approved",
@@ -527,7 +527,7 @@ test("legacy registration matrix: missing state is normalized for activation; in
         } else {
           assert.equal(
             h.users[0].registrationStatus,
-            status === "Inactive" ? "Approved" : registration,
+            registration,
           );
           if (status === "Inactive") {
             let next = false;
@@ -900,7 +900,7 @@ test("legacy missing/null timestamps support a single fenced activation and whit
         ).statusCode,
         200,
       );
-      assert.equal(h.users[0].registrationStatus, "Approved");
+      assert.equal(h.users[0].registrationStatus, null);
       assert.equal(
         (
           await changeManagedUserStatus(
@@ -912,7 +912,7 @@ test("legacy missing/null timestamps support a single fenced activation and whit
         409,
       );
       assert.equal(h.audits.length, 1);
-      assert.equal(h.audits[0].metadata.newRegistrationStatus, "Approved");
+      assert.equal(h.audits[0].metadata.newRegistrationStatus, undefined);
     } finally {
       h.restore();
     }

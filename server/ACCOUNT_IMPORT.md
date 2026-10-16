@@ -43,11 +43,10 @@ bytes are retained. Legacy previews without schema version 2 and filename requir
 Approved means immediately eligible, not that CSV provisioning passed through
 self-registration approval. No approval actor, timestamp, or method is assigned.
 Program and position remain unset; users may supply them in their profiles later.
-Existing Approved/Active queries need no changes. New self-registration populates
-institutionalId and accountSource=self_registration, retaining Pending/Inactive behavior.
+Public registration is removed. Historical accountSource=self_registration values remain provenance only. Active accounts may sign in with Approved or missing/null registration state; explicit Pending, Rejected, and unknown states are denied without rewriting records.
 
 Reject IDs over 72 UTF-8 bytes because bcrypt truncates longer input. Initial ID
-passwords need not meet self-registration strength rules. No forced change or email
+passwords need not meet password-change strength rules. No forced change or email
 is added; users may change the password later using existing strength requirements.
 Hashing concurrency is two and confirmation batches are capped at 200. Use multiple
 files for larger populations.
@@ -167,7 +166,7 @@ On a controlled nonproduction replica set before deployment:
    completed summaries remain past preview expiry.
 6. Test uncertain commits, network loss, stale-attempt recovery, host request timeout,
    and maximum-size batches; measure bcrypt CPU/time and transaction duration.
-7. Check templates, registration, profiles, password changes, booking, management,
+7. Check templates, removed-registration rejection, profiles, password changes, booking, management,
    and existing Approved/Active reporting.
 
 Existing process-local upload rate limiting needs operational coordination for
