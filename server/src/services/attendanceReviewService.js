@@ -113,7 +113,7 @@ export async function submitReview({ id, actor, input, now = new Date() }) {
         const faculty = await User.findById(row.faculty).select("role").session(session);
         await Notification.create([{ recipient: row.student, actionUrl: "/student/consultations" },
           { recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" }]
-          .map(target => ({ ...target, type: "appointment", title: "Attendance Record Reviewed", relatedEntityId: row._id,
+          .map(target => ({ ...target, type: "appointment", category: "Attendance", title: "Attendance Record Reviewed", relatedEntityId: row._id,
             message: `The attendance record was reviewed. Recorded outcome: ${finalOutcome}.` })), { session });
       }
       result = { reviewId: String(review._id), status, finalOutcome, version: updated.__v, state: isFinal ? "Resolved" : "Unresolved" };

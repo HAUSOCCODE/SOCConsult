@@ -1,3 +1,4 @@
+import { bestEffortNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
@@ -35,12 +36,25 @@ export async function createNarrative(input, actor, adapter = generateNarrative)
   authorize(actor);
   const { filters, summary } = await loadReportData(input, actor);
   const snapshot = aggregateSnapshot(filters, summary);
-  const narrative = await adapter(snapshot), generatedAt = new Date();
-  return transaction(actor, async (session, dean) => {
-    const [record] = await ReportNarrative.create([{ dean, filters, snapshot, narrative, generatedAt }], { session });
-    await audit("report_narrative_generated", dean, record._id, session, generatedAt);
-    return response(record);
-  });
+  let narrative;
+  try { narrative = await adapter(snapshot); }
+  catch (error) {
+    await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
+    throw error;
+  }
+  const generatedAt = new Date();
+  try {
+    return await transaction(actor, async (session, dean) => {
+      const [record] = await ReportNarrative.create([{ dean, filters, snapshot, narrative, generatedAt }], { session });
+      await audit("report_narrative_generated", dean, record._id, session, generatedAt);
+      return response(record);
+    });
+  } catch (error) {
+    if (!error.hasErrorLabel?.("UnknownTransactionCommitResult") && error.statusCode !== 403) {
+      await bestEffortNotification({ recipient: actor.id || actor._id, event: "ai_summary_failed", actionUrl: "/dean/reports" });
+    }
+    throw error;
+  }
 }
 export async function readNarrative(id, actor) {
   authorize(actor); validId(id);

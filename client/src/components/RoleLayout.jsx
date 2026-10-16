@@ -96,7 +96,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
   }, [open]);
   useEffect(() => {
     const load = () =>
-      api("/notifications")
+      api("/notifications?limit=1")
         .then((data) => setUnread(data.unreadCount))
         .catch(() => {});
     const handleNotificationsUpdated = (event) => {

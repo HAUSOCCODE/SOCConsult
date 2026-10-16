@@ -7,6 +7,7 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
 import Appointment from "../src/models/Appointment.js";
+import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 import ReportNarrative from "../src/models/ReportNarrative.js";
 import ReportNarrativeReview from "../src/models/ReportNarrativeReview.js";
@@ -53,6 +54,7 @@ test("generation, regeneration, review versions, rollback, filter query parity a
   const restores = [], records = [], reviews = [], audits = []; let staged, failure = "", revoked = false, rowCount = 1, calls = 0, pipeline;
   const patch = (o, k, v) => { const old = o[k]; o[k] = v; restores.push(() => o[k] = old); };
   const session = { async withTransaction(work) { staged = []; const result = await work(); staged.forEach(fn => fn()); return result; }, async endSession() {} };
+  patch(Notification, "create", async records => { assert.equal(records[0].type, "ai_summary_failed"); assert.doesNotMatch(JSON.stringify(records), /SECRET|unavailable|snapshot|prompt/); return records; });
   patch(mongoose, "startSession", async () => session);
   patch(User, "findById", () => chain(revoked ? { ...actor, role: "student" } : actor));
   patch(Appointment, "aggregate", input => { pipeline = input; return chain(Array(rowCount).fill({ status: "Pending", consultationMode: "Online" })); });
@@ -88,6 +90,8 @@ test("generation, regeneration, review versions, rollback, filter query parity a
 });
 
 test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/provider failures", async () => {
+  const oldNotify = Notification.create;
+  Notification.create = async records => records;
   const old = User.findById;
   const oldAggregate = Appointment.aggregate, oldKey = process.env.GROQ_API_KEY;
   delete process.env.GROQ_API_KEY;
@@ -108,11 +112,40 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
     assert.equal((await request("/dean/reports/ai-summaries", filters)).status, 429);
     for (let i = 0; i < 8; i++) assert.equal((await request(`/dean/reports/ai-summaries/${id}/review`, {})).status, 400);
     assert.equal((await request(`/dean/reports/ai-summaries/${id}/review`, {})).status, 429);
-  } finally { User.findById = old; Appointment.aggregate = oldAggregate; if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; await new Promise(resolve => server.close(resolve)); }
+  } finally { Notification.create = oldNotify; User.findById = old; Appointment.aggregate = oldAggregate; if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey; await new Promise(resolve => server.close(resolve)); }
 });
 
 test("only Reports mounts AI UI and only narrative adapter imports Groq", async () => {
   for (const path of ["layouts/DeanLayout.jsx", "layouts/StudentLayout.jsx", "layouts/FacultyLayout.jsx", "pages/Public/LandingPage.jsx"]) assert.doesNotMatch(await readFile(new URL(`../../client/src/${path}`, import.meta.url), "utf8"), /AIAssistant|AIGuide|ReportNarrativePanel/);
   const panel = await readFile(new URL("../../client/src/components/dean/ReportNarrativePanel.jsx", import.meta.url), "utf8");
   assert.ok(panel.includes(DISCLAIMER)); assert.doesNotMatch(panel, /textarea|dangerouslySetInnerHTML|contentEditable/);
+});
+
+
+test("AI failure notices preserve original errors and skip uncertain commit outcomes", async () => {
+  const restores = [], notices = [];
+  const patch = (o, k, v) => { const old = o[k]; o[k] = v; restores.push(() => o[k] = old); };
+  let mode = "provider", attempts = 0;
+  const raw = new Error("SECRET original error");
+  patch(Appointment, "aggregate", () => chain([]));
+  patch(mongoose, "startSession", async () => ({
+    async withTransaction() {
+      if (mode === "uncertain") throw Object.assign(new Error("SECRET uncertain"), { hasErrorLabel: label => label === "UnknownTransactionCommitResult" });
+      throw raw;
+    }, async endSession() {}
+  }));
+  patch(Notification, "create", async rows => { attempts++; notices.push(...rows); if (mode === "delivery") throw new Error("SECRET delivery error"); return rows; });
+  const warnings = []; patch(console, "warn", value => warnings.push(value));
+  try {
+    await assert.rejects(createNarrative(filters, actor, async () => { throw raw; }), error => error === raw);
+    mode = "storage";
+    await assert.rejects(createNarrative(filters, actor, async () => "A report summary."), error => error === raw);
+    mode = "uncertain";
+    await assert.rejects(createNarrative(filters, actor, async () => "A report summary."));
+    assert.equal(attempts, 2);
+    mode = "delivery";
+    await assert.rejects(createNarrative(filters, actor, async () => { throw raw; }), error => error === raw);
+    assert.equal(attempts, 3); assert.equal(warnings.length, 1);
+    assert.doesNotMatch(JSON.stringify([notices, warnings]), /SECRET|snapshot|prompt|narrative/);
+  } finally { restores.reverse().forEach(fn => fn()); }
 });

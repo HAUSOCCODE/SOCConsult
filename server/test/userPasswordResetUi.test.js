@@ -62,6 +62,7 @@ async function harness() {
   h.Loading = () => null;
   h.EmptyState = () => null;
   const imports = {
+    useSearchParams: () => [new URLSearchParams(h.search || "")],
     useState: (initial) => {
       const slot = stateIndex++;
       if (!(slot in state)) state[slot] = initial;

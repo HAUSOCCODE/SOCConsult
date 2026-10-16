@@ -7,6 +7,7 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
 import AccountImport from "../src/models/AccountImport.js";
+import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 import { confirmAccountImport, sanitizeFilename } from "../src/services/accountImportService.js";
 import { institutionalIndex } from "../src/services/accountImportMigrationService.js";
@@ -49,8 +50,8 @@ async function harness(roles = ["student", "faculty"]) {
   const session = { async withTransaction(work, options) {
     assert.equal(options.readConcern.level, "snapshot");
     assert.equal(options.writeConcern.w, "majority");
-    const before = { batch: clone(h.batch), users: clone(h.users), audits: clone(h.audits) };
-    const restore = () => { h.batch = clone(before.batch); h.users = clone(before.users); h.audits = clone(before.audits); };
+    const before = { batch: clone(h.batch), users: clone(h.users), audits: clone(h.audits), notifications: clone(h.notifications) };
+    const restore = () => { h.batch = clone(before.batch); h.users = clone(before.users); h.audits = clone(before.audits); h.notifications = clone(before.notifications); };
     try {
       await work();
       if (h.retry) { restore(); await work(); }
@@ -77,7 +78,7 @@ async function harness(roles = ["student", "faculty"]) {
   };
   patch(AccountImport, "findOne", (filter) => chain(() => h.batch && matches(h.batch, filter) ? clone(h.batch) : null));
   patch(AccountImport, "findOneAndUpdate", (filter, update, options) => chain(() => mutate(filter, update, options)));
-  patch(AccountImport, "updateOne", async (filter, update) => ({ matchedCount: mutate(filter, update) ? 1 : 0 }));
+  patch(AccountImport, "updateOne", async (filter, update) => ({ modifiedCount: mutate(filter, update) ? 1 : 0 }));
   patch(User, "find", (filter) => {
     let activeSession;
     h.queries.push(filter);
@@ -98,6 +99,17 @@ async function harness(roles = ["student", "faculty"]) {
     h.users.push({ ...this.toObject(), _id: this.id });
     this.isNew = false;
     return this;
+  });
+  h.notifications = [];
+  patch(Notification, "create", async (records, options) => {
+    assert.equal(options.session, session);
+    if (h.notificationFailure) throw new Error("private notification detail");
+    h.notifications.push(...records); return records;
+  });
+  patch(Notification, "updateOne", async (filter, update) => {
+    if (h.notificationFailure) throw new Error("private notification detail");
+    if (!h.notifications.some(n => n.deduplicationKey === filter.deduplicationKey)) h.notifications.push(update.$setOnInsert);
+    return { modifiedCount: 1 };
   });
   patch(AuditLog, "create", async (records, options) => {
     assert.equal(options.session, session);
@@ -406,4 +418,33 @@ test("self-registration populates canonical IDs, preserves approval workflow, an
     User.create = async () => { throw Object.assign(new Error("private collision details"), { code: 11000 }); };
     res = response(); await register(req, res); assert.equal(res.statusCode, 409); assert.doesNotMatch(JSON.stringify(res.body), /private/);
   } finally { User.findOne = oldOne; User.create = oldCreate; User.findById = oldById; h.restore(); }
+});
+
+
+test("import event notifications follow confirmed outcomes and do not report uncertain commits as failures", async () => {
+  for (const mode of ["success", "failure", "notificationFailure", "uncertain"]) {
+    const h = await harness();
+    try {
+      h.retry = mode === "success";
+      h.failSaveAt = mode === "failure" ? 1 : undefined;
+      h.notificationFailure = mode === "notificationFailure";
+      h.unknownCommit = mode === "uncertain";
+      const result = await confirmAccountImport(previewId, owner);
+      if (["success", "uncertain"].includes(mode)) {
+        assert.ok([200, 201].includes(result.statusCode));
+        assert.equal(h.notifications.length, 1);
+        assert.equal(h.notifications[0].type, "import_completed");
+        assert.equal(h.notifications[0].actionUrl, `/dean/import?preview=${previewId}`);
+      } else if (mode === "failure") {
+        assert.equal(h.users.length, 0);
+        assert.equal(h.notifications.length, 1);
+        assert.equal(h.notifications[0].type, "import_failed");
+      } else {
+        assert.equal(h.users.length, 0); assert.equal(h.notifications.length, 0);
+        assert.equal(result.statusCode, 503);
+      }
+      assertSafe(h.notifications, h.rows);
+      assert.ok(h.notifications.every(n => n.recipient === owner));
+    } finally { h.restore(); }
+  }
 });

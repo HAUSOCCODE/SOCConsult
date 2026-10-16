@@ -1,3 +1,4 @@
+import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import { CSV_ACCOUNT_COLUMNS } from "../config/csvAccountFields.js";
@@ -41,6 +42,7 @@ export async function createManualAccount(body, actor) {
       const user = new User(prepared.toObject());
       await user.save({ session });
       await recordManualAccountAudit({ user, actor, session });
+      await createEventNotification({ recipient: actor, event: "account_created", relatedEntityId: user._id, actionUrl: `/dean/users?userId=${user._id}`, key: String(user._id), session });
       created = user;
     }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
     return { statusCode: 201, body: { message: "User account created successfully.", user: {

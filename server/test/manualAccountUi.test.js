@@ -142,6 +142,7 @@ test("User Management manual success refreshes server accounts while preserving 
   const ManualAccountForm = () => null, Pagination = () => null;
   const Component = await component("pages/Dean/UserManagement", {
     useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], (value) => { state[slot] = typeof value === "function" ? value(state[slot]) : value; }]; },
+    useSearchParams: () => [new URLSearchParams()],
     useRef: () => ({ current: 0 }), useId: () => "search-id", useCallback: (fn) => fn,
     useEffect: () => {}, createPortal: (value) => value, X: () => null,
     api: async (path) => { calls.push(path); return { users, pagination: { page: 2, total: 25 } }; },

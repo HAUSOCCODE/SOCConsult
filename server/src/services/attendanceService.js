@@ -1,3 +1,4 @@
+import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import AttendanceResponse, { assertAttendanceIndexes } from "../models/AttendanceResponse.js";
@@ -45,10 +46,15 @@ async function transition(row, to, session, now) {
   const message = to === "Awaiting Attendance Update" ? "Your attendance response is now available."
     : to === "Completed" ? `Attendance finalized: ${row.attendance.finalOutcome}.`
     : "This consultation requires authorized attendance review.";
+  if (to === "Attendance Review") {
+    const deans = await User.find({ role: "dean", accountStatus: "Active" }).select("_id").session(session).lean();
+    for (const dean of deans) await createEventNotification({ recipient: dean._id, event: "attendance_review_created", relatedEntityId: row._id,
+      actionUrl: `/dean/attendance-review/${row._id}`, key: String(row._id), session });
+  }
   await Notification.create([
     { recipient: row.student, actionUrl: "/student/consultations" },
     { recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" },
-  ].map(target => ({ ...target, type: "appointment", title: to === "Completed" ? "Attendance Finalized" : to,
+  ].map(target => ({ ...target, type: "appointment", category: "Attendance", title: to === "Completed" ? "Attendance Finalized" : to,
     message, relatedEntityId: row._id })), { session });
 }
 export async function readAttendance({ id, actor, now = new Date() }) {

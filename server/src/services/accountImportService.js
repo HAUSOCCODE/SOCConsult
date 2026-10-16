@@ -1,3 +1,4 @@
+import { createEventNotification, bestEffortNotification } from "./notificationService.js";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import User from "../models/User.js";
@@ -85,6 +86,7 @@ async function invalidate(batch, result) {
     $unset: { attemptToken: 1, processingStartedAt: 1, transactionStartedAt: 1 },
   }, { new: true, runValidators: true }).lean();
   if (!updated) return stateResponse(await readOwned(batch.previewId, batch.owner));
+  await bestEffortNotification({ recipient: batch.owner, event: "import_failed", actionUrl: `/dean/import?preview=${batch.previewId}`, key: batch.previewId });
   return { statusCode: conflict ? 409 : 422, body: {
     code: conflict ? "ACCOUNT_CONFLICT" : "REVALIDATION_FAILED",
     message: "No accounts were created. Correct the validation errors and upload a new CSV.",
@@ -141,6 +143,7 @@ export async function confirmAccountImport(previewId, owner) {
       }, { new: true, runValidators: true, session }).lean();
       if (!completed) throw Object.assign(new Error("Import attempt unavailable."), { code: "ATTEMPT_UNAVAILABLE" });
       await recordAccountImportAudit({ batch: completed, actor: owner, session });
+      await createEventNotification({ recipient: owner, event: "import_completed", actionUrl: `/dean/import?preview=${previewId}`, key: previewId, session });
     }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
     return { statusCode: 201, body: publicImportResult(completed) };
   } catch (error) {
@@ -157,11 +160,12 @@ export async function confirmAccountImport(previewId, owner) {
         const fresh = await revalidate(batch.rows);
         if (!fresh.canConfirm) return await invalidate(batch, fresh);
       }
-      await AccountImport.updateOne(attemptFilter(batch), {
+      const failed = await AccountImport.updateOne(attemptFilter(batch), {
         $set: { status: "failed", successfulRows: 0, failedRows: batch.summary.totalRows,
           failureCode: "IMPORT_FAILED", purgeAt: new Date(Date.now() + config.temporaryRetentionMs) },
         $unset: { rows: 1, attemptToken: 1, processingStartedAt: 1, transactionStartedAt: 1 },
       });
+      if (failed.modifiedCount === 1) await bestEffortNotification({ recipient: owner, event: "import_failed", actionUrl: `/dean/import?preview=${previewId}`, key: previewId });
     } catch { /* Preserve processing state when database recovery itself is unavailable. */ }
     return serviceUnavailable();
   } finally {

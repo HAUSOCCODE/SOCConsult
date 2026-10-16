@@ -8,6 +8,7 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import Appointment from "../src/models/Appointment.js";
 import User from "../src/models/User.js";
+import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 import ReportExport from "../src/models/ReportExport.js";
 import {
@@ -320,6 +321,14 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     assert.equal(options.select, "name firstName middleName lastName -_id");
     return values;
   });
+  patch(Notification, "create", async (records, options) => {
+    assert.equal(options.session, session);
+    if (failure === "notification") throw new Error("SECRET");
+    assert.equal(records[0].category, "Report");
+    assert.equal(records[0].actionUrl, "/dean/reports");
+    assert.doesNotMatch(JSON.stringify(records), /SECRET|filters|snapshot|prompt/);
+    return records;
+  });
   patch(ReportExport, "create", async (values, options) => {
     assert.equal(options.session, session);
     if (failure === "metadata") throw new Error("SECRET");
@@ -388,7 +397,7 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
       JSON.stringify(committed),
       /José|Ana|SECRET|student|faculty|records|bytes/,
     );
-    for (const mode of ["metadata", "audit", "query"]) {
+    for (const mode of ["metadata", "audit", "query", "notification"]) {
       failure = mode;
       const count = committed.length;
       const failed = await request();

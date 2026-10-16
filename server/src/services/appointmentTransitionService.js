@@ -4,6 +4,7 @@ import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
+import User from "../models/User.js";
 import Notification from "../models/Notification.js";
 import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
@@ -127,11 +128,12 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
   const recipient = actor.role === "student" ? appointment.faculty : appointment.student;
   const title = action === "propose" ? "Consultation Reschedule Proposed"
     : action === "expire" ? "Consultation Request Expired" : `Consultation ${to}`;
+  const targetUser = await User.findById(recipient).select("role").session(session);
   await Notification.create([{
-    recipient, type: "appointment", title, message: action === "propose"
+    recipient, type: "appointment", category: "Consultation", title, message: action === "propose"
       ? "A new consultation schedule was proposed. Review the proposal in My Consultations."
       : `The consultation status is now ${to}.`, relatedEntityId: appointment._id,
-    actionUrl: actor.role === "student" ? "/faculty/appointments" : "/student/consultations",
+    actionUrl: actor.role === "student" ? (targetUser?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments") : "/student/consultations",
   }], { session });
 }
 

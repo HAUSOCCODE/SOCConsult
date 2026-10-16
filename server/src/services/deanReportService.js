@@ -1,3 +1,4 @@
+import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
@@ -39,6 +40,7 @@ export async function createDeanReport(input, actor) {
         ],
         { session },
       );
+      await createEventNotification({ recipient: dean._id || actor.id, event: "report_generated", relatedEntityId: metadata._id, actionUrl: "/dean/reports", key: String(metadata._id), session });
       await recordReportExportAudit({
         actor: dean._id || actor.id,
         report: metadata,

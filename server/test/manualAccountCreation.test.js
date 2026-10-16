@@ -7,6 +7,7 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
 import AccountImport from "../src/models/AccountImport.js";
+import Notification from "../src/models/Notification.js";
 import AuditLog from "../src/models/AuditLog.js";
 import { createManualAccount } from "../src/services/manualAccountService.js";
 import { assertProvisioningPrerequisites, assertImportPrerequisites, institutionalIndex } from "../src/services/accountImportMigrationService.js";
@@ -23,12 +24,12 @@ function harness() {
     topology: { setName: "mock-only" }, ended: false, saves: 0 };
   const session = { async withTransaction(work, options) {
     assert.equal(options.readConcern.level, "snapshot"); assert.equal(options.writeConcern.w, "majority");
-    const before = [h.users.slice(), h.audits.slice()];
+    const before = [h.users.slice(), h.audits.slice(), h.notifications.slice()];
     try {
       await work();
-      if (h.retry) { [h.users, h.audits] = before.map((values) => values.slice()); await work(); }
+      if (h.retry) { [h.users, h.audits, h.notifications] = before.map((values) => values.slice()); await work(); }
       if (h.uncertain) throw { hasErrorLabel: (label) => label === "UnknownTransactionCommitResult" };
-    } catch (error) { if (!h.uncertain) [h.users, h.audits] = before; throw error; }
+    } catch (error) { if (!h.uncertain) [h.users, h.audits, h.notifications] = before; throw error; }
   }, async endSession() { h.ended = true; } };
   patch(mongoose, "startSession", async () => { h.sessions = (h.sessions || 0) + 1; if (h.sessionFailure) throw new Error("private session detail"); return session; });
   const originalDb = mongoose.connection.db;
@@ -52,6 +53,17 @@ function harness() {
     if (h.race) throw Object.assign(new Error("private index/value detail"), { code: 11000, keyPattern: h.race });
     this.createdAt = new Date("2026-10-13T00:00:00Z");
     h.users.push(this.toObject()); this.isNew = false; return this;
+  });
+  h.notifications = [];
+  patch(Notification, "create", async (records, options) => {
+    assert.equal(options.session, session);
+    if (h.notificationFailure) throw new Error("private notification detail");
+    h.notifications.push(...records); return records;
+  });
+  patch(Notification, "updateOne", async (filter, update) => {
+    if (h.notificationFailure) throw new Error("private notification detail");
+    if (!h.notifications.some(n => n.deduplicationKey === filter.deduplicationKey)) h.notifications.push(update.$setOnInsert);
+    return { modifiedCount: 1 };
   });
   patch(AuditLog, "create", async (records, options) => {
     assert.equal(options.session, session);
@@ -143,7 +155,7 @@ test("conflicts check all canonical/legacy IDs across roles and both email field
       h[final ? "finalConflicts" : "conflicts"] = [{ role: "faculty", [field]: ["email", "username"].includes(field) ? `juan@${env.studentDomain}` : "000123" }];
       const result = await createManualAccount(input(), actor);
       assert.equal(result.statusCode, 409); assert.ok(result.body.errors[["email", "username"].includes(field) ? "official_email" : "institutional_id"]);
-      assert.equal(h.users.length, 0); assert.equal(h.audits.length, 0); safe(result); safe(h.logs);
+      assert.equal(h.users.length, 0); assert.equal(h.audits.length, 0); assert.equal(h.notifications.length, 0); safe(result); safe(h.logs);
       assert.deepEqual(h.queries[0].$or.map((part) => Object.keys(part)[0]), ["studentId", "employeeId", "institutionalId", "email", "username"]);
     } finally { h.restore(); }
   }
@@ -162,7 +174,7 @@ test("duplicate-key races return safe field feedback even without recovery match
 });
 
 test("User/audit failures roll back; retries hash once; uncertain commits never claim success", async () => {
-  for (const failure of ["saveFailure", "auditFailure", "hashFailure", "sessionFailure", "queryFailure"]) {
+  for (const failure of ["notificationFailure", "saveFailure", "auditFailure", "hashFailure", "sessionFailure", "queryFailure"]) {
     const h = harness();
     try {
       h[failure] = true;
@@ -245,4 +257,19 @@ test("HTTP Dean authorization, creator provenance, no-store, malformed bodies an
     assert.equal((await call({ ...input(), institutional_id: "000124", official_email: `other@${env.studentDomain}` })).status, 201);
     assert.equal(String(h.users[1].createdBy), h.owner);
   } finally { await new Promise((resolve) => server.close(resolve)); h.restore(); }
+});
+
+
+test("manual account notification commits once with the account and safe identity-free text", async () => {
+  const h = harness();
+  try {
+    h.retry = true;
+    assert.equal((await createManualAccount(input(), actor)).statusCode, 201);
+    assert.equal(h.notifications.length, 1);
+    const notification = h.notifications[0];
+    assert.equal(notification.recipient, actor);
+    assert.equal(notification.category, "Management");
+    assert.equal(notification.actionUrl, `/dean/users?userId=${h.users[0]._id}`);
+    safe(h.notifications);
+  } finally { h.restore(); }
 });

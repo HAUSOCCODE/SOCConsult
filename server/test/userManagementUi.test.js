@@ -62,6 +62,7 @@ async function harness() {
   h.Loading = () => null;
   h.EmptyState = () => null;
   const imports = {
+    useSearchParams: () => [new URLSearchParams(h.search || "")],
     useState: (initial) => {
       const slot = stateIndex++;
       if (!(slot in state)) state[slot] = initial;
@@ -374,4 +375,19 @@ test("status success refreshes the latest search even when a pending debounce ch
   h.resolve({ users: [user], pagination: { page: 1, total: 1 } });
   await pending;
   assert.equal(h.state[4], 1);
+});
+
+
+test("notification account deep links validate a single ID and load only that record", async () => {
+  const id = "1234567890abcdef12345678";
+  for (const search of [`userId=${id}`, "userId=bad", `userId=${id}&userId=${id}`]) {
+    const h = await harness(); h.search = search; h.render();
+    h.effects.at(-1)();
+    if (search === `userId=${id}`) {
+      assert.equal(h.calls.length, 1); assert.equal(h.calls[0].path, `/dean/users/${id}`);
+      h.resolve({ user: { ...user, _id: id } });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(h.state[8]._id, id);
+    } else assert.equal(h.calls.length, 0);
+  }
 });

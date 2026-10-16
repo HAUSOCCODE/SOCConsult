@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -32,6 +33,8 @@ const dateLabel = (value) =>
 
 export default function UserManagement() {
   const toast = useToast();
+  const [params] = useSearchParams();
+  const linkedUserId = params.getAll("userId").length === 1 && /^[a-f\d]{24}$/i.test(params.get("userId") || "") ? params.get("userId") : null;
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0 });
   const [search, setSearch] = useState("");
@@ -123,6 +126,10 @@ export default function UserManagement() {
       if (request === detailRequest.current) setDetailLoading(false);
     }
   };
+  useEffect(() => {
+    if (linkedUserId) void view({ _id: linkedUserId });
+    return () => { ++detailRequest.current; };
+  }, [linkedUserId]);
   const confirmStatus = async () => {
     if (inFlight.current || !target) return;
     const accountStatus =
