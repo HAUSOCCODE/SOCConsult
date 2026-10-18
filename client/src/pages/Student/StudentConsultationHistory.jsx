@@ -1,5 +1,6 @@
 import { CalendarDays, Eye, FilterX, MapPin, Monitor } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/apiClient";
 import StudentAppointmentDetailsModal from "../../components/appointments/StudentAppointmentDetailsModal";
 import Pagination from "../../components/Pagination";
@@ -17,6 +18,8 @@ const validDate = value => {
 };
 
 export default function StudentConsultationHistory() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedAppointment = searchParams.get("appointment");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -34,6 +37,7 @@ export default function StudentConsultationHistory() {
     const sequence = ++requestSequence.current;
     const controller = new AbortController();
     const query = new URLSearchParams({ page: String(page) });
+    if (/^[a-f\d]{24}$/i.test(linkedAppointment || "")) query.set("appointment", linkedAppointment);
     Object.entries(filters).forEach(([key, value]) => value && query.set(key, value));
     setError("");
     setLoading(true);
@@ -51,7 +55,14 @@ export default function StudentConsultationHistory() {
         }
       });
     return () => controller.abort();
-  }, [dateError, filters, page, retry]);
+  }, [dateError, filters, linkedAppointment, page, retry]);
+  useEffect(() => {
+    if (linkedAppointment && data?.consultations?.length === 1) setSelected(data.consultations[0]);
+  }, [data, linkedAppointment]);
+  const closeDetails = () => {
+    setSelected(null);
+    if (searchParams.has("appointment")) setSearchParams({}, { replace: true });
+  };
 
   const updateFilter = (name, value) => {
     setFilters(current => ({ ...current, [name]: value }));
@@ -95,7 +106,7 @@ export default function StudentConsultationHistory() {
           {data?.pagination?.total > 0 && <div className="mt-4 overflow-hidden rounded-xl border border-slate-200"><Pagination currentPage={data.pagination.page} totalItems={data.pagination.total} itemsPerPage={data.pagination.pageSize} itemLabel="consultation records" onPageChange={setPage} /></div>}
         </section>
       )}
-      {selected && <StudentAppointmentDetailsModal appointment={selected} readOnly historyMode onClose={() => setSelected(null)} />}
+      {selected && <StudentAppointmentDetailsModal appointment={selected} readOnly historyMode onClose={closeDetails} />}
     </div>
   );
 }

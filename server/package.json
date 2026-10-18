@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "test": "node scripts/test-isolated.mjs",
     "appointments:attendance": "node scripts/process-appointment-attendance.mjs",
-    "appointments:expire": "node scripts/process-appointment-expiration.mjs"
+    "appointments:expire": "node scripts/process-appointment-expiration.mjs",
+    "appointments:remind": "node scripts/process-consultation-reminders.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -22,6 +23,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.0",
     "multer": "^2.2.0",
+    "nodemailer": "^10.1.4",
     "pdfkit": "0.20.2"
   },
   "devDependencies": {

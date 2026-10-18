@@ -35,7 +35,11 @@ for (const [action, outcome] of Object.entries(REVIEW_ACTIONS)) test(`review act
     assert.equal(stored.attendance.reviewReason, row.attendance.reviewReason);
     if (outcome) {
       assert.equal(stored.attendance.finalizationSource, "dean_review");
-      assert.match(h.state.notifications[0].message, /attendance record was reviewed/);
+      assert.equal(h.state.notifications[0].recipient, row.student);
+      assert.equal(h.state.notifications[0].type, "finalized");
+      assert.match(h.state.notifications[0].message, /consultation record has been finalized/);
+      assert.equal(h.state.notifications[1].recipient, row.faculty);
+      assert.match(h.state.notifications[1].message, /attendance record was reviewed/);
       await assert.rejects(submitReview({ id: row._id, actor, input: { ...input, expectedVersion: 1 } }), { statusCode: 409 });
     } else {
       await submitReview({ id: row._id, actor, input: { ...input, action, expectedVersion: 1 } });

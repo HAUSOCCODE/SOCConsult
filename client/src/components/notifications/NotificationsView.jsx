@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CalendarCheck,
   CheckCircle2,
-  CheckSquare,
   ChevronRight,
   ChevronUp,
   Clock3,
@@ -26,11 +25,11 @@ import Pagination from "../Pagination";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../ConfirmDialog";
 import { formatPersonNameInNotification } from "../../utils/formatPersonName";
+import { useNavigate } from "react-router-dom";
 
 const ITEMS_PER_PAGE = 6;
 
 const iconFor = (notification) => {
-  if (notification.type === "task") return CheckSquare;
   if (/rejected|cancelled/i.test(notification.title || "")) return XCircle;
   if (/approved|completed/i.test(notification.title || ""))
     return CalendarCheck;
@@ -113,10 +112,10 @@ function NotificationsPageContent({
         : new Event("notifications:updated"),
     );
   const read = async (id) => {
-    if (!startAction()) return;
+    if (!startAction()) return false;
     try {
       await api(`/notifications/${id}/read`, { method: "PUT" });
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       setNotifications((current) =>
         current.map((item) =>
           item._id === id
@@ -133,9 +132,12 @@ function NotificationsPageContent({
       toast.success("Notifications updated.");
       refreshBadge();
       if (mounted.current) await latestLoad.current(true);
+      return true;
     } catch {
-      if (!mounted.current) return;
-      toast.error("Unable to update this notification. Refresh before trying again.");
+      if (mounted.current) {
+        toast.error("Unable to update this notification. Refresh before trying again.");
+      }
+      return false;
     } finally { endAction(); }
   };
   const readAll = async () => {
@@ -421,6 +423,7 @@ function StudentNotificationsContent({
   confirmClear,
   faculty = false,
 }) {
+  const navigate = useNavigate();
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
   const { pagination, category, actionBusy, retry } = useContext(NotificationPageContext);
   const shown = notifications;
@@ -448,8 +451,12 @@ function StudentNotificationsContent({
   }, [expandedNotificationId, pageNotifications]);
 
   const open = async (notification) => {
+    if (!notification.isRead && !(await read(notification._id))) return;
+    if (!faculty && /^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i.test(notification.actionUrl || "")) {
+      navigate(notification.actionUrl);
+      return;
+    }
     setSelected(notification);
-    if (!notification.isRead) await read(notification._id);
   };
   const date = (value) => {
     const parsed = new Date(value);

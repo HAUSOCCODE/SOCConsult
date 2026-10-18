@@ -23,7 +23,8 @@ test("Student proposal response uses identity, ownership, archived schedules and
       assert.equal(result.proposedStartAt, undefined); assert.equal(result.reservationToken, undefined);
       assert.equal((await h.request(path, "student", "PUT", body)).status, 409);
     }
-    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 2);
+    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 4);
+    assert.equal(h.state.notifications.filter(notification => notification.type === "reschedule_response_recorded").length, 2);
   } finally { await h.close(); }
 });
 

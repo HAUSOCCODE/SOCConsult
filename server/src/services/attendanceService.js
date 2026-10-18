@@ -9,6 +9,7 @@ import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS } from "../c
 import { safeReason, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { participation, participantAttendance } from "./attendancePrivacyService.js";
 import { ATTENDANCE_TRANSITIONS } from "../config/appointmentStatus.js";
+import { bestEffortStudentConsultationEmail, createStudentConsultationNotification } from "./consultationNotificationService.js";
 
 const fail = (message, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode }); };
 export function validAttendance(row) {
@@ -51,11 +52,13 @@ async function transition(row, to, session, now) {
     for (const dean of deans) await createEventNotification({ recipient: dean._id, event: "attendance_review_created", relatedEntityId: row._id,
       actionUrl: `/dean/attendance-review/${row._id}`, key: String(row._id), session });
   }
-  await Notification.create([
-    { recipient: row.student, actionUrl: "/student/consultations" },
-    { recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" },
-  ].map(target => ({ ...target, type: "appointment", category: "Attendance", title: to === "Completed" ? "Attendance Finalized" : to,
-    message, relatedEntityId: row._id })), { session });
+  const event = to === "Awaiting Attendance Update" ? "attendance_update_required"
+    : to === "Completed" ? "finalized" : "attendance_review";
+  await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event, session });
+  await Notification.create([{ recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments",
+    type: "appointment", category: "Attendance", title: to === "Completed" ? "Attendance Finalized" : to,
+    message, relatedEntityId: row._id }], { session });
+  return event;
 }
 export async function readAttendance({ id, actor, now = new Date() }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
@@ -75,10 +78,13 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
   await assertAttendanceIndexes();
   const session = await mongoose.startSession();
   let changed = false;
+  const studentEmailEvents = new Set();
+  let studentId;
   try {
     await session.withTransaction(async () => {
       changed = false;
       const row = await Appointment.findById(id).select("+attendance").session(session).lean();
+      if (row) studentId = row.student;
       const role = submitting && row ? participation(row, actor) : null;
       if (submitting && (!row || !role)) fail("Appointment not found.", 404);
       if (!row || !validAttendance(row) || !["Confirmed", "Awaiting Attendance Update"].includes(row.status)) {
@@ -91,19 +97,24 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
       const responses = await AttendanceResponse.find({ appointment: id }).session(session).lean();
       if (submitting && responses.some(r => r.participantRole === role)) fail("Your attendance response has already been submitted.");
       const originalStatus = row.status;
-      if (row.status === "Confirmed") await transition(row, "Awaiting Attendance Update", session, now);
+      if (row.status === "Confirmed") studentEmailEvents.add(await transition(row, "Awaiting Attendance Update", session, now));
       if (submitting) {
         const [response] = await AttendanceResponse.create([{ appointment: row._id, participant: actor.id,
           participantRole: role, outcome: input.outcome, reason, submittedAt: now, policyVersion: row.attendance.policyVersion }], { session });
         responses.push(response);
         row.attendance[`${role}Responded`] = true;
         await audit(row, actor, "attendance_response_submitted", session, now);
+        if (role === "student") {
+          await createStudentConsultationNotification({ student: row.student, appointmentId: row._id,
+            event: "attendance_response_received", session });
+          studentEmailEvents.add("attendance_response_received");
+        }
       }
       const decision = attendanceDecision(responses, deadlinePassed);
       if (decision) {
         if (decision.status === "Completed") Object.assign(row.attendance, { finalOutcome: decision.finalOutcome, finalizedAt: now, finalizationSource: "participant_agreement" });
         else Object.assign(row.attendance, { finalOutcome: null, reviewReason: decision.reviewReason, missingRoles: decision.missingRoles, reviewStartedAt: now });
-        await transition(row, decision.status, session, now);
+        studentEmailEvents.add(await transition(row, decision.status, session, now));
       }
       if (!submitting && row.status === originalStatus) return;
       const updated = await Appointment.findOneAndUpdate({ _id: row._id, status: originalStatus,
@@ -116,5 +127,6 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
     if (error.code === 11000) fail("Your attendance response has already been submitted.");
     throw error;
   } finally { await session.endSession(); }
+  for (const event of studentEmailEvents) if (event) await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event });
   return changed;
 }

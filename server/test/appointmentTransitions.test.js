@@ -96,7 +96,8 @@ test("acceptance exchanges reservations or creates custom holds and rejects dupl
       assert.equal(h.state.appointments[0].scheduleHistory[0].response, "Accepted");
       assert.equal(h.state.slots[0].reservationToken, undefined);
       assert.equal(h.state.holds.length, 30);
-      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
+      assert.ok(h.state.notifications.some(notification => notification.recipient === record.student && notification.type === "reschedule_response_recorded"));
     } finally { h.restore(); }
   }
 });
@@ -184,7 +185,8 @@ test("transaction callback retries reuse owned minute locks without duplicate ev
     h.retry();
     await transitionAppointment({ id: created._id, actor: actor(request), action: "confirm", now });
     assert.equal(h.state.holds.length, 30);
-    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 2);
+    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 3);
+    assert.ok(h.state.notifications.some(notification => notification.recipient === request.student && notification.type === "request_submitted"));
     assert.equal(h.state.appointments[0].statusHistory.length, 2);
     assert.ok(h.state.appointments[0].statusHistory[1].changedAt > h.state.appointments[0].statusHistory[0].changedAt);
   } finally { h.restore(); }

@@ -21,7 +21,8 @@ test("Student cancellation is owner-only, pre-start, transactional and private t
       assert.equal(result.statusHistory.length, 1);
       assert.equal((await h.request('/appointments/'+record._id+'/cancel', "student", "PUT", {})).status, 409);
     }
-    assert.equal(h.state.audits.length, 3); assert.equal(h.state.notifications.length, 3);
+    assert.equal(h.state.audits.length, 3); assert.equal(h.state.notifications.length, 6);
+    assert.equal(h.state.notifications.filter(notification => notification.type === "cancelled").length, 3);
     const started = fixture({ student: h.users.student.id, startAt: new Date(0) }); h.state.appointments.push(started);
     assert.equal((await h.request('/appointments/'+started._id+'/cancel', "student", "PUT", {})).status, 409);
   } finally { await h.close(); }

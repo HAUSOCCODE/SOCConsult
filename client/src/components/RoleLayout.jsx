@@ -105,7 +105,10 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
   useEffect(() => {
     const load = () =>
       api("/notifications?limit=1")
-        .then((data) => setUnread(data.unreadCount))
+        .then((data) => {
+          const count = Number(data?.unreadCount);
+          setUnread(Number.isFinite(count) && count > 0 ? Math.floor(count) : 0);
+        })
         .catch(() => {});
     const handleNotificationsUpdated = (event) => {
       const nextUnreadCount = Number(event.detail?.unreadCount);
