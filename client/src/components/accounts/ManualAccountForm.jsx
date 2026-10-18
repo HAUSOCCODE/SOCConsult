@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -17,6 +18,8 @@ export default function ManualAccountForm({ onClose, onSuccess }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const dialogRef = useRef(null);
   const titleId = useId();
   useEffect(() => {
@@ -60,22 +63,23 @@ export default function ManualAccountForm({ onClose, onSuccess }) {
     setError("");
     try {
       await api("/dean/users", { method: "POST", body: JSON.stringify(form) });
+      if (!mounted.current) return;
       setForm({ ...emptyForm });
       setConfirming(false);
       onSuccess();
     } catch (requestError) {
+      if (!mounted.current) return;
       setErrors(requestError.errors || {});
       if (requestError.code === "PROVISIONING_SETUP_UNAVAILABLE")
         setError("Account creation is temporarily unavailable until account provisioning setup is completed.");
       else if (requestError.code === "ACCOUNT_CREATION_UNCERTAIN")
         setError("Unable to confirm account creation. Refresh the user list before trying again.");
       else
-        setError(requestError.status && requestError.status < 500
-          ? requestError.message : "Account creation is temporarily unavailable. Please try again later.");
+        setError(deanUiError(requestError, "create"));
       setConfirming(false);
     } finally {
       inFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   return createPortal(

@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/apiClient";
@@ -12,12 +13,12 @@ const schedule = value => value ? `${monitoringDate(value.startAt)} – ${monito
 export default function ConsultationDetailsDialog({ recordId, onClose }) {
   const dialog = useRef(null);
   const [data, setData] = useState(null), [error, setError] = useState(""), [retry, setRetry] = useState(0);
-  useEffect(() => { dialog.current.showModal(); }, []);
+  useEffect(() => { const previous = document.activeElement; dialog.current.showModal(); return () => previous?.focus?.(); }, []);
   useEffect(() => {
     const controller = new AbortController();
     setData(null); setError("");
     api(`/dean/consultations/${recordId}`, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setData(result.consultation); })
-      .catch(() => { if (!controller.signal.aborted) setError("Unable to load consultation details."); });
+      .catch(error => { if (!controller.signal.aborted) setError(deanUiError(error, "document")); });
     return () => controller.abort();
   }, [recordId, retry]);
   return <dialog ref={dialog} onCancel={onClose} aria-labelledby="consultation-detail-title" className="max-h-[90vh] w-[95vw] max-w-3xl overflow-y-auto rounded-xl p-6 backdrop:bg-black/50">

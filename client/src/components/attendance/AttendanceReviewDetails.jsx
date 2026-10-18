@@ -7,7 +7,7 @@ import AttendanceResolutionForm, { resolutionLabels } from "./AttendanceResoluti
 export default function AttendanceReviewDetails({ recordId, onClose, onChanged }) {
   const dialog = useRef(null), busyRef = useRef(false);
   const [data, setData] = useState(null), [error, setError] = useState(""), [retry, setRetry] = useState(0), [busy, setBusy] = useState(false), [success, setSuccess] = useState("");
-  useEffect(() => { dialog.current.showModal(); }, []);
+  useEffect(() => { const previous = document.activeElement; dialog.current.showModal(); return () => previous?.focus?.(); }, []);
   useEffect(() => {
     const controller = new AbortController(); setData(null); setError("");
     api(`/dean/attendance-review/${recordId}`, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setData(result.review); })
@@ -24,7 +24,7 @@ export default function AttendanceReviewDetails({ recordId, onClose, onChanged }
       <section><h3 className="font-bold">Status history</h3>{!data.statusHistory.length && <p>No recorded history.</p>}<ol>{data.statusHistory.map((entry, index) => <li className="my-2 rounded border p-3" key={index}>{entry.from} → {entry.to} · {entry.actorRole} · {monitoringDate(entry.timestamp)}<p className="break-words">{entry.reason}</p></li>)}</ol></section>
       <ConsultationDocumentViewer recordId={recordId} documents={data.documents} />
       <section><h3 className="font-bold">Dean review actions</h3>{!data.actions.length && <p>No Dean actions recorded.</p>}<ol>{data.actions.map(entry => <li className="my-2 rounded border p-3" key={entry.reviewId}><p>{resolutionLabels[entry.action]} · {monitoringDate(entry.reviewedAt)}</p><p className="whitespace-pre-wrap break-words">{entry.reason}</p></li>)}</ol></section>
-      {data.state === "Unresolved" ? <AttendanceResolutionForm key={`${recordId}:${data.version}`} recordId={recordId} version={data.version} onBusy={changeBusy} onStale={() => setRetry(n => n + 1)} onSaved={result => { setSuccess(result.state === "Resolved" ? `Attendance record reviewed. Recorded outcome: ${result.finalOutcome}.` : "Review action saved. The case remains under review."); onChanged(); setRetry(n => n + 1); }} /> : <p>This final attendance decision is immutable.</p>}
+      {data.state === "Unresolved" ? <AttendanceResolutionForm key={`${recordId}:${data.version}`} recordId={recordId} version={data.version} onBusy={changeBusy} onStale={() => setRetry(n => n + 1)} onSaved={result => { setSuccess(result.state === "Resolved" ? `Attendance record reviewed. Recorded outcome: ${result.finalOutcome}.` : "Review action saved. The case remains under review."); onChanged(); setRetry(n => n + 1); }} /> : <p role="status">This record is already resolved. The final attendance decision cannot be changed.</p>}
     </div>}
   </dialog>;
 }

@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { deanUiError } from "../../utils/deanUiErrors";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
@@ -32,6 +33,8 @@ export default function DeanAccountSettings() {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const save = async event => {
     event.preventDefault();
@@ -46,20 +49,22 @@ export default function DeanAccountSettings() {
         method: "PUT",
         body: JSON.stringify({ ...form, ...validation.values }),
       });
+      if (!mounted.current) return;
       updateUser(data.user);
       setForm(profileValues(data.user));
-      toast.success(data.message);
+      toast.success("Profile updated successfully.");
     } catch (error) {
+      if (!mounted.current) return;
       setErrors(error.errors || {});
-      toast.error(error.message || "Unable to update profile.");
+      toast.error(deanUiError(error, "profile"));
     } finally {
       pending.current = false;
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   };
 
   const refreshSecurity = () => {
-    api("/auth/me").then(data => updateUser(data.user)).catch(() => {});
+    api("/auth/me").then(data => { if (mounted.current) updateUser(data.user); }).catch(() => {});
   };
   const field = (key, label, name = false) => (
     <label key={key} className="text-sm font-semibold">
@@ -72,9 +77,10 @@ export default function DeanAccountSettings() {
         value={form[key]}
         disabled={saving}
         aria-invalid={Boolean(errors[key])}
+        aria-describedby={errors[key] ? `dean-profile-${key}-error` : undefined}
         onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))}
       />
-      {errors[key] && <span role="alert" className="text-red-700">{errors[key]}</span>}
+      {errors[key] && <span id={`dean-profile-${key}-error`} role="alert" className="text-red-700">{errors[key]}</span>}
     </label>
   );
 
@@ -95,7 +101,7 @@ export default function DeanAccountSettings() {
           ["Year level", user.yearLevel],
         ]} />
         <p className="mt-4 text-sm text-slate-500">Institutional identity and designation are read-only.</p>
-        <form onSubmit={save} className="mt-6 space-y-5">
+        <form aria-busy={saving} onSubmit={save} className="mt-6 space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             {field("firstName", "First name", true)}
             {field("middleName", "Middle name (optional)", true)}
@@ -106,6 +112,7 @@ export default function DeanAccountSettings() {
             {field("office", "Office")}
             {field("contactNumber", "Contact number")}
           </div>
+          {saving && <p role="status">Saving profile?</p>}
           <button className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Save profile"}</button>
         </form>
       </section>

@@ -4,6 +4,7 @@ export default function CSVValidationPreview({ preview, busy = false, onConfirm 
     preview.status === "validated" && new Date(preview.expiresAt).getTime() > Date.now();
   return (
     <section className="mt-6" aria-label="CSV validation preview">
+      <p role="status">{eligible ? "CSV preview ready. Review the rows before confirming account creation." : preview.status === "processing" ? "Account creation is processing. Refresh to check the import status before trying again." : "Review the validation errors before uploading a corrected CSV."}</p>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           ["Total rows", "totalRows"],

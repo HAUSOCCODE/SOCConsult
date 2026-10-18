@@ -1,3 +1,4 @@
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -12,6 +13,7 @@ async function harness(path, name, props = {}) {
   const code = await transform(raw.replace(/^import.*$/gm, "").replace(/export default function/g, "function").replace(/export const/g, "const"), { loader: "jsx" });
   let index = 0, params = new URLSearchParams(); const state = [], effects = [], pending = [];
   const imports = {
+    deanUiError,
     useState: initial => { const slot = index++; if (!(slot in state)) state[slot] = typeof initial === "function" ? initial() : initial; return [state[slot], value => state[slot] = typeof value === "function" ? value(state[slot]) : value]; },
     useRef: initial => { const slot = index++; if (!(slot in state)) state[slot] = { current: initial }; return state[slot]; },
     useEffect: effect => effects.push(effect), useSearchParams: () => [params, value => params = new URLSearchParams(value)],

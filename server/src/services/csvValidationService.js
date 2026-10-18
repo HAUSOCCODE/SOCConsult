@@ -8,9 +8,11 @@ import {
 import { accountImportConfig } from "../config/accountImport.js";
 import { validatePersonName, formatFullName } from "./personNameService.js";
 
-export class CsvValidationError extends Error {}
-const fail = (message) => {
-  throw new CsvValidationError(message);
+export class CsvValidationError extends Error {
+  constructor(message, code = "CSV_INVALID") { super(message); this.code = code; }
+}
+const fail = (message, code) => {
+  throw new CsvValidationError(message, code);
 };
 
 export async function validateCsv(
@@ -18,9 +20,9 @@ export async function validateCsv(
   options,
 ) {
   const { config = accountImportConfig } = options;
-  if (!buffer.length) fail("CSV file is empty.");
+  if (!buffer.length) fail("CSV file is empty.", "CSV_EMPTY");
   if (buffer.length > config.maxBytes)
-    fail("CSV file exceeds the upload size limit.");
+    fail("CSV file exceeds the upload size limit.", "CSV_TOO_LARGE");
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
@@ -76,7 +78,7 @@ export async function validateCsv(
     if (error instanceof CsvValidationError) throw error;
     fail("CSV is malformed or exceeds the record size limit.");
   }
-  if (!rows.length) fail("CSV must contain at least one data row.");
+  if (!rows.length) fail("CSV must contain at least one data row.", "CSV_EMPTY");
   return validateAccountRows(rows, options);
 }
 

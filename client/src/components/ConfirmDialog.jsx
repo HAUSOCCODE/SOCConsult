@@ -24,6 +24,10 @@ export default function ConfirmDialog({
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
+  const loadingRef = useRef(loading);
+  const cancelRef = useRef(onCancel);
+  loadingRef.current = loading;
+  cancelRef.current = onCancel;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -33,14 +37,14 @@ export default function ConfirmDialog({
     document.body.style.overflow = "hidden";
     dialog?.querySelector("textarea, button")?.focus();
     const onKeyDown = (event) => {
-      if (event.key === "Escape" && !loading) {
+      if (event.key === "Escape" && !loadingRef.current) {
         event.preventDefault();
-        onCancel();
+        cancelRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) return;
       const controls = [...dialog.querySelectorAll("button:not(:disabled), textarea:not(:disabled)")];
-      if (!controls.length) return;
+      if (!controls.length) { event.preventDefault(); dialog.focus(); return; }
       const first = controls[0];
       const last = controls[controls.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -57,7 +61,8 @@ export default function ConfirmDialog({
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [loading, open]);
+  }, [open]);
+  useEffect(() => { if (open && loading) dialogRef.current?.focus(); }, [loading, open]);
 
   if (!open) return null;
   const confirmClass =
@@ -74,6 +79,8 @@ export default function ConfirmDialog({
     >
       <section
         ref={dialogRef}
+        tabIndex={-1}
+        aria-busy={loading}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import UserAvatar from "./UserAvatar";
 import { formatPersonName } from "../../utils/formatPersonName";
@@ -10,19 +10,24 @@ export default function ProfileImagePreview({
   buttonClassName = "",
 }) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef(null);
   const source = user?.profilePicture;
 
   useEffect(() => {
     if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement;
+    dialogRef.current?.querySelector("button")?.focus();
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
+      if (event.key === "Tab") { event.preventDefault(); dialogRef.current?.querySelector("button")?.focus(); }
     };
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", closeOnEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", closeOnEscape);
+      previousFocus?.focus?.();
     };
   }, [open]);
 
@@ -50,6 +55,7 @@ export default function ProfileImagePreview({
             }
           >
             <section
+              ref={dialogRef}
               role="dialog"
               aria-modal="true"
               aria-label={`${formatPersonName(user) || "User"} profile picture preview`}
@@ -58,7 +64,6 @@ export default function ProfileImagePreview({
             >
               <button
                 type="button"
-                autoFocus
                 aria-label="Close profile picture preview"
                 onClick={() => setOpen(false)}
                 className="absolute right-2 top-2 z-10 grid h-10 w-10 place-items-center rounded-full bg-white text-slate-800 shadow-lg hover:bg-slate-100 sm:right-3 sm:top-3"

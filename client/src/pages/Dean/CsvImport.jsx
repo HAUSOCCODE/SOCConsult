@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -16,9 +17,18 @@ export default function CsvImport() {
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [checkRequired, setCheckRequired] = useState(false);
+  const [previewRetry, setPreviewRetry] = useState(0);
+  const currentPreview = useRef(previewId);
+  currentPreview.current = previewId;
   const inFlight = useRef(false);
+  const validationFlight = useRef(false);
+  const uploadRequest = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++uploadRequest.current; }; }, []);
   useEffect(() => {
-    if (!previewId) return;
+    ++uploadRequest.current;
+    if (!previewId) { setBusy(false); return; }
     const controller = new AbortController();
     setPreview(null);
     setBusy(true);
@@ -27,16 +37,16 @@ export default function CsvImport() {
       signal: controller.signal,
     })
       .then((value) => {
-        if (!controller.signal.aborted) setPreview(value);
+        if (!controller.signal.aborted) { setPreview(value); setCheckRequired(false); }
       })
       .catch((err) => {
-        if (!controller.signal.aborted) setError(err.message);
+        if (!controller.signal.aborted) setError(deanUiError(err, "csv"));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [previewId]);
+  }, [previewId, previewRetry]);
   useEffect(() => {
     if (!preview?.expiresAt || preview.status === "processing" || confirming) return;
     const timeout = setTimeout(
@@ -59,7 +69,7 @@ export default function CsvImport() {
         if (!controller.signal.aborted) { setPreview(value); setError(""); }
       } catch (err) {
         if (!controller.signal.aborted) {
-          setError(err.message);
+          setError(deanUiError(err, "csv"));
           if (err.status === 404) setPreview(null);
         }
       } finally {
@@ -70,6 +80,10 @@ export default function CsvImport() {
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [preview, previewId, confirming]);
   const selectFile = (value) => {
+    if (inFlight.current || validationFlight.current) return;
+    ++uploadRequest.current;
+    setCheckRequired(false);
+    setBusy(false);
     setFile(value);
     setPreview(null);
     setError("");
@@ -77,7 +91,12 @@ export default function CsvImport() {
   };
   const submit = async (event) => {
     event.preventDefault();
-    if (!file || busy || inFlight.current) return;
+    if (!file || busy || inFlight.current || validationFlight.current) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) { setError("Select a supported CSV file."); return; }
+    if (!file.size) { setError("CSV file is empty."); return; }
+    if (file.size > 1024 * 1024) { setError("CSV file must be 1 MiB or smaller."); return; }
+    validationFlight.current = true;
+    const request = ++uploadRequest.current;
     setBusy(true);
     setPreview(null);
     setError("");
@@ -88,38 +107,44 @@ export default function CsvImport() {
         method: "POST",
         body,
       });
+      if (request !== uploadRequest.current) return;
       setPreview(result);
       setSearch({ preview: result.previewId }, { replace: true });
     } catch (err) {
-      setError(err.message);
+      if (request === uploadRequest.current) setError(deanUiError(err, "csv"));
     } finally {
-      setBusy(false);
+      validationFlight.current = false;
+      if (request === uploadRequest.current) setBusy(false);
     }
   };
   const confirm = async () => {
-    if (inFlight.current || busy || !preview?.canConfirm || preview.status !== "validated" ||
+    if (checkRequired || inFlight.current || busy || !preview?.canConfirm || preview.status !== "validated" ||
       preview.summary.invalidRows !== 0 || new Date(preview.expiresAt).getTime() <= Date.now()) return;
     inFlight.current = true;
     setConfirming(true);
     setError("");
     try {
       const result = await api(`/dean/account-imports/${encodeURIComponent(preview.previewId)}/confirm`, { method: "POST" });
-      setPreview(result);
+      if (mounted.current && currentPreview.current === previewId) setPreview(result);
     } catch (err) {
-      setError(err.message);
+      if (!mounted.current || currentPreview.current !== previewId) return;
+      setCheckRequired(true);
+      setError(deanUiError(err, "import"));
       if (err.data?.preview) setPreview(err.data.preview);
       // The server may have committed even when the response was lost. GET never creates accounts.
       try {
         const recovered = await api(`/dean/account-imports/${encodeURIComponent(preview.previewId)}`);
+        if (!mounted.current) return;
         setPreview(recovered);
-        if (recovered.status === "completed") setError("");
+        if (recovered.status === "completed") { setError(""); setCheckRequired(false); }
+        else if (recovered.status === "processing" || recovered.status === "validated") setError("Import could not be confirmed. Refresh to check its status before trying again.");
       } catch (recoveryError) {
-        if (recoveryError.status === 404) setPreview(null);
+        if (!mounted.current) return;
+        if (recoveryError.status === 404) { setPreview(null); setError("This preview is missing or expired. Refresh to check import status before uploading again."); }
         else setError("Unable to check the import status. Refresh this page before trying again.");
       }
     } finally {
-      setDialogOpen(false);
-      setConfirming(false);
+      if (mounted.current) { setDialogOpen(false); setConfirming(false); }
       inFlight.current = false;
     }
   };
@@ -192,6 +217,10 @@ export default function CsvImport() {
         onSubmit={submit}
         file={file}
       />
+      {busy && <p role="status">Loading or validating CSV preview?</p>}
+      {confirming && <p role="status">Creating accounts?</p>}
+      {!file && !preview && !busy && <p role="status" className="mt-3">No CSV file selected.</p>}
+      {error && previewId && !confirming && <button type="button" className="btn-secondary mt-4" disabled={busy} onClick={() => { if (!inFlight.current && !validationFlight.current) setPreviewRetry(n => n + 1); }}>Refresh import status</button>}
       {error && (
         <p role="alert" className="mt-4 text-red-700">
           {error}
@@ -199,7 +228,7 @@ export default function CsvImport() {
       )}
       {preview && (["completed", "failed"].includes(preview.status) ?
         <CSVImportResult result={preview} onNewImport={() => selectFile(null)} /> :
-        <CSVValidationPreview preview={preview} busy={busy || confirming} onConfirm={() => setDialogOpen(true)} />)}
+        <CSVValidationPreview preview={preview} busy={busy || confirming || checkRequired} onConfirm={() => setDialogOpen(true)} />)}
       {preview?.status === "processing" && !confirming && (
         <button className="btn-secondary mt-4" onClick={() => selectFile(null)}>Start New Import</button>
       )}
@@ -213,7 +242,7 @@ export default function CsvImport() {
         variant="primary"
         loading={confirming}
         onConfirm={confirm}
-        onCancel={() => setDialogOpen(false)}
+        onCancel={() => { if (!inFlight.current) setDialogOpen(false); }}
       />
       <Link className="btn-secondary mt-5 inline-flex" to="/dean/dashboard">
         Back to Dean Management

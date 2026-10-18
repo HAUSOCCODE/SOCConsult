@@ -105,6 +105,7 @@ export default function DeanDashboard() {
       ) : (
         data && (
           <>
+            <p role="status" className="sr-only">Dashboard updated for {data.range.start} to {data.range.end}.</p>
             <section aria-label="Current account totals">
               <h2 className="font-bold text-maroon-900">
                 Current account totals
@@ -171,7 +172,7 @@ export default function DeanDashboard() {
                 dates.
               </p>
               {data.recentImports.length === 0 ? (
-                <p className="py-4 text-sm text-slate-500">
+                <p role="status" className="py-4 text-sm text-slate-500">
                   No completed imports yet.
                 </p>
               ) : (

@@ -4,7 +4,7 @@ export default function CSVImportResult({ result, onNewImport }) {
   return (
     <section className="mt-6 rounded-lg border p-4" aria-label="CSV import result">
       <h3 className="text-lg font-bold">Import result</h3>
-      <p role="status" className="mt-2">{result.message}</p>
+      <p role="status" className="mt-2">{result.status === "completed" ? "Accounts created successfully." : "No accounts were created. Review the errors and upload a corrected CSV."}</p>
       <dl className="mt-4 grid grid-cols-2 gap-3">
         {[
           ["Import ID", result.importId], ["Status", result.status],
