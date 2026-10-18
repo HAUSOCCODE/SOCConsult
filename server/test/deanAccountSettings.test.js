@@ -167,11 +167,13 @@ test("Student and Faculty profile payloads remain compatible and reject sensitiv
   for (const role of ["student", "faculty"]) {
     const h = await harness(role);
     try {
-      const body = { firstName: "Ana", middleName: "", lastName: "Reyes", contactNumber: "123", program: role === "student" ? "Computer Science" : "", yearLevel: role === "student" ? "3" : "", office: role === "faculty" ? "Room 2" : "", specialization: role === "faculty" ? "Networks" : "", ...(role === "faculty" && { position: "Professor" }) };
+      const body = role === "student"
+        ? { contactNumber: "123" }
+        : { firstName: "Ana", middleName: "", lastName: "Reyes", contactNumber: "123", office: "Room 2", specialization: "Networks", position: "Professor" };
       const res = response(); await updateProfile({ user: h.user, body }, res);
       assert.equal(res.statusCode, 200); assert.equal(res.body.user.role, role);
       assert.equal(res.body.user.contactNumber, "123");
-      assert.equal(res.body.user[role === "student" ? "program" : "position"], role === "student" ? "Computer Science" : "Professor");
+      if (role === "faculty") assert.equal(res.body.user.position, "Professor");
       const rejected = response(); await updateProfile({ user: h.user, body: { ...body, email: "other@example.edu" } }, rejected);
       assert.equal(rejected.statusCode, 400);
     } finally { h.restore(); }

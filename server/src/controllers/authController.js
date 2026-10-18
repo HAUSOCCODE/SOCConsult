@@ -43,6 +43,9 @@ const publicUser = (user) => ({
   office: user.office,
   specialization: user.specialization,
   contactNumber: user.contactNumber,
+  ...(user.role === "student"
+    ? { institutionalId: user.institutionalId }
+    : {}),
   ...(user.role === "dean" ? { institutionalId: user.institutionalId, accountSource: user.accountSource, accountStatus: user.accountStatus, passwordChangedAt: user.passwordChangedAt } : {}),
   profilePicture:
     typeof user.profilePicture === "string"
@@ -126,9 +129,11 @@ export async function me(req, res) {
 }
 
 export async function updateProfile(req, res) {
-  const allowed = req.user.role === "dean"
-    ? ["firstName", "middleName", "lastName", "office", "contactNumber"]
-    : ["firstName", "middleName", "lastName", "program", "yearLevel", "position", "office", "specialization", "contactNumber"];
+  const allowed = req.user.role === "student"
+    ? ["contactNumber"]
+    : req.user.role === "dean"
+      ? ["firstName", "middleName", "lastName", "office", "contactNumber"]
+      : ["firstName", "middleName", "lastName", "position", "office", "specialization", "contactNumber"];
   if (!req.body || Array.isArray(req.body) || typeof req.body !== "object" ||
       Object.keys(req.body).some(key => !allowed.includes(key)) ||
       Object.entries(req.body).some(([key, value]) => typeof value !== "string" ||
