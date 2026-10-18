@@ -21,6 +21,7 @@ import {
   consultationIcsFilename,
   generateConsultationIcs,
 } from "../services/icsService.js";
+import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
 const router = Router();
 router.use(authenticate);
 
@@ -169,6 +170,14 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
       availabilityCapacity: await capacitySummary(req.user.id),
     }),
   });
+});
+
+router.get("/student-history", authorize("student"), async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await listStudentConsultationHistory({
+    student: req.user.id,
+    input: req.query,
+  }));
 });
 
 router.get(
