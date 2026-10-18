@@ -133,19 +133,19 @@ export default function ReportsAnalytics() {
           creation time in Asia/Manila.
         </p>
       </div>
-      <form
+      <form aria-describedby={error ? "report-filter-error" : undefined}
         onSubmit={generate}
         className="space-y-5 rounded-2xl border bg-white p-6"
         aria-busy={busy}
       >
         <fieldset
           disabled={busy}
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-describedby={error ? "report-filter-error" : undefined} className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           <legend className="mb-3 font-semibold">Report filters</legend>
           <label>
             Start date
-            <input
+            <input aria-describedby={error ? "report-filter-error" : undefined}
               className="field mt-1"
               type="date"
               required
@@ -155,7 +155,7 @@ export default function ReportsAnalytics() {
           </label>
           <label>
             End date
-            <input
+            <input aria-describedby={error ? "report-filter-error" : undefined}
               className="field mt-1"
               type="date"
               required
@@ -166,7 +166,7 @@ export default function ReportsAnalytics() {
           <div>
             <label>
               Find faculty
-              <input
+              <input aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 type="search"
                 maxLength={100}
@@ -176,7 +176,7 @@ export default function ReportsAnalytics() {
             </label>
             <label className="mt-2 block">
               Faculty
-              <select
+              <select aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 value={filters.facultyId}
                 onChange={(e) => change("facultyId", e.target.value)}
@@ -214,7 +214,7 @@ export default function ReportsAnalytics() {
           ].map(([key, label, values]) => (
             <label key={key}>
               {label}
-              <select
+              <select aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 value={filters[key]}
                 onChange={(e) => change(key, e.target.value)}
@@ -241,7 +241,7 @@ export default function ReportsAnalytics() {
         </div>
         {busy && <p role="status">Generating PDF report…</p>}
         {error && (
-          <p role="alert" className="text-red-700">
+          <p id="report-filter-error" role="alert" className="text-red-700">
             {error}
           </p>
         )}

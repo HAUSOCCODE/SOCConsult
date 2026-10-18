@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -52,9 +53,9 @@ async function harness() {
   };
   const Component = new Function(
     "React",
-    ...Object.keys(imports),
+    ...Object.keys({ ...sharedClientImports, ...imports }),
     `${compiled.code}; return DeanDashboard;`,
-  )(React, ...Object.values(imports));
+  )(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return {
     state,
     pending,

@@ -150,7 +150,7 @@ export default function ProfilePage() {
                 </span>
                 {user.role === "student" && key === "program" ? (
                   <>
-                    <textarea
+                    <textarea aria-label={label}
                       rows={2}
                       className="field mt-2 min-h-11 resize-none py-2.5 md:hidden"
                       value={form[key]}
@@ -158,7 +158,7 @@ export default function ProfilePage() {
                         setForm({ ...form, [key]: e.target.value })
                       }
                     />
-                    <input
+                    <input aria-label={label}
                       className="field mt-2 hidden min-h-11 py-2.5 md:block"
                       value={form[key]}
                       onChange={(e) =>
@@ -185,6 +185,7 @@ export default function ProfilePage() {
                             : undefined
                     }
                     aria-invalid={Boolean(nameErrors[key])}
+                    aria-describedby={nameErrors[key] ? `profile-${key}-error` : undefined}
                     value={form[key]}
                     onChange={(e) => {
                       setForm({ ...form, [key]: e.target.value });
@@ -193,7 +194,7 @@ export default function ProfilePage() {
                   />
                 )}
                 {nameErrors[key] && (
-                  <span className="mt-1.5 block text-xs font-medium text-red-700">
+                  <span id={`profile-${key}-error`} className="mt-1.5 block text-xs font-medium text-red-700">
                     {nameErrors[key]}
                   </span>
                 )}
@@ -432,7 +433,7 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
                   aria-label={`${visible[key] ? "Hide" : "Show"} ${label.toLowerCase()}`}
                   className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-500"
                 >
-                  {visible[key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {visible[key] ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
                 </button>
               </span>
             </label>

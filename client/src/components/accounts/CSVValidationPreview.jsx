@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import CSVErrorTable from "./CSVErrorTable";
 export default function CSVValidationPreview({ preview, busy = false, onConfirm }) {
   const eligible = preview.canConfirm && preview.summary.invalidRows === 0 &&
@@ -20,7 +21,7 @@ export default function CSVValidationPreview({ preview, busy = false, onConfirm 
       </div>
       <p className="mt-3 text-sm">
         {preview.displayFilename && <span>File: {preview.displayFilename}. </span>}
-        Preview expires: {new Date(preview.expiresAt).toLocaleString()}
+        Preview expires (Asia/Manila): {formatManilaDisplay(new Date(preview.expiresAt), undefined, "timestamp")}
       </p>
       <CSVErrorTable rows={preview.rows} />
       <button className="btn-primary mt-4" disabled={!eligible || busy || !onConfirm} onClick={onConfirm}>

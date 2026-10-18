@@ -1,3 +1,5 @@
+import { useId, useRef } from "react";
+import useDialogFocus from "../hooks/useDialogFocus";
 import { isLegacyAppointmentStatus } from "../utils/appointmentStatus";
 export const StatusBadge = ({ status, compact = false, allowWrap = false, appointment = false }) => {
   const colors = {
@@ -57,14 +59,17 @@ export const ErrorState = ({ message, onRetry }) => (
     )}
   </div>
 );
-export function Modal({ title, children, onClose, actions }) {
+export function Modal({ title, children, onClose, actions, busy = false }) {
+  const panel = useRef(null);
+  const titleId = useId();
+  useDialogFocus(panel, { onClose, busy });
   return (
     <div
       className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/55 p-3 sm:p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div className="max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6">
-        <h2 className="break-words text-xl font-bold text-maroon-900">
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} className="content-wrap max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6">
+        <h2 id={titleId} className="break-words text-xl font-bold text-maroon-900">
           {title}
         </h2>
         <div className="mt-4 text-sm text-slate-600">{children}</div>

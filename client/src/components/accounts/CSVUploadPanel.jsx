@@ -1,11 +1,12 @@
-export default function CSVUploadPanel({ busy, onSelect, onSubmit, file }) {
+export default function CSVUploadPanel({ busy, onSelect, onSubmit, file, error }) {
   return (
-    <form onSubmit={onSubmit} className="mt-5 space-y-3">
+    <form aria-describedby={error ? "csv-upload-error" : undefined} onSubmit={onSubmit} className="mt-5 space-y-3">
       <label className="block text-sm font-semibold" htmlFor="csv-file">
         Select CSV file
       </label>
       <input
         id="csv-file"
+        aria-describedby={error ? "csv-upload-error" : undefined}
         type="file"
         accept=".csv,text/csv"
         disabled={busy}

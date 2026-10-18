@@ -1,3 +1,4 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { monitoringDate } from "../dean/ConsultationDetailsDialog";
@@ -7,7 +8,9 @@ import AttendanceResolutionForm, { resolutionLabels } from "./AttendanceResoluti
 export default function AttendanceReviewDetails({ recordId, onClose, onChanged }) {
   const dialog = useRef(null), busyRef = useRef(false);
   const [data, setData] = useState(null), [error, setError] = useState(""), [retry, setRetry] = useState(0), [busy, setBusy] = useState(false), [success, setSuccess] = useState("");
-  useEffect(() => { const previous = document.activeElement; dialog.current.showModal(); return () => previous?.focus?.(); }, []);
+  const opener = useRef(document.activeElement);
+  useEffect(() => { const panel = dialog.current; panel.showModal(); return () => panel.close(); }, []);
+  useDialogFocus(dialog, { restoreTarget: opener.current, onClose, busy });
   useEffect(() => {
     const controller = new AbortController(); setData(null); setError("");
     api(`/dean/attendance-review/${recordId}`, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setData(result.review); })
@@ -15,7 +18,7 @@ export default function AttendanceReviewDetails({ recordId, onClose, onChanged }
     return () => controller.abort();
   }, [recordId, retry]);
   const changeBusy = value => { busyRef.current = value; setBusy(value); };
-  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); if (!busyRef.current) onClose(); }} aria-labelledby="attendance-review-title" className="max-h-[90vh] w-[95vw] max-w-3xl overflow-y-auto rounded-xl p-6 backdrop:bg-black/50">
+  return <dialog tabIndex={-1} ref={dialog} onCancel={event => { event.preventDefault(); if (!busyRef.current) onClose(); }} aria-labelledby="attendance-review-title" className="max-h-[90vh] w-[95vw] max-w-3xl overflow-y-auto rounded-xl p-6 backdrop:bg-black/50">
     <div className="flex justify-between gap-3"><h2 id="attendance-review-title" className="text-xl font-bold">Attendance Review details</h2><button autoFocus type="button" className="btn-secondary" disabled={busy} onClick={() => { if (!busyRef.current) onClose(); }}>Close</button></div>
     {success && <p role="status" className="my-3 rounded border border-green-600 p-3">{success}</p>}
     {error ? <p role="alert">{error} <button type="button" className="underline" onClick={() => setRetry(n => n + 1)}>Retry</button></p> : !data ? <p role="status">Loading review details…</p> : <div className="mt-4 space-y-5">

@@ -8,7 +8,7 @@ export default function WorkspaceSwitcher() {
     <label className="block min-w-0 text-xs font-semibold text-slate-600">
       Workspace
       <select
-        className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-maroon-900 focus-visible:ring-2 focus-visible:ring-gold-400"
+        className="mt-1 block w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-maroon-900 focus-visible:ring-2 focus-visible:ring-gold-400"
         value={deanWorkspace(pathname, search)}
         onChange={(event) =>
           navigate(

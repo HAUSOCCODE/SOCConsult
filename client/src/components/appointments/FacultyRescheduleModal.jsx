@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { api } from "../../api/apiClient";
@@ -68,36 +69,7 @@ export default function FacultyRescheduleModal({
     return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
   }, [duration, form.startTime]);
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    firstFieldRef.current?.focus();
-    const keydown = (event) => {
-      if (event.key === "Escape" && !submittingRef.current) onClose();
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = [
-        ...dialogRef.current.querySelectorAll(
-          "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]",
-        ),
-      ];
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", keydown);
-      opener?.focus?.();
-    };
-  }, []);
+  useDialogFocus(dialogRef, { onClose, busy: submitting, initialFocus: firstFieldRef, restoreTarget: opener });
 
   const set = (name) => (event) => {
     setForm((currentForm) => ({
@@ -106,9 +78,10 @@ export default function FacultyRescheduleModal({
     }));
     setError("");
   };
-  const close = () => !submitting && onClose();
+  const close = () => !submittingRef.current && onClose();
   const submit = async (event) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     const reason = form.reason.trim();
     if (reason.length < 5) {
       setError("Please provide a meaningful reason of at least 5 characters.");
@@ -157,7 +130,7 @@ export default function FacultyRescheduleModal({
       onMouseDown={(event) => event.target === event.currentTarget && close()}
     >
       <section
-        ref={dialogRef}
+        ref={dialogRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="faculty-reschedule-title"
@@ -183,11 +156,11 @@ export default function FacultyRescheduleModal({
             aria-label="Close reschedule consultation"
             className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
           >
-            <X size={21} />
+            <X aria-hidden="true" size={21} />
           </button>
         </header>
 
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <form aria-describedby={error ? "faculty-reschedule-error" : undefined} onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
             <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="font-bold text-maroon-900">
@@ -226,7 +199,7 @@ export default function FacultyRescheduleModal({
 
             <div className="grid min-w-0 gap-4 sm:grid-cols-2">
               <Field label="New consultation date" required>
-                <input
+                <input disabled={submitting}
                   ref={firstFieldRef}
                   type="date"
                   min={todayInManila()}
@@ -237,7 +210,7 @@ export default function FacultyRescheduleModal({
                 />
               </Field>
               <Field label="New start time" required>
-                <input
+                <input disabled={submitting}
                   type="time"
                   required
                   value={form.startTime}
@@ -246,7 +219,7 @@ export default function FacultyRescheduleModal({
                 />
               </Field>
               <Field label="Duration" required>
-                <select
+                <select disabled={submitting}
                   required
                   value={form.duration}
                   onChange={set("duration")}
@@ -260,7 +233,7 @@ export default function FacultyRescheduleModal({
                 </select>
               </Field>
               <Field label="New end time">
-                <input
+                <input disabled={submitting}
                   readOnly
                   value={newEndTime}
                   className="field mt-1.5 bg-slate-100"
@@ -268,7 +241,7 @@ export default function FacultyRescheduleModal({
                 />
               </Field>
               <Field label="Consultation mode" required wide>
-                <select
+                <select disabled={submitting}
                   required
                   value={form.mode}
                   onChange={set("mode")}
@@ -280,7 +253,7 @@ export default function FacultyRescheduleModal({
               </Field>
               {form.mode === "Face-to-Face" ? (
                 <Field label="Location" required wide>
-                  <input
+                  <input disabled={submitting}
                     required
                     maxLength={150}
                     value={form.location}
@@ -292,7 +265,7 @@ export default function FacultyRescheduleModal({
               ) : (
                 <>
                   <Field label="Meeting platform" required>
-                    <input
+                    <input disabled={submitting}
                       required
                       maxLength={100}
                       value={form.meetingPlatform}
@@ -302,7 +275,7 @@ export default function FacultyRescheduleModal({
                     />
                   </Field>
                   <Field label="Meeting link">
-                    <input
+                    <input disabled={submitting}
                       type="url"
                       maxLength={500}
                       value={form.meetingLink}
@@ -314,7 +287,7 @@ export default function FacultyRescheduleModal({
                 </>
               )}
               <Field label="Reschedule reason" required wide>
-                <textarea
+                <textarea disabled={submitting}
                   required
                   minLength={5}
                   maxLength={500}
@@ -331,7 +304,7 @@ export default function FacultyRescheduleModal({
             </div>
             {error && (
               <p
-                role="alert"
+                id="faculty-reschedule-error" role="alert"
                 className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
               >
                 {error}

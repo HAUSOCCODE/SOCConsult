@@ -1,3 +1,4 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -22,27 +23,7 @@ export default function ManualAccountForm({ onClose, onSuccess }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const dialogRef = useRef(null);
   const titleId = useId();
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialogRef.current?.querySelector("input")?.focus();
-    return () => { document.body.style.overflow = previousOverflow; previousFocus?.focus?.(); };
-  }, []);
-  useEffect(() => {
-    if (confirming) return undefined;
-    const keydown = (event) => {
-      if (event.key === "Escape" && !inFlight.current) { event.preventDefault(); onClose(); }
-      if (event.key !== "Tab") return;
-      const controls = [...(dialogRef.current?.querySelectorAll("input:not(:disabled), select:not(:disabled), button:not(:disabled)") || [])];
-      const first = controls[0], last = controls[controls.length - 1];
-      if (!first) return;
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => document.removeEventListener("keydown", keydown);
-  }, [confirming, onClose]);
+  useDialogFocus(dialogRef, { onClose, busy: busy || confirming, initialFocus: "input" });
   const review = (event) => {
     event.preventDefault();
     if (inFlight.current) return;
@@ -86,12 +67,12 @@ export default function ManualAccountForm({ onClose, onSuccess }) {
     <>
       <div inert={confirming} aria-hidden={confirming || undefined} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-3 sm:p-4"
         onMouseDown={(event) => event.target === event.currentTarget && !inFlight.current && !confirming && onClose()}>
-        <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId}
+        <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}
           className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <h2 id={titleId} className="text-xl font-bold text-maroon-900">Create User Manually</h2>
             <button type="button" disabled={busy || confirming} onClick={() => { if (!inFlight.current) onClose(); }} aria-label="Close manual account form"
-              className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100"><X size={20} /></button>
+              className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100"><X aria-hidden="true" size={20} /></button>
           </div>
           <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-600">
             The official email will be the username. The institutional ID will be the initial password.

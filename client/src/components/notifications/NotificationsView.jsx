@@ -1,3 +1,6 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import ResponsiveTable from "../ResponsiveTable";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import {
   Bell,
   CalendarDays,
@@ -340,7 +343,7 @@ function NotificationsPageContent({
                   <span
                     className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${notification.isRead ? "bg-slate-100 text-slate-600" : "bg-maroon-800 text-gold-300"}`}
                   >
-                    <Icon size={20} />
+                    <Icon aria-hidden="true" size={20} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
@@ -360,7 +363,7 @@ function NotificationsPageContent({
                     <p className="mt-2 text-xs text-slate-500">
                       {Number.isNaN(createdAt.getTime())
                         ? "Date unavailable"
-                        : createdAt.toLocaleString()}
+                        : formatManilaDisplay(createdAt, undefined, "timestamp")}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-4">
                       {!notification.isRead && (
@@ -452,13 +455,13 @@ function StudentNotificationsContent({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Date unavailable"
-      : parsed.toLocaleString(undefined, {
+      : formatManilaDisplay(parsed, {
           year: "numeric",
           month: "short",
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
-        });
+        }, "timestamp");
   };
   const typeLabel = (notification) =>
     notification.type
@@ -470,9 +473,9 @@ function StudentNotificationsContent({
       return { month: "---", day: "--", year: "" };
     }
     return {
-      month: parsed.toLocaleString(undefined, { month: "short" }).toUpperCase(),
-      day: parsed.toLocaleString(undefined, { day: "2-digit" }),
-      year: parsed.toLocaleString(undefined, { year: "numeric" }),
+      month: formatManilaDisplay(parsed, { month: "short" }, "timestamp").toUpperCase(),
+      day: formatManilaDisplay(parsed, { day: "2-digit" }, "timestamp"),
+      year: formatManilaDisplay(parsed, { year: "numeric" }, "timestamp"),
     };
   };
   const changePage = (page) => {
@@ -1039,13 +1042,13 @@ function CompactNotifications({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Date unavailable"
-      : parsed.toLocaleString(undefined, {
+      : formatManilaDisplay(parsed, {
           year: "numeric",
           month: "short",
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
-        });
+        }, "timestamp");
   };
   const typeLabel = (notification) =>
     notification.type
@@ -1129,15 +1132,14 @@ function CompactNotifications({
         <NotificationEmptyState filter={filter} />
       ) : (
         <>
-          <div className="responsive-table-shell responsive-table-scroll hidden md:block xl:overflow-visible">
-            <table className="responsive-table min-w-[760px] text-xs xl:min-w-0 2xl:text-sm">
+          <ResponsiveTable label="Notifications" className="responsive-table-shell responsive-table-scroll hidden md:block xl:overflow-visible"><table className="responsive-table min-w-[760px] text-xs xl:min-w-0 2xl:text-sm">
               <thead className="h-11 bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
                 <tr>
-                  <th className="w-[12%] px-3 py-3">Type</th>
-                  <th className="w-[35%] px-3 py-3">Notification</th>
-                  <th className="w-[21%] px-3 py-3">Date &amp; Time</th>
-                  <th className="w-[10%] px-3 py-2 text-center">Status</th>
-                  <th className="w-[22%] px-3 py-2">Action</th>
+                  <th scope="col" className="w-[12%] px-3 py-3">Type</th>
+                  <th scope="col" className="w-[35%] px-3 py-3">Notification</th>
+                  <th scope="col" className="w-[21%] px-3 py-3">Date &amp; Time</th>
+                  <th scope="col" className="w-[10%] px-3 py-2 text-center">Status</th>
+                  <th scope="col" className="w-[22%] px-3 py-2">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -1203,8 +1205,7 @@ function CompactNotifications({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </table></ResponsiveTable>
           <div className="grid gap-3 md:hidden">
             {pageNotifications.map((notification) => (
               <article
@@ -1684,15 +1685,14 @@ function NotificationEmptyState({ filter = "All" }) {
   const { category } = useContext(NotificationPageContext);
   return (
     <>
-      <div className="hidden max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
-        <table className="w-full min-w-[800px] table-fixed text-left text-sm">
+      <ResponsiveTable label="Notifications" className="hidden max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block"><table className="w-full min-w-[800px] table-fixed text-left text-sm">
           <thead className="bg-maroon-800 text-white">
             <tr>
-              <th className="w-[14%] px-4 py-3">Type</th>
-              <th className="w-[34%] px-4 py-3">Notification</th>
-              <th className="w-[22%] px-4 py-3">Date &amp; Time</th>
-              <th className="w-[12%] px-4 py-3">Status</th>
-              <th className="w-[18%] px-4 py-3">Action</th>
+              <th scope="col" className="w-[14%] px-4 py-3">Type</th>
+              <th scope="col" className="w-[34%] px-4 py-3">Notification</th>
+              <th scope="col" className="w-[22%] px-4 py-3">Date &amp; Time</th>
+              <th scope="col" className="w-[12%] px-4 py-3">Status</th>
+              <th scope="col" className="w-[18%] px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -1705,8 +1705,7 @@ function NotificationEmptyState({ filter = "All" }) {
               </td>
             </tr>
           </tbody>
-        </table>
-      </div>
+        </table></ResponsiveTable>
       <div className="md:hidden">
         <EmptyState
           title={filter !== "All" || category ? "No notifications match these filters." : "No notifications yet."}
@@ -1719,27 +1718,7 @@ function NotificationEmptyState({ filter = "All" }) {
 
 function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
   const dialogRef = useRef(null);
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    const previousFocus = document.activeElement;
-    dialogRef.current?.querySelector("button")?.focus();
-    const escape = (event) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); }
-      if (event.key === "Tab") {
-        const controls = [...dialogRef.current.querySelectorAll("button, a[href]")];
-        const first = controls[0], last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", escape);
-      previousFocus?.focus?.();
-    };
-  }, []);
+  useDialogFocus(dialogRef, { onClose });
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex h-[100dvh] w-full min-w-0 items-center justify-center bg-black/50 p-3 sm:p-4"
@@ -1748,7 +1727,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
       <section
         role="dialog"
         aria-modal="true"
-        ref={dialogRef}
+        ref={dialogRef} tabIndex={-1}
         aria-labelledby="notification-details-title"
         onMouseDown={(event) => event.stopPropagation()}
         className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
@@ -1766,7 +1745,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
             aria-label="Close notification details"
             className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
         <div className="space-y-5 px-5 py-5 sm:px-6">

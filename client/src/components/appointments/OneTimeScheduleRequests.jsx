@@ -1,3 +1,4 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
@@ -37,22 +38,7 @@ export default function OneTimeScheduleRequests() {
     const timer = window.setInterval(load, 20000);
     return () => window.clearInterval(timer);
   }, []);
-  useEffect(() => {
-    if (!selected) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    reviewDialogRef.current?.focus();
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape" && !busyRef.current) setSelected(null);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      const opener = reviewButtonRef.current;
-      window.requestAnimationFrame(() => opener?.focus());
-    };
-  }, [selected]);
+  useDialogFocus(reviewDialogRef, { open: Boolean(selected), busy, onClose: () => { if (!busyRef.current) setSelected(null); }, restoreTarget: reviewButtonRef.current });
   const choose = (request, opener) => {
     reviewButtonRef.current = opener;
     setSelected(request);
@@ -63,7 +49,8 @@ export default function OneTimeScheduleRequests() {
     });
   };
   const decide = async (decision) => {
-    if (!selected || busy) return;
+    if (!selected || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       let body = { note: rejectNote };
@@ -90,6 +77,7 @@ export default function OneTimeScheduleRequests() {
     } catch (error) {
       toast.error(error.message || "Unable to decide this request.");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -190,7 +178,7 @@ export default function OneTimeScheduleRequests() {
                 <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-semibold">
                     Consultation date
-                    <input
+                    <input disabled={busy}
                       type="date"
                       className="field mt-1"
                       value={form.date}
@@ -201,7 +189,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Start time (Asia/Manila)
-                    <input
+                    <input disabled={busy}
                       type="time"
                       className="field mt-1"
                       value={form.time}
@@ -212,7 +200,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Duration (minutes)
-                    <input
+                    <input disabled={busy}
                       type="number"
                       min="5"
                       max="240"
@@ -228,7 +216,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Mode
-                    <select
+                    <select disabled={busy}
                       className="field mt-1"
                       value={form.mode}
                       onChange={(event) =>
@@ -242,7 +230,7 @@ export default function OneTimeScheduleRequests() {
                   {form.mode === "Face-to-Face" ? (
                     <label className="text-sm font-semibold sm:col-span-2">
                       Location
-                      <input
+                      <input disabled={busy}
                         className="field mt-1"
                         maxLength="150"
                         value={form.location}
@@ -255,7 +243,7 @@ export default function OneTimeScheduleRequests() {
                     <>
                       <label className="text-sm font-semibold">
                         Meeting platform
-                        <input
+                        <input disabled={busy}
                           className="field mt-1"
                           maxLength="100"
                           value={form.meetingPlatform}
@@ -269,7 +257,7 @@ export default function OneTimeScheduleRequests() {
                       </label>
                       <label className="text-sm font-semibold">
                         Meeting link (optional)
-                        <input
+                        <input disabled={busy}
                           type="url"
                           className="field mt-1"
                           value={form.meetingLink}
@@ -287,7 +275,7 @@ export default function OneTimeScheduleRequests() {
                 <div className="mt-5 border-t border-slate-200 pt-4">
                   <label className="text-sm font-semibold">
                     Rejection reason (optional)
-                    <textarea
+                    <textarea disabled={busy}
                       className="field mt-1 min-h-20 resize-y"
                       maxLength="500"
                       value={rejectNote}

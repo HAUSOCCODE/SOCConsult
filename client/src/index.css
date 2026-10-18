@@ -419,3 +419,18 @@ body,
     display: block;
   }
 }
+
+/* DEA-20: wrap user content without expanding the page or changing table semantics. */
+.content-wrap, main, [role="dialog"], [role="alertdialog"], dialog { overflow-wrap: anywhere; }
+[role="dialog"], [role="alertdialog"], dialog { min-width: 0; }
+[role="dialog"]:not(aside), [role="alertdialog"] { max-height: calc(100dvh - 1.5rem); overflow-y: auto; }
+.responsive-table-scroll table { min-width: 40rem; }
+.responsive-table-scroll th, .responsive-table-scroll td { overflow-wrap: anywhere; }
+.responsive-table-scroll pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+button:focus-visible, a:focus-visible { outline: 2px solid #8A2436; outline-offset: 3px; }
+aside button:focus-visible, aside a:focus-visible { outline-color: #F2C14E; }
+@media (max-width: 639px) {
+  main form fieldset { min-width: 0; }
+  main form label { min-width: 0; max-width: 100%; }
+  .btn-secondary { height: auto; min-height: 2.25rem; }
+}
