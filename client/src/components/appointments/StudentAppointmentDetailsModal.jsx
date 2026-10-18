@@ -51,6 +51,8 @@ export default function StudentAppointmentDetailsModal({
   onRespondToProposal,
   onCancelConsultation,
   onAttendanceUpdated,
+  readOnly = false,
+  historyMode = false,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
   const [downloadingCalendar, setDownloadingCalendar] = useState(false);
@@ -60,7 +62,7 @@ export default function StudentAppointmentDetailsModal({
   const [attendanceError, setAttendanceError] = useState("");
   const appointmentId = appointment?._id || appointment?.id;
   const canDownloadCalendar =
-    appointment?.status === "Confirmed" && Boolean(appointmentId);
+    !historyMode && appointment?.status === "Confirmed" && Boolean(appointmentId);
   const shouldLoadAttendance =
     Boolean(appointmentId) && ATTENDANCE_STATUSES.has(appointment?.status);
   const appointmentEnd = new Date(appointment?.endAt);
@@ -175,7 +177,7 @@ export default function StudentAppointmentDetailsModal({
               id="student-appointment-title"
               className="text-xl font-bold text-maroon-900"
             >
-              Consultation Details
+              {historyMode ? "Historical Consultation Details" : "Consultation Details"}
             </h2>
             <p className="mt-1 font-semibold text-slate-700">
               {appointment.subject || "Consultation"}
@@ -264,7 +266,7 @@ export default function StudentAppointmentDetailsModal({
               {!attendance?.ownResponse && <button type="button" onClick={loadAttendance} className="mt-3 font-bold underline">Try again</button>}
             </div>
           )}
-          {appointment.status === "Awaiting Attendance Update" && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
+          {!readOnly && appointment.status === "Awaiting Attendance Update" && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
             <StudentAttendanceResponseForm onSubmit={submitAttendance} />
           )}
           {appointment.status === "Awaiting Attendance Update" && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
@@ -279,9 +281,7 @@ export default function StudentAppointmentDetailsModal({
 
           <OnlineMeetingDetails
             appointment={appointment}
-            allowLink={["Confirmed", "Completed"].includes(
-              appointment.status,
-            )}
+            allowLink={["Confirmed", "Completed"].includes(appointment.status) && !historyMode}
             actionLabel="Join Meeting"
           />
 
@@ -328,6 +328,11 @@ export default function StudentAppointmentDetailsModal({
                 value={appointment.cancellationReason || "Not provided"}
                 wide
               />
+            </Section>
+          )}
+          {appointment.status === "Expired" && (
+            <Section title="Status Details">
+              <Detail label="Expiration" value={appointment.expirationReason || "This consultation request expired before it could proceed."} wide />
             </Section>
           )}
           {appointment.status === "Completed" && (
@@ -418,6 +423,23 @@ export default function StudentAppointmentDetailsModal({
             </Section>
           )}
 
+          {historyMode && appointment.statusHistory?.length > 0 && (
+            <Section title="Status History">
+              <ol className="sm:col-span-2 space-y-3">
+                {appointment.statusHistory.map((entry, index) => (
+                  <li key={`${entry.changedAt}-${index}`} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="break-words text-sm font-bold text-slate-900">
+                      {entry.previousStatus || "Previous state"} → {entry.newStatus}
+                    </p>
+                    <p className="mt-1 break-words text-xs text-slate-600">
+                      {safeDate(entry.changedAt)} · {entry.changedByRole || "System"}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </Section>
+          )}
+
           <Section title="Supporting Documents">
             <div className="sm:col-span-2">
               <SupportingDocumentViewer appointment={appointment} />
@@ -425,12 +447,12 @@ export default function StudentAppointmentDetailsModal({
           </Section>
         </div>
         <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
-          {canStudentCancelAppointment(appointment) && onCancelConsultation && (
+          {!readOnly && canStudentCancelAppointment(appointment) && onCancelConsultation && (
             <button type="button" onClick={onCancelConsultation} className="min-h-10 w-full rounded-lg bg-red-700 px-4 text-sm font-bold text-white hover:bg-red-800 sm:w-auto">
               Cancel Consultation
             </button>
           )}
-          {appointment.status === "Reschedule Proposed" && onRespondToProposal && (
+          {!readOnly && appointment.status === "Reschedule Proposed" && onRespondToProposal && (
             <button type="button" onClick={onRespondToProposal} className="btn-primary w-full sm:w-auto">
               View Proposal / Respond
             </button>
