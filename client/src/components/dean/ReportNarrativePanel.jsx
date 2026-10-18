@@ -1,3 +1,4 @@
+import { formatManilaDateTime, formatDateOnly } from "../../utils/formatDateTime";
 import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
@@ -40,12 +41,12 @@ export default function ReportNarrativePanel({ filters }) {
     {conflict && <button type="button" className="btn-secondary" disabled={busy} onClick={refresh}>Refresh narrative status</button>}
     {summary && <div className="space-y-3">
       <p role="status">{summary.reviewState === "reviewed" ? "Review completed. " : "AI summary ready for review. "}AI-assisted · {summary.reviewState === "reviewed" ? "Reviewed" : "Unreviewed"}</p>
-      <p>Date range: {summary.filters.start} to {summary.filters.end}</p>
-      <p>Generated: {summary.generatedAt}</p>
-      <p>Snapshot filters: {Object.entries(summary.filters).map(([key, value]) => `${key}: ${key === "facultyId" ? "Selected faculty" : value}`).join("; ")}</p>
+      <p>Date range: {formatDateOnly(summary.filters.start)} to {formatDateOnly(summary.filters.end)}</p>
+      <p>Generated: {formatManilaDateTime(summary.generatedAt)} (Asia/Manila)</p>
+      <p>Snapshot filters: {Object.entries(summary.filters).map(([key, value]) => `${key}: ${key === "facultyId" ? "Selected faculty" : ["start", "end"].includes(key) ? formatDateOnly(value) : value}`).join("; ")}</p>
       {!matches && <p role="status">This narrative uses different filters from the current report.</p>}
-      <p className="whitespace-pre-wrap">{summary.narrative}</p>
-      {summary.reviewedAt && <p>Reviewed: {summary.reviewedAt}</p>}
+      <p className="whitespace-pre-wrap break-words">{summary.narrative}</p>
+      {summary.reviewedAt && <p>Reviewed: {formatManilaDateTime(summary.reviewedAt)} (Asia/Manila)</p>}
       {summary.reviewState === "unreviewed" && <button type="button" className="btn-primary" disabled={busy || !matches || conflict} onClick={() => perform(true)}>I have reviewed and approve this narrative</button>}
     </div>}
   </section>;

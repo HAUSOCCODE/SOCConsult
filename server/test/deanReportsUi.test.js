@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -86,9 +87,9 @@ async function harness() {
   };
   const Page = new Function(
     "React",
-    ...Object.keys(imports),
+    ...Object.keys({ ...sharedClientImports, ...imports }),
     `${code.code}; return ReportsAnalytics;`,
-  )(React, ...Object.values(imports));
+  )(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return {
     state,
     effects,

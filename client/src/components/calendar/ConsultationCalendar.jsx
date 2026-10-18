@@ -1,3 +1,4 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -443,13 +444,14 @@ function CalendarEventPill({ event, onOpen }) {
     <button
       type="button"
       onClick={(clickEvent) => onOpen(event, clickEvent.currentTarget)}
-      aria-label={`${event.status} consultation with ${eventParticipantName(event)} at ${timeLabel(event.start)}`}
+      aria-label={`${event.status} consultation with ${eventParticipantName(event)} about ${event.topic || "Consultation"} at ${timeLabel(event.start)}`}
       className={`block w-full min-w-0 overflow-hidden rounded-md border px-1.5 py-1 text-left text-[10px] leading-3 transition hover:brightness-95 ${style.event}`}
     >
       <span className="flex min-w-0 items-center gap-1 font-bold">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
         <span className="truncate">{timeLabel(event.start)}</span>
       </span>
+      <span className="block break-words font-semibold">{event.status}</span>
       <span className="mt-0.5 block truncate font-semibold">
         {eventParticipantName(event)} · {event.topic}
       </span>
@@ -517,6 +519,7 @@ function WeekEvent({ event, onOpen }) {
         {eventParticipantName(event)}
       </span>
       <span className="block break-words opacity-80">{event.topic}</span>
+      <span className="block break-words font-semibold">{event.status}</span>
     </button>
   );
 }
@@ -817,30 +820,17 @@ function CalendarEventModal({ event, opener, onClose }) {
 
 function ModalShell({ title, labelledBy, opener, onClose, children }) {
   const panelRef = useRef(null);
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panelRef.current?.focus();
-    const onKeyDown = (event) => event.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previous;
-      window.requestAnimationFrame(() => opener?.focus());
-    };
-  }, [onClose, opener]);
-
+  useDialogFocus(panelRef, { onClose, restoreTarget: opener });
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 sm:p-6"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
-        ref={panelRef}
+        ref={panelRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
         className="flex max-h-[calc(100dvh-48px)] w-[min(680px,calc(100vw-32px))] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl outline-none"
       >

@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { Link } from "react-router-dom";
 
 export default function CSVImportResult({ result, onNewImport }) {
@@ -11,7 +12,7 @@ export default function CSVImportResult({ result, onNewImport }) {
           ["Total rows", result.totalRows], ["Successful rows", result.successfulRows],
           ["Failed rows", result.failedRows], ["Students", result.studentCount],
           ["Faculty", result.facultyCount],
-          ["Import timestamp", result.importedAt ? new Date(result.importedAt).toLocaleString() : "Not completed"],
+          ["Import timestamp (Asia/Manila)", result.importedAt ? formatManilaDisplay(new Date(result.importedAt), undefined, "timestamp") : "Not completed"],
         ].map(([label, value]) => (
           <div key={label} className="min-w-0"><dt className="text-sm text-slate-600">{label}</dt><dd className="break-words font-semibold">{value}</dd></div>
         ))}

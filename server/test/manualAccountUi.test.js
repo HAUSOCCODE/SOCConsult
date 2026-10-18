@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -13,7 +14,7 @@ async function component(path, imports) {
   const name = /export default function (\w+)/.exec(raw)[1];
   const body = raw.replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replace("export default function", "function");
   const compiled = await transform(body, { loader: "jsx", jsx: "transform" });
-  return new Function("React", ...Object.keys(imports), `${compiled.code}; return ${name};`)(React, ...Object.values(imports));
+  return new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${compiled.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
 }
 function elements(tree, predicate) {
   if (!tree || typeof tree !== "object") return [];

@@ -1,3 +1,4 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { deanUiError } from "../../utils/deanUiErrors";
 import { Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -29,26 +30,7 @@ export default function ProfilePictureEditor() {
   );
 
   const dialogOpen = Boolean(selection || removing);
-  useEffect(() => {
-    if (!dialogOpen) return;
-    const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialogRef.current?.querySelector("button")?.focus();
-    const keydown = event => {
-      if (event.key === "Escape" && !pending.current) { event.preventDefault(); resetDialog(); }
-      if (event.key === "Tab") {
-        const controls = [...dialogRef.current.querySelectorAll("button:not(:disabled)")];
-        const first = controls[0], last = controls[controls.length - 1];
-        if (!first) { event.preventDefault(); dialogRef.current.focus(); }
-        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => { document.body.style.overflow = overflow; document.removeEventListener("keydown", keydown); previous?.focus?.(); };
-  }, [dialogOpen]);
-  useEffect(() => { if (busy) dialogRef.current?.focus(); }, [busy]);
+  useDialogFocus(dialogRef, { open: dialogOpen, busy, onClose: () => { if (!pending.current) resetDialog(); } });
   const resetDialog = () => {
     setSelection(null);
     setRemoving(false);
@@ -154,6 +136,7 @@ export default function ProfilePictureEditor() {
         <input
           ref={inputRef}
           type="file"
+          aria-label="Choose profile photo"
           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
           onChange={choose}
           className="sr-only"
@@ -193,7 +176,7 @@ export default function ProfilePictureEditor() {
                   onClick={() => close()}
                   className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
                 >
-                  <X />
+                  <X aria-hidden="true" />
                 </button>
               </div>
               {busy && <p role="status">{removing ? "Removing profile picture..." : "Uploading profile picture..."}</p>}

@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { EmptyState } from "../../components/UI";
@@ -7,17 +8,17 @@ import { useToast } from "../../context/ToastContext";
 import { CalendarDays, ChevronRight, Clock3 } from "lucide-react";
 
 const date = (value) =>
-  new Date(value).toLocaleDateString(undefined, {
+  formatManilaDisplay(new Date(value), {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
+  }, "date");
 const time = (value) =>
-  new Date(value).toLocaleTimeString([], {
+  formatManilaDisplay(new Date(value), {
     hour: "numeric",
     minute: "2-digit",
-  });
+  }, "time");
 
 export default function AppointmentRequests() {
   const toast = useToast();

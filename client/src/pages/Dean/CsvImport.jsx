@@ -1,3 +1,4 @@
+import ResponsiveTable from "../../components/ResponsiveTable";
 import { deanUiError } from "../../utils/deanUiErrors";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
@@ -186,8 +187,7 @@ export default function CsvImport() {
       >
         Download CSV template
       </a>
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full text-left text-sm">
+      <ResponsiveTable label="CSV column requirements" className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm">
           <caption className="mb-3 text-left text-slate-600">
             Include the five required columns; middle_name is optional. The
             template includes all six. Trim surrounding whitespace; required
@@ -195,9 +195,9 @@ export default function CsvImport() {
           </caption>
           <thead>
             <tr>
-              <th className="p-2">Column</th>
-              <th className="p-2">Requirement</th>
-              <th className="p-2">Description</th>
+              <th scope="col" className="p-2">Column</th>
+              <th scope="col" className="p-2">Requirement</th>
+              <th scope="col" className="p-2">Description</th>
             </tr>
           </thead>
           <tbody>
@@ -209,9 +209,8 @@ export default function CsvImport() {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
-      <CSVUploadPanel
+        </table></ResponsiveTable>
+      <CSVUploadPanel error={error}
         busy={busy || confirming || preview?.status === "processing"}
         onSelect={selectFile}
         onSubmit={submit}
@@ -222,7 +221,7 @@ export default function CsvImport() {
       {!file && !preview && !busy && <p role="status" className="mt-3">No CSV file selected.</p>}
       {error && previewId && !confirming && <button type="button" className="btn-secondary mt-4" disabled={busy} onClick={() => { if (!inFlight.current && !validationFlight.current) setPreviewRetry(n => n + 1); }}>Refresh import status</button>}
       {error && (
-        <p role="alert" className="mt-4 text-red-700">
+        <p id="csv-upload-error" role="alert" className="mt-4 text-red-700">
           {error}
         </p>
       )}

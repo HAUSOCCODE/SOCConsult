@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -29,9 +30,9 @@ async function loadComponent(path, imports) {
   const compiled = await transform(body, { loader: "jsx", jsx: "transform" });
   return new Function(
     "React",
-    ...Object.keys(imports),
+    ...Object.keys({ ...sharedClientImports, ...imports }),
     `${compiled.code}; return ${name};`,
-  )(React, ...Object.values(imports));
+  )(React, ...Object.values({ ...sharedClientImports, ...imports }));
 }
 
 test("Dean Import preserves template guidance and includes upload and preview", async () => {

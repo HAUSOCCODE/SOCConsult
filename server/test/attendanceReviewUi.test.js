@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -22,7 +23,7 @@ async function harness(path, name, props = {}) {
     ConfirmDialog: props => React.createElement("aside", { "data-confirm": props.open }),
     AttendanceReviewDetails: () => null, monitoringDate: value => value || "Unavailable",
   };
-  const Component = new Function("React", ...Object.keys(imports), `${code.code}; return ${name};`)(React, ...Object.values(imports));
+  const Component = new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${code.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return { state, effects, pending, render() { index = 0; effects.length = 0; return Component(props); }, get query() { return params.toString(); } };
 }
 test("resolution form requires explicit selection, confirms finals and synchronously blocks duplicate clicks", async () => {

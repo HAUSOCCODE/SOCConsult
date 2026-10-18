@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
@@ -50,6 +52,10 @@ export default function AppointmentsPage({ filter }) {
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
+  const pendingUpdates = useRef(new Set());
+  const warningRef = useRef(null), rescheduleRef = useRef(null);
+  useDialogFocus(warningRef, { open: Boolean(approvalWarning), onClose: () => setApprovalWarning(null) });
+  useDialogFocus(rescheduleRef, { open: Boolean(rescheduleTarget), onClose: () => setRescheduleTarget(null), busy: updatingIds.size > 0 });
   const load = () =>
     api("/appointments/mine")
       .then((d) => {
@@ -73,6 +79,8 @@ export default function AppointmentsPage({ filter }) {
     return () => clearInterval(id);
   }, []);
   const update = async (id, status, extra = {}) => {
+    if (pendingUpdates.current.has(id)) return false;
+    pendingUpdates.current.add(id);
     setUpdatingIds((current) => new Set(current).add(id));
     try {
       const d = await api(`/appointments/${id}/status`, {
@@ -94,6 +102,7 @@ export default function AppointmentsPage({ filter }) {
       toast.error(e.message || "Unable to update the appointment.");
       return false;
     } finally {
+      pendingUpdates.current.delete(id);
       setUpdatingIds((current) => {
         const next = new Set(current);
         next.delete(id);
@@ -407,23 +416,23 @@ export default function AppointmentsPage({ filter }) {
                 className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
               >
                 <p className="break-words font-bold text-maroon-900">
-                  {new Date(capacity.startAt).toLocaleDateString(undefined, {
+                  {formatManilaDisplay(new Date(capacity.startAt), {
                     weekday: "long",
                     month: "long",
                     day: "numeric",
                     year: "numeric",
-                  })}
+                  }, "date")}
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  {new Date(capacity.startAt).toLocaleTimeString([], {
+                  {formatManilaDisplay(new Date(capacity.startAt), {
                     hour: "numeric",
                     minute: "2-digit",
-                  })}{" "}
+                  }, "time")}{" "}
                   –{" "}
-                  {new Date(capacity.endAt).toLocaleTimeString([], {
+                  {formatManilaDisplay(new Date(capacity.endAt), {
                     hour: "numeric",
                     minute: "2-digit",
-                  })}
+                  }, "time")}
                 </p>
                 <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                   <Capacity
@@ -500,7 +509,7 @@ export default function AppointmentsPage({ filter }) {
       {approvalWarning &&
         createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-3 sm:p-4">
-            <section
+            <section ref={warningRef} tabIndex={-1}
               role="alertdialog"
               aria-modal="true"
               aria-labelledby="capacity-warning-title"
@@ -542,10 +551,10 @@ export default function AppointmentsPage({ filter }) {
         )}
       {rescheduleTarget && ["faculty", "dean"].includes(user.role) && (
         <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-4">
-          <div className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+          <div ref={rescheduleRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="reschedule-slots-title" className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="flex justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-maroon-900">
+                <h2 id="reschedule-slots-title" className="text-xl font-bold text-maroon-900">
                   Reschedule Consultation
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
@@ -554,7 +563,7 @@ export default function AppointmentsPage({ filter }) {
               </div>
               <button
                 type="button"
-                onClick={() => setRescheduleTarget(null)}
+                disabled={updatingIds.size > 0} onClick={() => setRescheduleTarget(null)}
                 className="font-bold text-slate-500"
               >
                 Close
@@ -567,6 +576,7 @@ export default function AppointmentsPage({ filter }) {
                 {rescheduleSlots.map((slot) => (
                   <button
                     key={slot._id}
+                    disabled={updatingIds.size > 0}
                     type="button"
                     onClick={async () => {
                       await update(rescheduleTarget._id, "Reschedule Proposed", {
@@ -578,7 +588,7 @@ export default function AppointmentsPage({ filter }) {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-sm hover:border-maroon-400"
                   >
                     <span className="block font-bold">
-                      {new Date(slot.startAt).toLocaleString()}
+                      {formatManilaDisplay(new Date(slot.startAt), undefined, "timestamp")}
                     </span>
                     <span className="mt-1 block text-slate-600">
                       {slot.mode} · {slot.location}
@@ -692,12 +702,12 @@ export default function AppointmentsPage({ filter }) {
                             Date
                           </dt>
                           <dd className="mt-1 break-words text-sm font-semibold text-slate-800">
-                            {new Date(x.startAt).toLocaleDateString(undefined, {
+                            {formatManilaDisplay(new Date(x.startAt), {
                               weekday: "short",
                               year: "numeric",
                               month: "short",
                               day: "numeric",
-                            })}
+                            }, "date")}
                           </dd>
                         </div>
                         <div className="min-w-0">
@@ -705,15 +715,15 @@ export default function AppointmentsPage({ filter }) {
                             Time
                           </dt>
                           <dd className="mt-1 break-words text-sm font-semibold text-slate-800">
-                            {new Date(x.startAt).toLocaleTimeString([], {
+                            {formatManilaDisplay(new Date(x.startAt), {
                               hour: "numeric",
                               minute: "2-digit",
-                            })}{" "}
+                            }, "time")}{" "}
                             –{" "}
-                            {new Date(x.endAt).toLocaleTimeString([], {
+                            {formatManilaDisplay(new Date(x.endAt), {
                               hour: "numeric",
                               minute: "2-digit",
-                            })}
+                            }, "time")}
                           </dd>
                         </div>
                       </dl>
@@ -746,12 +756,12 @@ export default function AppointmentsPage({ filter }) {
                         </p>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {new Date(x.startAt).toLocaleDateString(undefined, {
+                        {formatManilaDisplay(new Date(x.startAt), {
                           weekday: "short",
                           year: "numeric",
                           month: "short",
                           day: "numeric",
-                        })}
+                        }, "date")}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         Estimated consultation time:{" "}
@@ -759,15 +769,15 @@ export default function AppointmentsPage({ filter }) {
                         {x.estimatedDurationMinutes ? " minutes" : ""}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        {new Date(x.startAt).toLocaleTimeString([], {
+                        {formatManilaDisplay(new Date(x.startAt), {
                           hour: "numeric",
                           minute: "2-digit",
-                        })}{" "}
+                        }, "time")}{" "}
                         –{" "}
-                        {new Date(x.endAt).toLocaleTimeString([], {
+                        {formatManilaDisplay(new Date(x.endAt), {
                           hour: "numeric",
                           minute: "2-digit",
-                        })}
+                        }, "time")}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         {x.consultationMode || "Online"} ·{" "}
@@ -1113,13 +1123,13 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
       <div className="flex items-start justify-center p-3 md:items-center md:p-4 min-[1200px]:justify-start min-[1200px]:py-2.5 min-[1200px]:pl-6 min-[1200px]:pr-3">
         <div className="grid h-16 w-14 shrink-0 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center min-[1200px]:h-[4.25rem] min-[1200px]:w-[3.75rem]">
           <span className="text-[10px] font-extrabold uppercase tracking-wide text-maroon-700">
-            {start.toLocaleDateString(undefined, { month: "short" })}
+            {formatManilaDisplay(start, { month: "short" }, "date")}
           </span>
           <span className="text-2xl font-extrabold leading-6 text-maroon-900">
-            {start.toLocaleDateString(undefined, { day: "numeric" })}
+            {formatManilaDisplay(start, { day: "numeric" }, "date")}
           </span>
           <span className="text-[9px] font-semibold text-slate-500">
-            {start.toLocaleDateString(undefined, { year: "numeric" })}
+            {formatManilaDisplay(start, { year: "numeric" }, "date")}
           </span>
         </div>
       </div>
@@ -1277,18 +1287,18 @@ function Capacity({ label, value, wide = false }) {
 
 const formatClock = (value) =>
   value
-    ? new Date(value).toLocaleTimeString("en-PH", {
+    ? formatManilaDisplay(new Date(value), {
         timeZone: "Asia/Manila",
         hour: "numeric",
         minute: "2-digit",
-      })
+      }, "time")
     : "Not scheduled";
 const appointmentDatePart = (appointment, options) =>
   appointment.startAt
-    ? new Date(appointment.startAt).toLocaleDateString("en-PH", {
+    ? formatManilaDisplay(new Date(appointment.startAt), {
         timeZone: "Asia/Manila",
         ...options,
-      })
+      }, "date")
     : "TBD";
 
 const CURRENT_APPOINTMENT_FILTERS = [
@@ -1672,12 +1682,12 @@ function ConsultationHistoryTable({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Not provided"
-      : parsed.toLocaleDateString("en-PH", {
+      : formatManilaDisplay(parsed, {
           timeZone: "Asia/Manila",
           year: "numeric",
           month: "short",
           day: "numeric",
-        });
+        }, "date");
   };
   const duration = (appointment) =>
     appointment.estimatedDurationMinutes
@@ -1692,37 +1702,37 @@ function ConsultationHistoryTable({
         >
           <thead className="h-11 bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
             <tr>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[11%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Date
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[14%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Subject / Topic
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[10%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 {personLabel}
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[11%]" : "w-[12%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Mode
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[8%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Duration
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[18%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Status
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[28%] pl-4 pr-6 2xl:pr-8" : "w-[14%] px-2.5 2xl:px-3"} py-2 font-semibold`}
               >
                 Action
@@ -2099,7 +2109,7 @@ function StudentHistoryMobileRow({
             {subject}
           </h3>
           <p className="mt-1 flex min-w-0 items-center gap-1.5 break-words text-xs leading-4 text-slate-600">
-            <UserRound size={13} className="shrink-0 text-maroon-700" />
+            <UserRound aria-hidden="true" size={13} className="shrink-0 text-maroon-700" />
             <span className="min-w-0 break-words">{facultyName}</span>
           </p>
           <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs leading-4 text-slate-600">

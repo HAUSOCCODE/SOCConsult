@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
@@ -126,7 +127,7 @@ export default function DeanAccountSettings() {
         <h2 id="account-security-title" className="text-xl font-bold text-maroon-900">Account security</h2>
         <ReadOnlyDetails items={[
           ["Account source", user.accountSource], ["Account status", user.accountStatus],
-          ["Last password change", user.passwordChangedAt ? new Date(user.passwordChangedAt).toLocaleString() : "Not recorded"],
+          ["Last password change (Asia/Manila)", user.passwordChangedAt ? formatManilaDisplay(new Date(user.passwordChangedAt), undefined, "timestamp") : "Not recorded"],
         ]} />
         <p className="mt-4 text-sm text-slate-600">
           Password changes do not sign out existing sessions. Sessions remain valid until their normal eight-hour expiration.

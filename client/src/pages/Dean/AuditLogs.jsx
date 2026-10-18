@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { deanUiError } from "../../utils/deanUiErrors";
 import ManagementAuditFeed from "./ManagementAuditFeed";
 import {
@@ -41,20 +42,20 @@ const categoryIcons = {
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const formatDate = (value) =>
   value
-    ? new Date(value).toLocaleDateString("en-PH", {
+    ? formatManilaDisplay(new Date(value), {
         timeZone: "Asia/Manila",
         month: "short",
         day: "numeric",
         year: "numeric",
-      })
+      }, "date")
     : "No activity yet";
 const formatTime = (value) =>
-  new Date(value).toLocaleTimeString("en-PH", {
+  formatManilaDisplay(new Date(value), {
     timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
-  });
+  }, "time");
 const initials = (name = "") =>
   name
     .split(/\s+/)
@@ -92,6 +93,11 @@ export default function AuditLogs() {
   const [exportMessage, setExportMessage] = useState("");
   const [exportError, setExportError] = useState("");
   const exportController = useRef(null);
+  const mobilePanel = useRef(null);
+  const userTrigger = useRef(null);
+  useEffect(() => {
+    if (mobileDetails && window.matchMedia("(max-width: 639px)").matches) mobilePanel.current?.focus();
+  }, [mobileDetails]);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => () => exportController.current?.abort(), [selectedId, category, startDate, endDate]);
@@ -241,10 +247,10 @@ export default function AuditLogs() {
       <ManagementAuditFeed />
       {exporting && <p role="status">Generating audit export?</p>}
       {exportMessage && <p role="status">{exportMessage}</p>}
-      {exportError && <p role="alert">{exportError}</p>}
+      {exportError && <p id="audit-export-error" role="alert">{exportError}</p>}
       <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div
-          role="tablist"
+          role="group"
           aria-label="Registered user role"
           className="grid w-full grid-cols-2 rounded-xl bg-slate-100 p-1 sm:w-fit sm:min-w-80"
         >
@@ -255,8 +261,7 @@ export default function AuditLogs() {
             <button
               key={value}
               type="button"
-              role="tab"
-              aria-selected={role === value}
+              aria-pressed={role === value}
               onClick={() => switchRole(value)}
               className={`rounded-lg px-4 py-2.5 text-sm font-bold transition focus-visible:ring-2 focus-visible:ring-maroon-300 ${role === value ? "bg-maroon-800 text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}
             >
@@ -269,11 +274,11 @@ export default function AuditLogs() {
             </button>
           ))}
         </div>
-        <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_12rem_12rem_13rem_auto] xl:items-end">
+        <div role="group" aria-label="Activity filters" aria-describedby={logsError ? "audit-filter-error" : exportError ? "audit-export-error" : undefined} className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_12rem_12rem_13rem_auto] xl:items-end">
           <label className="min-w-0 text-xs font-bold text-slate-600">
             Search registered users
             <span className="relative mt-1.5 block">
-              <Search
+              <Search aria-hidden="true"
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 size={16}
               />
@@ -316,7 +321,7 @@ export default function AuditLogs() {
             disabled={!selectedId || exporting}
             className="btn-primary h-10 min-h-0 gap-2 px-4 py-0 disabled:opacity-50 sm:col-span-2 xl:col-span-1"
           >
-            <Download size={16} /> {exporting ? "Exporting…" : "Export Logs"}
+            <Download aria-hidden="true" size={16} /> {exporting ? "Exporting…" : "Export Logs"}
           </button>
         </div>
       </section>
@@ -341,7 +346,7 @@ export default function AuditLogs() {
               aria-label="Refresh registered users"
               className="grid h-9 w-9 place-items-center rounded-lg text-maroon-800 hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-300"
             >
-              <RefreshCw size={16} />
+              <RefreshCw aria-hidden="true" size={16} />
             </button>
           </div>
           <div className="p-2">
@@ -351,7 +356,7 @@ export default function AuditLogs() {
               <InlineError message={usersError} retry={loadUsers} />
             ) : usersState.users.length === 0 ? (
               <div className="px-4 py-12 text-center">
-                <UserRound className="mx-auto text-slate-300" size={34} />
+                <UserRound aria-hidden="true" className="mx-auto text-slate-300" size={34} />
                 <p className="mt-3 font-semibold text-slate-700">
                   {search ? "No registered users match this search." : `No registered ${role === "student" ? "students" : "faculty"} yet.`}
                 </p>
@@ -361,8 +366,8 @@ export default function AuditLogs() {
                 <button
                   key={user.id}
                   type="button"
-                  aria-selected={selectedId === user.id}
-                  onClick={() => selectUser(user.id)}
+                  aria-pressed={selectedId === user.id}
+                  onClick={event => { userTrigger.current = event.currentTarget; selectUser(user.id); }}
                   className={`mb-1 flex w-full min-w-0 items-start gap-3 rounded-xl border p-3 text-left transition focus-visible:ring-2 focus-visible:ring-maroon-300 ${selectedId === user.id ? "border-maroon-300 bg-maroon-50 shadow-sm" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}
                 >
                   <Avatar user={user} small />
@@ -371,7 +376,7 @@ export default function AuditLogs() {
                       <p className="min-w-0 break-words text-sm font-bold text-slate-900">
                         {formatPersonName(user)}
                       </p>
-                      <StatusBadge status={user.accountStatus} compact />
+                      <StatusBadge allowWrap status={user.accountStatus} compact />
                     </div>
                     <p className="mt-0.5 break-all text-xs text-slate-600">
                       {user.email}
@@ -385,11 +390,11 @@ export default function AuditLogs() {
                           : ""}
                     </p>
                     <p className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-400">
-                      <Clock3 size={12} /> Last activity:{" "}
+                      <Clock3 aria-hidden="true" size={12} /> Last activity:{" "}
                       {formatDate(user.lastActivity)}
                     </p>
                   </div>
-                  <ChevronRight
+                  <ChevronRight aria-hidden="true"
                     className="mt-1 shrink-0 text-slate-400"
                     size={16}
                   />
@@ -400,13 +405,13 @@ export default function AuditLogs() {
           <Pager pagination={usersState.pagination} onPage={setUserPage} />
         </section>
 
-        <section className="audit-details-panel min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section ref={mobilePanel} tabIndex={-1} aria-label="Selected user activity" className="audit-details-panel min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <button
             type="button"
-            onClick={() => setMobileDetails(false)}
+            onClick={() => { setMobileDetails(false); queueMicrotask(() => { if (userTrigger.current?.isConnected) userTrigger.current.focus(); }); }}
             className="m-3 mb-0 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-maroon-800 hover:bg-maroon-50 md:hidden"
           >
-            <ArrowLeft size={16} /> Back to users
+            <ArrowLeft aria-hidden="true" size={16} /> Back to users
           </button>
           {!selectedId ? (
             <div className="grid min-h-80 place-items-center p-8 text-center text-slate-500">
@@ -415,7 +420,7 @@ export default function AuditLogs() {
           ) : logsLoading && !details ? (
             <DetailsSkeleton />
           ) : logsError ? (
-            <InlineError message={logsError} retry={loadLogs} />
+            <InlineError id="audit-filter-error" message={logsError} retry={loadLogs} />
           ) : details ? (
             <>
               <UserSummary
@@ -433,7 +438,7 @@ export default function AuditLogs() {
                 </div>
                 {details.logs.length === 0 ? (
                   <div className="py-12 text-center">
-                    <Clock3 className="mx-auto text-slate-300" size={34} />
+                    <Clock3 aria-hidden="true" className="mx-auto text-slate-300" size={34} />
                     <p className="mt-3 font-semibold text-slate-700">
                       {category !== "All Activities" || startDate || endDate ? "No activity matches these filters." : "No recorded activity is available for this user yet."}
                     </p>
@@ -506,7 +511,7 @@ function UserSummary({ user, summary }) {
             <h2 className="break-words text-xl font-bold text-maroon-900">
               {formatPersonName(user)}
             </h2>
-            <StatusBadge status={user.accountStatus} compact />
+            <StatusBadge allowWrap status={user.accountStatus} compact />
           </div>
           <p className="mt-1 break-all text-sm text-slate-600">{user.email}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-gold-600">
@@ -572,7 +577,7 @@ function TimelineEntry({ log, last }) {
         <span className="absolute bottom-0 left-[1.08rem] top-9 w-px bg-slate-200" />
       )}
       <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full border border-maroon-100 bg-maroon-50 text-maroon-800">
-        <Icon size={16} />
+        <Icon aria-hidden="true" size={16} />
       </span>
       <div className="min-w-0 rounded-xl border border-slate-200 p-3.5 sm:p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -653,7 +658,7 @@ function Pager({ pagination, onPage, label = "page" }) {
           onClick={() => onPage(pagination.page - 1)}
           className="grid h-8 w-8 place-items-center rounded-lg border disabled:opacity-40"
         >
-          <ChevronLeft size={15} />
+          <ChevronLeft aria-hidden="true" size={15} />
         </button>
         <button
           type="button"
@@ -662,15 +667,15 @@ function Pager({ pagination, onPage, label = "page" }) {
           onClick={() => onPage(pagination.page + 1)}
           className="grid h-8 w-8 place-items-center rounded-lg border disabled:opacity-40"
         >
-          <ChevronRight size={15} />
+          <ChevronRight aria-hidden="true" size={15} />
         </button>
       </div>
     </div>
   );
 }
-function InlineError({ message, retry }) {
+function InlineError({ message, retry, id }) {
   return (
-    <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-5 text-center text-sm text-red-700">
+    <div id={id} className="m-4 rounded-xl border border-red-200 bg-red-50 p-5 text-center text-sm text-red-700">
       <p role="alert">{message}</p>
       <button
         type="button"

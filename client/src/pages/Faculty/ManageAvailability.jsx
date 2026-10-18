@@ -1,3 +1,4 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { useEffect, useState } from "react";
 import { api } from "../../api/apiClient";
 import {
@@ -297,11 +298,11 @@ export default function ManageAvailability() {
           Publish the schedules students can select when booking.
         </p>
         {formError && (
-          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p id="availability-form-error" role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {formError}
           </p>
         )}
-        <form onSubmit={save} className="mt-4 min-w-0 max-w-full space-y-3.5">
+        <form aria-describedby={formError ? "availability-form-error" : undefined} onSubmit={save} className="mt-4 min-w-0 max-w-full space-y-3.5">
           <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-3">
             <Field label="Availability Date">
               <input
@@ -528,7 +529,7 @@ function ScheduleCard({
           onClick={onExpand}
         >
           <h3 className="min-w-0 break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
-            {new Date(item.startAt).toLocaleDateString(undefined, dateOptions)}
+            {formatManilaDisplay(new Date(item.startAt), dateOptions, "date")}
           </h3>
           <span className="flex shrink-0 items-center gap-1.5">
             <StatusBadge status={statusLabel} compact />
@@ -542,8 +543,8 @@ function ScheduleCard({
 
         <dl className={`${expanded ? "grid" : "hidden"} mt-3 min-w-0 grid-cols-1 gap-2 md:grid md:grid-cols-[1.05fr_.8fr_1.15fr]`}>
           <ScheduleDetail icon={Clock3} label="Time">
-            {new Date(item.startAt).toLocaleTimeString([], timeOptions)} –{" "}
-            {new Date(item.endAt).toLocaleTimeString([], timeOptions)}
+            {formatManilaDisplay(new Date(item.startAt), timeOptions, "time")} –{" "}
+            {formatManilaDisplay(new Date(item.endAt), timeOptions, "time")}
           </ScheduleDetail>
           <ScheduleDetail icon={ModeIcon} label="Mode">
             {item.mode || "Online"}

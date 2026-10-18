@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 ﻿import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -9,6 +10,10 @@ const source = path => readFile(new URL(`../../client/src/${path}`, import.meta.
 const nodes = tree => !tree || typeof tree !== "object" ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children)];
 const find = (tree, type) => nodes(tree).filter(n => n.type === type);
 const text = tree => JSON.stringify(tree);
+function focusPanel(items, extra = {}) {
+  for (const element of items) Object.assign(element, { tabIndex: 0, isConnected: true, closest: () => null, getClientRects: () => [1] });
+  return { querySelector: () => items[0], querySelectorAll: () => items, contains: target => items.includes(target), ...extra };
+}
 const settle = () => new Promise(resolve => setImmediate(resolve));
 async function harness(path, name, extra = {}) {
   let index = 0, effectIndex = 0;
@@ -31,13 +36,15 @@ async function harness(path, name, extra = {}) {
     ProfileImagePreview: () => null, formatPersonName: () => "Test User", formatPersonNameInNotification: value => value,
     ...extra,
   };
+  const hookCode = (await source("hooks/useDialogFocus.js")).replace(/^import.*$/gm, "").replace("export default function", "function").replace("export function", "function");
+  imports.useDialogFocus = new Function("useEffect", "useRef", hookCode + "; return useDialogFocus;")(imports.useEffect, imports.useRef);
   const raw = await source(path);
   const icons = /import \{([^}]+)\} from "lucide-react"/s.exec(raw);
   if (icons) for (const name of icons[1].split(",").map(value => value.trim()).filter(Boolean)) imports[name] ??= () => null;
   const body = raw.replaceAll("import.meta.env.VITE_API_URL", "undefined").replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replaceAll("export default function", "function").replaceAll("export function", "function").replaceAll("export const", "const");
   const compiled = await transform(body, { loader: "jsx" });
-  for (const key of Object.keys(imports)) { if (new RegExp(`(?:function|const) ${key}\\b`).test(body)) delete imports[key]; }
-  const Component = new Function("React", ...Object.keys(imports), `${compiled.code}; return ${name};`)(React, ...Object.values(imports));
+  for (const key of Object.keys({ ...sharedClientImports, ...imports })) { if (new RegExp(`(?:function|const) ${key}\\b`).test(body)) delete imports[key]; }
+  const Component = new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${compiled.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return { state, requests, context, toasts, imports, raw,
     render(props = {}) { index = 0; effectIndex = 0; return Component(props); },
     effects() { effects.forEach((effect, i) => { if (!previous[i] || effect.deps?.some((dep, j) => !Object.is(dep, previous[i].deps[j]))) { previous[i]?.cleanup?.(); previous[i] = { deps: effect.deps, cleanup: effect.fn() }; } }); },
@@ -137,11 +144,11 @@ test("notification detail dialog traps Tab, handles Escape and restores the keyb
   globalThis.document = { activeElement: trigger, body: { style: { overflow: "auto" } }, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   try {
     h.render({ notification: { title: "Notice" }, date: () => "Today", typeLabel: () => "Account", onClose: () => close++ });
-    h.state[0].current = { querySelector: () => first, querySelectorAll: () => [first, last] }; h.effects(); assert.equal(focused, "first");
+    trigger.isConnected = true; h.state[0].current = focusPanel([first, last]); h.effects(); assert.equal(focused, "first");
     document.activeElement = last; listeners.get("keydown")({ key: "Tab", preventDefault() {} }); assert.equal(focused, "first");
     document.activeElement = first; listeners.get("keydown")({ key: "Tab", shiftKey: true, preventDefault() {} }); assert.equal(focused, "last");
-    listeners.get("keydown")({ key: "Escape", preventDefault() {} }); assert.equal(close, 1);
-    h.unmount(); assert.equal(focused, "trigger"); assert.equal(document.body.style.overflow, "auto");
+    listeners.get("keydown")({ key: "Escape", preventDefault() {}, stopImmediatePropagation() {} }); assert.equal(close, 1);
+    h.unmount(); await settle(); assert.equal(focused, "trigger"); assert.equal(document.body.style.overflow, "auto");
   } finally { globalThis.document = oldDocument; }
 });
 
@@ -212,7 +219,7 @@ test("confirmation focus remains inside the busy dialog and returns only when cl
   const h = await harness("components/ConfirmDialog.jsx", "ConfirmDialog");
   let focus = "trigger", cancelled = 0; const listeners = new Map();
   const trigger = { focus() { focus = "trigger"; } }, control = { focus() { focus = "control"; } };
-  const dialog = { querySelector: () => control, querySelectorAll: () => [], focus() { focus = "dialog"; } };
+  const dialog = focusPanel([], { querySelector: () => control, focus() { focus = "dialog"; } }); trigger.isConnected = true;
   const oldDocument = globalThis.document;
   globalThis.document = { activeElement: trigger, body: { style: { overflow: "auto" } }, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   try {
@@ -220,8 +227,8 @@ test("confirmation focus remains inside the busy dialog and returns only when cl
     h.render(props); h.state[0].current = dialog; h.effects(); assert.equal(focus, "control");
     h.render({ ...props, loading: true }); h.effects(); assert.equal(focus, "dialog");
     listeners.get("keydown")({ key: "Tab", preventDefault() {} }); assert.equal(focus, "dialog");
-    listeners.get("keydown")({ key: "Escape", preventDefault() {} }); assert.equal(cancelled, 0);
-    h.unmount(); assert.equal(focus, "trigger");
+    listeners.get("keydown")({ key: "Escape", preventDefault() {}, stopImmediatePropagation() {} }); assert.equal(cancelled, 0);
+    h.unmount(); await settle(); assert.equal(focus, "trigger");
   } finally { globalThis.document = oldDocument; }
 });
 
@@ -233,9 +240,9 @@ test("profile image preview traps keyboard focus and restores its trigger for sh
   try {
     const props = { user: { profilePicture: "blob:authorized-preview" } };
     find(h.render(props), "button")[0].props.onClick({ stopPropagation() {} }); h.render(props);
-    h.state[1].current = { querySelector: () => close }; h.effects(); assert.equal(focus, "close");
+    trigger.isConnected = true; h.state[1].current = focusPanel([close]); h.effects(); assert.equal(focus, "close");
     listeners.get("keydown")({ key: "Tab", preventDefault() {} }); assert.equal(focus, "close");
-    listeners.get("keydown")({ key: "Escape", preventDefault() {} }); h.render(props); h.effects(); assert.equal(focus, "trigger");
+    listeners.get("keydown")({ key: "Escape", preventDefault() {}, stopImmediatePropagation() {} }); h.render(props); h.effects(); await settle(); assert.equal(focus, "trigger");
   } finally { globalThis.document = oldDocument; }
 });
 

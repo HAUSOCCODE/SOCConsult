@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -13,7 +14,7 @@ test("Reports narrative panel keeps filters intact, guards duplicates, reviews e
   const useState = value => { const slot = index++; if (!(slot in state)) state[slot] = value; return [state[slot], v => state[slot] = v]; };
   const useRef = value => { const slot = index++; if (!(slot in state)) state[slot] = { current: value }; return state[slot]; };
   const api = (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject }));
-  const Panel = new Function("React", "useState", "useRef", "api", "useEffect", "deanUiError", code + "; return ReportNarrativePanel;")(React, useState, useRef, api, () => {}, deanUiError);
+  const Panel = new Function(...Object.keys(sharedClientImports), "React", "useState", "useRef", "api", "useEffect", "deanUiError", code + "; return ReportNarrativePanel;")(...Object.values(sharedClientImports), React, useState, useRef, api, () => {}, deanUiError);
   const filters = { start: "2026-10-01", end: "2026-10-16", facultyId: "", status: "", mode: "", attendanceOutcome: "" };
   const original = { ...filters };
   const render = () => { index = 0; return Panel({ filters }); };
