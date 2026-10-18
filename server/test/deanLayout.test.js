@@ -281,18 +281,15 @@ test("switcher navigates from URL without changing session or role", async () =>
   );
 });
 
-test("personal documents, deferred pages, component reuse and AI mount contracts", async () => {
-  const [viewer, deferred, dean, faculty, app] = await Promise.all(
+test("deferred pages, component reuse and AI mount architecture", async () => {
+  const [deferred, dean, faculty, app] = await Promise.all(
     [
-      "components/appointments/SupportingDocumentViewer.jsx",
       "pages/Dean/DeferredFeaturePage.jsx",
       "layouts/DeanLayout.jsx",
       "layouts/FacultyLayout.jsx",
       "App.jsx",
     ].map(source),
   );
-  assert.match(viewer, /const management = isDeanManagementPath\(pathname\)/);
-  assert.match(viewer, /management \? "\/dean" : ""/);
   assert.doesNotMatch(deferred, /\bapi\b|fetch\(|<form|<button/);
   assert.match(deferred, /scheduled for a later development task/);
   assert.doesNotMatch(dean, /AIAssistant/);

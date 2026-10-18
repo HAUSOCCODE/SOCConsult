@@ -289,6 +289,8 @@ test("POST route authenticates and authorizes, requires version, and removes cus
   try {
     assert.equal((await fetch(url,{method:"POST"})).status,401);
     for(const role of ["student","faculty"]) {h.role=role;assert.equal((await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`}})).status,403);}
+    assert.equal(h.reads.length,0,"denied reset requests must not read target users");
+    assert.equal(h.writes.length,0);assert.equal(h.audits.length,0);
     h.role="dean";
     assert.equal((await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`}})).status,428);
     const response=await fetch(url,{method:"POST",headers:{Authorization:`Bearer ${token}`,"If-Match":version(original)}});

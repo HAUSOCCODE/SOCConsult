@@ -34,6 +34,7 @@ test("monitoring query validation and Manila boundaries preserve unscheduled req
 
 test("HTTP monitoring authorization, server query contract, safe details/options and no writes", async () => {
   const restores = [], pipelines = [];
+  let detailReads = 0;
   const patch = (object, key, replacement) => { const previous = object[key]; object[key] = replacement; restores.push(() => object[key] = previous); };
   const chain = value => { const q = { then: (yes, no) => Promise.resolve(value).then(yes, no) }; for (const key of ["select", "populate", "maxTimeMS", "lean", "option"]) q[key] = () => q; return q; };
   const row = { _id: id, student: { name: "Student", email: "SECRET" }, faculty: { name: "Dean", password: "SECRET" }, subject: "Course", status: "Pending", reason: "Concern", bookingMethod: "schedule_request", createdAt: new Date(), updatedAt: new Date(), meetingLink: "SECRET", notes: "SECRET", statusMigration: { version: "SECRET" },
@@ -46,7 +47,7 @@ test("HTTP monitoring authorization, server query contract, safe details/options
     for (const method of ["create", "updateOne", "updateMany", "findOneAndUpdate", "deleteOne", "deleteMany", "bulkWrite"])
       patch(model, method, () => assert.fail(`Read invoked ${model.modelName}.${method}`));
   patch(User, "findById", role => chain({ id: role, role, accountStatus: "Active", registrationStatus: "Approved" }));
-  patch(Appointment, "findById", value => { assert.equal(value, id); return chain(row); });
+  patch(Appointment, "findById", value => { detailReads++; assert.equal(value, id); return chain(row); });
   patch(Appointment, "aggregate", pipeline => { pipelines.push(pipeline); return chain([{ records: [row], count: [{ total: 43 }] }]); });
   patch(Appointment, "populate", async records => records);
   patch(User, "aggregate", pipeline => { pipelines.push(pipeline); return chain(Array.from({ length: 3 }, (_, index) => ({ _id: `${id.slice(0, -1)}${index}`, name: "Historical Dean", role: "dean", email: "SECRET" }))); });
@@ -57,6 +58,8 @@ test("HTTP monitoring authorization, server query contract, safe details/options
       assert.equal((await request(path, null)).status, 401);
       for (const role of ["student", "faculty"]) assert.equal((await request(path, role)).status, 403);
     }
+    assert.equal(pipelines.length, 0, "denied requests must not query consultations or filter options");
+    assert.equal(detailReads, 0, "denied requests must not read consultation details");
     const list = await request("?page=2&limit=20&status=Pending&search=a%2B%5Bb%5D");
     assert.equal(list.status, 200); assert.equal(list.headers.get("cache-control"), "no-store");
     const body = await list.json();

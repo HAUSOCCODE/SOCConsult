@@ -52,6 +52,54 @@ async function harness(path, name, extra = {}) {
   };
 }
 
+test("Dean Faculty consultation workspace loads the personal API and renders its assigned consultation", async () => {
+  const statuses = await import("../../client/src/utils/appointmentStatus.js");
+  const h = await harness("components/appointments/AppointmentsView.jsx", "AppointmentsPage", {
+    ...statuses, setInterval: () => 1, clearInterval: () => {},
+    AppointmentRequestDetailsModal: () => null, StudentAppointmentDetailsModal: () => null,
+    FacultyAppointmentDetailsModal: () => null, FacultyRescheduleModal: () => null,
+    formatPersonName: person => person?.name || "Unavailable",
+  });
+  try {
+    h.render(); h.effects();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].path, "/appointments/mine");
+    h.requests[0].resolve({ appointments: [{
+      _id: "personal-consultation", subject: "Assigned Dean consultation", status: "Confirmed",
+      student: { name: "Assigned Student" }, faculty: { name: "Dean" }, consultationMode: "Online",
+      startAt: "2099-02-01T02:00:00Z", endAt: "2099-02-01T02:30:00Z", createdAt: "2026-10-01T00:00:00Z",
+    }], availabilityCapacity: [] });
+    await settle();
+    const rendered = text(h.render());
+    assert.match(rendered, /Assigned Dean consultation/);
+    assert.match(rendered, /Assigned Student/);
+    assert.equal(h.requests.length, 1);
+  } finally { h.unmount(); }
+});
+
+test("Dean document preview chooses personal or management authorization from the active workspace", async () => {
+  const { isDeanManagementPath } = await import("../../client/src/utils/deanWorkspace.js");
+  for (const pathname of ["/dean/consultations", "/dean/faculty/consultations"]) {
+    for (const legacy of [false, true]) {
+      const h = await harness("components/appointments/SupportingDocumentViewer.jsx", "SupportingDocumentViewer", {
+        isDeanManagementPath, useLocation: () => ({ pathname }), useMemo: fn => fn(),
+      });
+      try {
+        const appointment = { _id: "consultation", ...(legacy
+          ? { supportingDocument: { name: "Evidence.txt", mimeType: "text/plain" } }
+          : { supportingDocuments: [{ _id: "document", originalName: "Evidence.txt", mimeType: "text/plain" }] }) };
+        const tree = h.render({ appointment });
+        const pending = find(tree, "button")[0].props.onClick();
+        const prefix = isDeanManagementPath(pathname) ? "/dean" : "";
+        assert.equal(h.requests.length, 1);
+        assert.equal(h.requests[0].path, `${prefix}/appointments/consultation/${legacy ? "document" : "documents/document"}`);
+        h.requests[0].resolve({ supportingDocument: { name: "Evidence.txt", data: "data:text/plain;base64,b2s=" } });
+        await pending;
+      } finally { h.unmount(); }
+    }
+  }
+});
+
 test("contextual messages never expose server, provider, HTML, exception or prototype text", () => {
   for (const context of ["csv", "import", "profile", "password", "avatar", "ai", "pdf", "audit", "document", "resolution", "create", "account"]) {
     for (const code of [undefined, "UNKNOWN", "__proto__", "constructor"]) {

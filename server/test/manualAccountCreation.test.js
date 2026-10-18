@@ -244,6 +244,9 @@ test("HTTP Dean authorization, creator provenance, no-store, malformed bodies an
     const anonymous = await call(input(), false); assert.equal(anonymous.status, 401); assert.equal(anonymous.headers.get("cache-control"), "no-store");
     for (const role of ["student", "faculty"]) { h.role = role; assert.equal((await call()).status, 403); }
     h.role = "dean"; h.inactive = true; assert.equal((await call()).status, 403); h.inactive = false;
+    assert.equal(h.queries.length, 0, "authorization precedes account conflict reads");
+    assert.equal(h.sessions || 0, 0);
+    assert.equal(h.hashes, 0);
     const malformed = await call('{"password":"PRIVATE_SECRET"', true, true);
     assert.equal(malformed.status, 400); assert.equal(malformed.headers.get("cache-control"), "no-store"); safe(malformed.body); safe(h.logs);
     const alternate = await call('{"password":"PRIVATE_SECRET"', true, true, base.replace("/api/dean/users", "/API/DEAN/USERS"));

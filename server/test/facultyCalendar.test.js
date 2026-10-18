@@ -51,7 +51,7 @@ describe("Faculty consultation calendar", () => {
     assert.equal(JSON.stringify(event).includes("password"), false);
   });
 
-  it("authenticates Faculty users and binds every query to the caller", async () => {
+  for (const role of ["faculty", "dean"]) it(`authenticates ${role} and ignores forged calendar owners`, async () => {
     const facultyA = new mongoose.Types.ObjectId().toString();
     const facultyB = new mongoose.Types.ObjectId().toString();
     const originalFindById = User.findById;
@@ -61,7 +61,7 @@ describe("Faculty consultation calendar", () => {
       _id: String(id),
       id: String(id),
       name: String(id) === facultyA ? "Faculty A" : "Faculty B",
-      role: "faculty",
+      role,
       accountStatus: "Active",
       registrationStatus: "Approved",
     });
@@ -99,7 +99,7 @@ describe("Faculty consultation calendar", () => {
     const base = `http://127.0.0.1:${server.address().port}/api/faculty/calendar`;
     const call = async (
       facultyId,
-      query = "start=2026-09-01&end=2026-09-30",
+      query = `start=2026-09-01&end=2026-09-30&facultyId=${facultyB}&faculty=${facultyB}&owner=${facultyB}`,
     ) => {
       const response = await fetch(`${base}?${query}`, {
         headers: {
