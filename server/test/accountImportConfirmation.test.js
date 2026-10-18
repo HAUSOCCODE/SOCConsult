@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { inspect } from "node:util";
 import { test } from "node:test";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -44,7 +45,7 @@ async function harness(roles = ["student", "faculty"]) {
   const h = { rows: validated.rows, batch: { _id: new mongoose.Types.ObjectId().toString(), previewId, owner,
     schemaVersion: 2, displayFilename: "accounts.csv", status: "validated", rows: validated.rows,
     summary: validated.summary, expiresAt: new Date(Date.now() + 30 * 60 * 1000), purgeAt: new Date(Date.now() + 86400000) },
-    users: [], audits: [], conflicts: [], transactionConflicts: [], saves: 0, claims: 0, queries: [],
+    users: [], audits: [], conflicts: [], transactionConflicts: [], saves: 0, claims: 0, queries: [], batchReads: 0,
     ended: false, anomaly: null, topology: { setName: "test-only" }, retry: false };
   h.restore = () => restored.reverse().forEach((fn) => fn());
   const session = { async withTransaction(work, options) {
@@ -76,7 +77,7 @@ async function harness(roles = ["student", "faculty"]) {
     for (const key of Object.keys(update.$unset || {})) delete h.batch[key];
     return clone(h.batch);
   };
-  patch(AccountImport, "findOne", (filter) => chain(() => h.batch && matches(h.batch, filter) ? clone(h.batch) : null));
+  patch(AccountImport, "findOne", (filter) => { h.batchReads++; return chain(() => h.batch && matches(h.batch, filter) ? clone(h.batch) : null); });
   patch(AccountImport, "findOneAndUpdate", (filter, update, options) => chain(() => mutate(filter, update, options)));
   patch(AccountImport, "updateOne", async (filter, update) => ({ modifiedCount: mutate(filter, update) ? 1 : 0 }));
   patch(User, "find", (filter) => {
@@ -173,6 +174,51 @@ test("Student, Faculty and mixed imports map fields, hash exactly once, audit on
       assert.equal((await confirmAccountImport(previewId, owner)).statusCode, 409);
       assert.equal(h.users.length, roles.length);
     } finally { h.restore(); }
+  }
+});
+
+test("CSV credentials stay hashed in stored users and absent from responses, logs and non-identity fixture fields", async () => {
+  for (const mode of ["success", "auditFailure", "saveFailure"]) {
+    const h = await harness(), logs = [], restores = [];
+    for (const method of ["log", "info", "warn", "error", "debug"]) {
+      const original = console[method];
+      console[method] = (...args) => logs.push(inspect(args, { depth: null }));
+      restores.push(() => { console[method] = original; });
+    }
+    try {
+      if (mode === "auditFailure") h.auditFailure = true;
+      if (mode === "saveFailure") h.failSaveAt = 2;
+      const result = await confirmAccountImport(previewId, owner);
+      assert.equal(result.statusCode, mode === "success" ? 201 : 503);
+      assertSafe(result.body, h.rows);
+      assertSafe(logs, h.rows);
+      assertSafe(h.audits, h.rows);
+      assertSafe(h.notifications, h.rows);
+      const credentials = h.rows.map(row => row.institutional_id);
+      // Institutional IDs are intentionally retained as identity fields, never credential aliases.
+      const identityKeys = new Set(["institutionalId", "studentId", "employeeId", "institutional_id"]);
+      const check = (value, key = "") => {
+        if (Array.isArray(value)) return value.forEach(item => check(item));
+        if (value && typeof value === "object") {
+          for (const [field, item] of Object.entries(value)) {
+            assert.doesNotMatch(field, /password|credential|initialSecret|accessToken|refreshToken/i);
+            check(item, field);
+          }
+        } else if (typeof value === "string" && !identityKeys.has(key)) {
+          for (const credential of credentials) assert.ok(!value.includes(credential), `${key} leaked an initial credential`);
+          assert.doesNotMatch(value, /\$2[aby]\$/);
+        }
+      };
+      check(h.batch); check(h.audits); check(h.notifications); check(result.body);
+      assert.equal(h.users.length, mode === "success" ? 2 : 0);
+      for (const [index, user] of h.users.entries()) {
+        const { password, ...identity } = user;
+        assert.equal(bcrypt.getRounds(password), 12);
+        assert.equal(await bcrypt.compare(credentials[index], password), true);
+        assert.notEqual(password, credentials[index]);
+        check(identity);
+      }
+    } finally { restores.reverse().forEach(restore => restore()); h.restore(); }
   }
 });
 
@@ -390,6 +436,8 @@ test("HTTP confirmation requires active Dean, empty body, ownership and supports
     assert.equal((await request("POST", undefined, false)).status, 401);
     for (role of ["student", "faculty"]) assert.equal((await request()).status, 403);
     role = "dean"; accountStatus = "Inactive"; assert.equal((await request()).status, 403); accountStatus = "Active";
+    assert.equal(h.batchReads, 0, "denied confirmations must not read protected previews");
+    assert.equal(h.queries.length, 0); assert.equal(h.claims, 0);
     for (const body of [{ rows: [] }, { password: "secret" }, { owner }, [], "rows"])
       assert.equal((await request("POST", body)).status, 400);
     activeOwner = new mongoose.Types.ObjectId().toString(); assert.equal((await request()).status, 404); activeOwner = owner;

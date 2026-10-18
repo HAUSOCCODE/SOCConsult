@@ -374,7 +374,7 @@ export const createAvailability = async (req, res) => {
     mode: req.body.mode,
     meetingPlatform:
       req.body.mode === "Online" ? req.body.meetingPlatform.trim() : "",
-    meetingLink: req.body.mode === "Online" ? req.body.meetingLink.trim() : "",
+    meetingLink: req.body.mode === "Online" ? (req.body.meetingLink || "").trim() : "",
   });
   res
     .status(201)

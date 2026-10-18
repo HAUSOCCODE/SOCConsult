@@ -21,6 +21,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
   let role = "dean",
     activeId = owner;
   const previews = [];
+  let protectedReads = 0;
   const audits = [];
   const session = { async withTransaction(work) { return work(); }, async endSession() {} };
   patch(mongoose, "startSession", async () => session);
@@ -42,6 +43,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     registrationStatus: "Approved",
   }));
   patch(User, "find", (query) => {
+    protectedReads++;
     assert.deepEqual(Object.keys(query.$or[0]), ["studentId"]);
     assert.deepEqual(Object.keys(query.$or[1]), ["employeeId"]);
     return {
@@ -75,18 +77,17 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     previews.push(data);
     return [model];
   });
-  patch(AccountImport, "findOne", (query) => ({
-    select() {
-      return this;
-    },
-    lean: async () =>
-      previews.find(
-        (p) =>
-          p.previewId === query.previewId &&
+  patch(AccountImport, "findOne", (query) => {
+    protectedReads++;
+    return {
+      select() { return this; },
+      lean: async () => previews.find(
+        (p) => p.previewId === query.previewId &&
           String(p.owner) === String(query.owner) &&
           p.expiresAt > query.$or[1].expiresAt.$gt,
       ) || null,
-  }));
+    };
+  });
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
@@ -125,6 +126,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
     assert.equal((await call("/validate", form(), false)).status, 401);
     for (role of ["student", "faculty"])
       assert.equal((await call("/validate", form())).status, 403);
+    assert.equal(protectedReads, 0, "denied uploads must not read accounts or import previews");
     role = "dean";
     const valid = await call("/validate", form());
     assert.equal(valid.status, 200);
