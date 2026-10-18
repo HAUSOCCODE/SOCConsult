@@ -11,6 +11,7 @@ import User from "../src/models/User.js";
 import AuditLog from "../src/models/AuditLog.js";
 import Appointment from "../src/models/Appointment.js";
 import Availability from "../src/models/Availability.js";
+import StudentAvailability from "../src/models/StudentAvailability.js";
 import Task from "../src/models/Task.js";
 import Notification from "../src/models/Notification.js";
 import { login, ensureDean } from "../src/controllers/authController.js";
@@ -78,6 +79,84 @@ test("HTTP Dean management is read-only while personal Faculty actions remain ow
     assert.equal((await h.request('/appointments/'+record._id+'/status', "dean", "PUT", { status: "Completed" })).status, 400);
     assert.equal(h.state.appointments[0].status, "Confirmed");
     assert.equal(h.state.audits.length, 1);
+  } finally { restores.reverse().forEach(restore => restore()); await h.close(); }
+});
+
+test("Dean publishes without an optional link, Student books, and management never broadens personal ownership", async () => {
+  const h = await appointmentHttp(), restores = [];
+  patch(Availability, "create", async input => {
+    const model = new Availability(input);
+    await model.validate();
+    h.state.slots.push({ ...model.toObject(), _id: model.id, id: model.id, faculty: String(model.faculty) });
+    return model;
+  }, restores);
+  patch(StudentAvailability, "find", () => chain([]), restores);
+  patch(Availability, "findOneAndDelete", async filter => {
+    assert.equal(filter.faculty, h.users.dean.id, "deletion must bind the authenticated Dean");
+    const index = h.state.slots.findIndex(slot => String(slot._id) === String(filter._id) && String(slot.faculty) === filter.faculty);
+    return index < 0 ? null : h.state.slots.splice(index, 1)[0];
+  }, restores);
+  patch(Appointment, "aggregate", pipeline => {
+    if (pipeline.some(stage => stage.$group)) {
+      assert.equal(String(pipeline[0].$match.faculty), h.users.dean.id);
+      return Promise.resolve([]);
+    }
+    return { option: async () => [{ records: h.state.appointments, count: [{ total: h.state.appointments.length }] }] };
+  }, restores);
+  patch(Appointment, "populate", async rows => rows, restores);
+  try {
+    const foreign = fixture({ student: h.users.student.id, faculty: h.users.faculty.id });
+    h.state.appointments.push(foreign); addSlot(h, foreign);
+    const body = { startAt: "2099-02-01T02:00:00Z", endAt: "2099-02-01T02:30:00Z",
+      mode: "Online", meetingPlatform: "Teams", faculty: h.users.faculty.id, owner: h.users.faculty.id,
+      facultyId: h.users.faculty.id, isActive: false };
+    const created = await h.request("/availability", "dean", "POST", body);
+    assert.equal(created.status, 201);
+    const slot = (await created.json()).availability;
+    assert.equal(slot.faculty, h.users.dean.id);
+    assert.equal(slot.meetingLink, "");
+    assert.equal(slot.isActive, true);
+    const discovered = await h.request(`/availability/faculty/${h.users.dean.id}`, "student");
+    assert.equal(discovered.status, 200);
+    assert.deepEqual((await discovered.json()).schedules.map(row => row._id), [slot._id]);
+    const booked = await h.request("/appointments", "student", "POST", {
+      availabilityId: slot._id, subject: "Dean consultation", reason: "Discuss project",
+      faculty: h.users.faculty.id, owner: h.users.otherStudent.id, student: h.users.otherStudent.id,
+    });
+    assert.equal(booked.status, 201);
+    const consultation = (await booked.json()).appointment;
+    assert.equal(consultation.faculty, h.users.dean.id);
+    assert.equal(consultation.student, h.users.student.id);
+    assert.equal((await h.request(`/appointments/${consultation._id}/status`, "dean", "PUT", { status: "Confirmed" })).status, 200);
+
+    // The same authenticated Dean may use management, but personal APIs stay bound to that identity.
+    const management = await h.request("/dean/appointments", "dean");
+    assert.equal(management.status, 200);
+    assert.deepEqual((await management.json()).consultations.map(row => row.recordId).sort(), [foreign._id, consultation._id].sort());
+    const forged = `faculty=${h.users.faculty.id}&facultyId=${h.users.faculty.id}&owner=${h.users.faculty.id}`;
+    const personal = await h.request(`/appointments/mine?${forged}`, "dean");
+    assert.equal(personal.status, 200);
+    assert.deepEqual((await personal.json()).appointments.map(row => row._id), [consultation._id]);
+    const mine = await h.request(`/availability/mine?${forged}`, "dean");
+    assert.equal(mine.status, 200);
+    assert.deepEqual((await mine.json()).availability.map(row => row._id), [slot._id]);
+    const requestSchedules = await h.request(`/availability/request-schedules?${forged}`, "dean");
+    assert.equal(requestSchedules.status, 200);
+    assert.deepEqual((await requestSchedules.json()).schedules.map(row => row._id), [slot._id]);
+    const redirectedOwner = await h.request(`/availability/faculty/${h.users.faculty.id}?${forged}`, "dean");
+    assert.equal(redirectedOwner.status, 200);
+    assert.deepEqual((await redirectedOwner.json()).schedules.map(row => row._id), [slot._id]);
+    const calendar = await h.request(`/faculty/calendar?start=2099-02-01&end=2099-02-01&${forged}`, "dean");
+    assert.equal(calendar.status, 200);
+    assert.deepEqual((await calendar.json()).events.map(row => row.id), [consultation._id]);
+    for (const [path, method, payload] of [
+      [`/availability/${foreign.availability}/details`, "GET"],
+      [`/availability/${foreign.availability}`, "PUT", body],
+      [`/availability/${foreign.availability}`, "DELETE", {}],
+      [`/appointments/${foreign._id}/status`, "PUT", { status: "Confirmed", faculty: h.users.dean.id }],
+    ]) assert.equal((await h.request(path, "dean", method, payload)).status, 404, path);
+    assert.equal(h.state.appointments.find(row => row._id === foreign._id).status, "Pending");
+    assert.equal(h.state.slots.find(row => String(row._id) === String(foreign.availability)).faculty, h.users.faculty.id);
   } finally { restores.reverse().forEach(restore => restore()); await h.close(); }
 });
 

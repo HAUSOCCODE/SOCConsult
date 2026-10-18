@@ -22,13 +22,14 @@ export function csvUpload(req, res, next) {
   upload(req, res, (error) => {
     if (error)
       return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+        code: error.code === "LIMIT_FILE_SIZE" ? "CSV_TOO_LARGE" : "CSV_UNSUPPORTED",
         message:
           error.code === "LIMIT_FILE_SIZE"
             ? "CSV file exceeds the upload size limit."
             : "Upload exactly one supported CSV file in the file field, without other fields.",
       });
     if (!req.file)
-      return res.status(400).json({ message: "Select one CSV file." });
+      return res.status(400).json({ code: "CSV_MISSING", message: "Select one CSV file." });
     next();
   });
 }

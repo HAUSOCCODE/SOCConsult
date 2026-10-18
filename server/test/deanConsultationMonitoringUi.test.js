@@ -1,3 +1,4 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -24,7 +25,7 @@ async function harness() {
     ConsultationDetailsDialog: ({ recordId }) => React.createElement("p", null, `Details ${recordId}`),
     monitoringDate: value => value || "Unavailable",
   };
-  const Page = new Function("React", ...Object.keys(imports), `${code.code}; return ConsultationMonitoring;`)(React, ...Object.values(imports));
+  const Page = new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${code.code}; return ConsultationMonitoring;`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return { state, effects, pending, render() { index = 0; effects.length = 0; const tree = Page();
     // Participant lookups are tested by HTTP contracts; stub child render without executing their hooks.
     const replace = value => Array.isArray(value) ? value.map((child, index) => { const next = replace(child); return React.isValidElement(next) ? React.cloneElement(next, { key: next.key ?? index }) : next; }) : React.isValidElement(value) ? value.type?.name === "ParticipantFilter" ? React.createElement("span", { key: value.props.role }, value.props.role) : React.cloneElement(value, {}, replace(value.props.children)) : value;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import Groq from "groq-sdk";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import mongoose from "mongoose";
@@ -36,6 +37,50 @@ test("aggregate payload matches report classifications and adapter has no tools 
   client.chat.completions.create = async () => ({ choices: [{ finish_reason: "length", message: { content: "Partial" } }] });
   await assert.rejects(generateNarrative(snapshot, client));
   for (const key of ["total", "prompt", "history", "snapshot", "narrative"]) assert.throws(() => parseReportFilters({ ...filters, [key]: "SECRET" }), { statusCode: 400 });
+});
+
+test("server aggregate reaches mocked Groq without any private field or mutation capability", async () => {
+  const restores = [], sentinels = {
+    name: "PRIVATE_NAME_SENTINEL", id: "PRIVATE_ID_SENTINEL", email: "PRIVATE_EMAIL_SENTINEL@example.invalid",
+    concern: "PRIVATE_CONCERN_SENTINEL", notes: "PRIVATE_NOTES_SENTINEL", document: "PRIVATE_DOCUMENT_SENTINEL",
+    link: "https://private.invalid/PRIVATE_LINK_SENTINEL", reason: "PRIVATE_REASON_SENTINEL", raw: "PRIVATE_RAW_RECORD_SENTINEL",
+  };
+  const patch = (object, key, value) => { const old = object[key]; object[key] = value; restores.push(() => { object[key] = old; }); };
+  const oldKey = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "isolated-test-never-sent";
+  let outbound, calls = 0;
+  patch(Appointment, "aggregate", () => chain([{
+    _id: sentinels.id, student: { name: sentinels.name, studentId: sentinels.id, email: sentinels.email },
+    faculty: { name: sentinels.name, employeeId: sentinels.id, email: sentinels.email },
+    subject: sentinels.concern, concern: sentinels.concern, reason: sentinels.reason, notes: sentinels.notes,
+    supportingDocuments: [{ originalName: sentinels.document, cloudinaryUrl: sentinels.link }],
+    meetingLink: sentinels.link, providerUrl: sentinels.link, rawRecords: [sentinels.raw],
+    status: "Completed", consultationMode: "Online",
+    attendance: { finalOutcome: "Completed", finalizationSource: "dean_review", reason: sentinels.reason },
+  }]));
+  patch(AuditLog, "create", async records => records);
+  patch(User, "findById", () => chain(actor));
+  patch(mongoose, "startSession", async () => ({ withTransaction: async work => work(), endSession: async () => {} }));
+  patch(ReportNarrative, "create", async ([record]) => [{ ...record, _id: id }]);
+  patch(Groq.prototype, "post", async (path, options) => {
+    calls++; assert.equal(path, "/openai/v1/chat/completions"); outbound = options.body;
+    return { choices: [{ finish_reason: "stop", message: { content: "One consultation was completed." } }] };
+  });
+  try {
+    const result = await createNarrative(filters, actor);
+    assert.equal(calls, 1);
+    const payload = JSON.parse(outbound.messages[1].content);
+    assert.deepEqual(payload, aggregateSnapshot(filters, buildReport([{
+      status: "Completed", consultationMode: "Online", attendance: { finalOutcome: "Completed", finalizationSource: "dean_review" },
+    }], filters, new Date()).summary));
+    for (const value of Object.values(sentinels)) assert.ok(!JSON.stringify(outbound).includes(value), value);
+    for (const field of ["tools", "tool_choice", "functions", "function_call"]) assert.equal(outbound[field], undefined);
+    assert.deepEqual(outbound.messages.map(message => message.role), ["system", "user"]);
+    assert.equal(result.disclaimer, DISCLAIMER); assert.equal(result.reviewState, "unreviewed");
+  } finally {
+    restores.reverse().forEach(restore => restore());
+    if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey;
+  }
 });
 
 test("immutable records reject private fields and all application mutations", async () => {
@@ -97,7 +142,8 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
   const old = User.findById;
   const oldAggregate = Appointment.aggregate, oldKey = process.env.GROQ_API_KEY;
   delete process.env.GROQ_API_KEY;
-  Appointment.aggregate = () => chain([]);
+  let protectedReads = 0;
+  Appointment.aggregate = () => { protectedReads++; return chain([]); };
   User.findById = value => chain({ ...actor, id: value, _id: value, role: value.startsWith("f") ? "faculty" : value.startsWith("s") ? "student" : "dean" });
   const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}/api`;
@@ -105,9 +151,10 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
   try {
     for (const role of ["public", "student", "faculty", "dean"]) assert.equal((await request(`/${role}/ai/chat`, {})).status, 404);
     assert.equal((await request("/dean/reports/ai-summary", null, "dean", "GET")).status, 404);
+    for (const role of [null, "student", "faculty"]) { const r = await request("/dean/reports/ai-summaries", filters, role); assert.equal(r.status, role ? 403 : 401); assert.equal(r.headers.get("cache-control"), "no-store"); }
+    assert.equal(protectedReads, 0, "authorization must precede aggregate reads");
     const unavailable = await request("/dean/reports/ai-summaries", filters, "dean-unavailable");
     assert.equal(unavailable.status, 503); assert.match(await unavailable.text(), /PDF reports remain available/);
-    for (const role of [null, "student", "faculty"]) { const r = await request("/dean/reports/ai-summaries", filters, role); assert.equal(r.status, role ? 403 : 401); assert.equal(r.headers.get("cache-control"), "no-store"); }
     for (const [body, status] of [['{"SECRET":', 400], [JSON.stringify({ SECRET: "x".repeat(2200) }), 413]]) { const r = await request("/dean/reports/ai-summaries", body); assert.equal(r.status, status); assert.equal(r.headers.get("cache-control"), "no-store"); assert.doesNotMatch(await r.text(), /SECRET/); }
     assert.equal((await request("/dean/reports/ai-summaries?total=9", filters)).status, 400);
     for (let i = 0; i < 3; i++) assert.equal((await request("/dean/reports/ai-summaries", { ...filters, prompt: "SECRET" })).status, 400);

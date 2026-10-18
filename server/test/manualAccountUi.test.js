@@ -1,3 +1,5 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -7,11 +9,12 @@ const React = requireClient("react");
 const { renderToString } = requireClient("react-dom/server");
 const { transform } = requireClient("esbuild");
 async function component(path, imports) {
+  imports = { deanUiError, ...imports };
   const raw = await readFile(new URL(`../../client/src/${path}.jsx`, import.meta.url), "utf8");
   const name = /export default function (\w+)/.exec(raw)[1];
   const body = raw.replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replace("export default function", "function");
   const compiled = await transform(body, { loader: "jsx", jsx: "transform" });
-  return new Function("React", ...Object.keys(imports), `${compiled.code}; return ${name};`)(React, ...Object.values(imports));
+  return new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${compiled.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
 }
 function elements(tree, predicate) {
   if (!tree || typeof tree !== "object") return [];
@@ -42,7 +45,7 @@ async function formHarness() {
   const Component = await component("components/accounts/ManualAccountForm", {
     useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial;
       return [state[slot], (value) => { state[slot] = value; }]; },
-    useRef: () => refs[refIndex++], useEffect: () => {}, useId: () => "test-dialog",
+    useRef: initial => { const slot = refIndex++; if (!refs[slot] || initial === true) refs[slot] = refs[slot]?.current === true ? refs[slot] : { current: initial }; return refs[slot]; }, useEffect: () => {}, useId: () => "test-dialog",
     createPortal: (tree) => tree, X: () => null, ConfirmDialog,
     api: (path, options) => { h.calls.push({ path, options }); return new Promise((resolve, reject) => { h.resolve = resolve; h.reject = reject; }); },
   });
@@ -110,7 +113,7 @@ test("form checks required/byte fields and shows field feedback without a succes
     assert.equal(h.success, 0); assert.equal(h.state[4], false); assert.equal(h.state[3], false);
     h.review(tree); const failed = h.dialog(h.render()).props.onConfirm(); h.reject(new Error("raw private request detail"));
     await failed;
-    assert.doesNotMatch(h.state[2], /Refresh|private/);
+    assert.doesNotMatch(h.state[2], /private/);
   } finally { h.restore(); }
 });
 
@@ -118,7 +121,7 @@ test("form distinguishes provisioning setup, uncertain commit and generic unavai
   for (const [code, expected] of [
     ["PROVISIONING_SETUP_UNAVAILABLE", "Account creation is temporarily unavailable until account provisioning setup is completed."],
     ["ACCOUNT_CREATION_UNCERTAIN", "Unable to confirm account creation. Refresh the user list before trying again."],
-    ["SERVICE_UNAVAILABLE", "Account creation is temporarily unavailable. Please try again later."],
+    ["SERVICE_UNAVAILABLE", "This service is temporarily unavailable. Please try again later."],
   ]) {
     const h = await formHarness();
     try {

@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -5,7 +6,7 @@ export default function ConsultationDocumentViewer({ recordId, documents }) {
   const [state, setState] = useState({});
   const current = useRef(null);
   const urls = useRef([]);
-  useEffect(() => () => { current.current?.abort(); urls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
+  useEffect(() => { setState({}); return () => { current.current?.abort(); urls.current.forEach(url => URL.revokeObjectURL(url)); urls.current = []; }; }, [recordId]);
   async function view(document) {
     current.current?.abort();
     urls.current.forEach(url => URL.revokeObjectURL(url)); urls.current = [];
@@ -16,14 +17,14 @@ export default function ConsultationDocumentViewer({ recordId, documents }) {
       const response = await fetch(`${API_URL}/dean/consultations/${recordId}/${path}`, {
         headers: { Authorization: `Bearer ${sessionStorage.getItem("consultio_token") || ""}` }, signal: controller.signal,
       });
-      if (!response.ok) throw new Error("Document is unavailable. Please try again.");
+      if (!response.ok) throw Object.assign(new Error(), { status: response.status });
       const blob = await response.blob();
       if (controller.signal.aborted) return;
       const url = URL.createObjectURL(blob); urls.current.push(url);
       const type = blob.type;
       const text = type === "text/plain" ? await blob.text() : null;
       if (!controller.signal.aborted) setState({ url, name: document.name, type, text });
-    } catch (error) { if (!controller.signal.aborted) setState({ error: error.message }); }
+    } catch (error) { if (!controller.signal.aborted) setState({ error: deanUiError(error, "document") }); }
   }
   return <section aria-label="Supporting documents" className="space-y-3">
     <h3 className="font-bold">Supporting documents</h3>

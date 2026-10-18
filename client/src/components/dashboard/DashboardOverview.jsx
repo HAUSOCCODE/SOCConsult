@@ -109,13 +109,13 @@ export default function DashboardOverview({
               <div className="flex items-center justify-between">
                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-maroon-50 text-maroon-800 transition group-hover:bg-maroon-800 group-hover:text-gold-300">
                   {key.includes("pending") ? (
-                    <Clock3 size={20} />
+                    <Clock3 aria-hidden="true" size={20} />
                   ) : key.includes("total") ? (
-                    <Users size={20} />
+                    <Users aria-hidden="true" size={20} />
                   ) : key.includes("completed") ? (
-                    <CheckCircle2 size={20} />
+                    <CheckCircle2 aria-hidden="true" size={20} />
                   ) : (
-                    <CalendarCheck size={20} />
+                    <CalendarCheck aria-hidden="true" size={20} />
                   )}
                 </span>
                 <strong className="text-3xl font-extrabold tracking-tight text-maroon-900">
@@ -163,7 +163,7 @@ export default function DashboardOverview({
                         : item.student?.email)}
                   </p>
                 </div>
-                <StatusBadge
+                <StatusBadge allowWrap
                   compact
                   status={
                     user.role === "student"

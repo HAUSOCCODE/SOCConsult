@@ -1,3 +1,5 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -37,6 +39,7 @@ async function harness() {
       downloads.push({ path, options, resolve, reject }),
     );
   const imports = {
+    deanUiError,
     useState: (initial) => {
       const slot = index++;
       if (!(slot in state))
@@ -84,9 +87,9 @@ async function harness() {
   };
   const Page = new Function(
     "React",
-    ...Object.keys(imports),
+    ...Object.keys({ ...sharedClientImports, ...imports }),
     `${code.code}; return ReportsAnalytics;`,
-  )(React, ...Object.values(imports));
+  )(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return {
     state,
     effects,
@@ -112,7 +115,7 @@ test("reports UI isolates PDF from optional AI panel, submits filters and guards
   const buttons = find(tree, "button");
   assert.equal(buttons.length, 1);
   assert.equal(buttons[0].props.children, "Generate PDF Report");
-  h.effects[0]();
+  h.effects[1]();
   assert.equal(h.requests.length, 1);
   assert.match(h.requests[0].path, /role=faculty/);
   h.requests[0].resolve({
@@ -176,7 +179,7 @@ test("reports UI shows validation, request errors, download success and faculty 
   let pending = find(tree, "form")[0].props.onSubmit({ preventDefault() {} });
   h.downloads[0].reject(new Error("Report unavailable"));
   await pending;
-  assert.match(JSON.stringify(h.render()), /Report unavailable/);
+  assert.match(JSON.stringify(h.render()), /Unable to generate the PDF/);
   tree = h.render();
   pending = find(tree, "form")[0].props.onSubmit({ preventDefault() {} });
   h.downloads[1].resolve({
@@ -184,8 +187,8 @@ test("reports UI shows validation, request errors, download success and faculty 
     total: 5,
   });
   await pending;
-  assert.match(JSON.stringify(h.render()), /PDF report downloaded/);
-  h.effects[0]();
+  assert.match(JSON.stringify(h.render()), /PDF generated successfully; download started/);
+  h.effects[1]();
   h.requests[0].reject(new Error("Unavailable"));
   await settle();
   assert.match(JSON.stringify(h.render()), /Faculty options unavailable/);

@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { APPOINTMENT_STATUSES } from "../../utils/appointmentStatus";
@@ -33,6 +34,9 @@ export default function ReportsAnalytics() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const pending = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++generation.current; }; }, []);
   useEffect(() => {
     let active = true;
     setOptionsState("loading");
@@ -57,6 +61,7 @@ export default function ReportsAnalytics() {
     };
   }, [search]);
   const change = (key, value) => {
+    ++generation.current;
     setFilters((current) => ({ ...current, [key]: value }));
     setError("");
     setMessage("");
@@ -76,6 +81,7 @@ export default function ReportsAnalytics() {
       return;
     }
     pending.current = true;
+    const request = ++generation.current;
     setBusy(true);
     setError("");
     setMessage("");
@@ -88,6 +94,7 @@ export default function ReportsAnalytics() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
+      if (request !== generation.current) return;
       if (result.blob.type !== "application/pdf")
         throw new Error(
           "The report could not be downloaded. Please try again.",
@@ -102,16 +109,17 @@ export default function ReportsAnalytics() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMessage(
         result.total === 0
-          ? "No consultations match these filters. An empty PDF report was downloaded."
-          : "PDF report downloaded.",
+          ? "No consultations match these filters. An empty PDF was generated; download started."
+          : "PDF generated successfully; download started.",
       );
     } catch (failure) {
+      if (request !== generation.current) return;
       setError(
-        failure.message || "Unable to generate the report. Please try again.",
+        deanUiError(failure, "pdf"),
       );
     } finally {
       pending.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   return (
@@ -125,19 +133,19 @@ export default function ReportsAnalytics() {
           creation time in Asia/Manila.
         </p>
       </div>
-      <form
+      <form aria-describedby={error ? "report-filter-error" : undefined}
         onSubmit={generate}
         className="space-y-5 rounded-2xl border bg-white p-6"
         aria-busy={busy}
       >
         <fieldset
           disabled={busy}
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-describedby={error ? "report-filter-error" : undefined} className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           <legend className="mb-3 font-semibold">Report filters</legend>
           <label>
             Start date
-            <input
+            <input aria-describedby={error ? "report-filter-error" : undefined}
               className="field mt-1"
               type="date"
               required
@@ -147,7 +155,7 @@ export default function ReportsAnalytics() {
           </label>
           <label>
             End date
-            <input
+            <input aria-describedby={error ? "report-filter-error" : undefined}
               className="field mt-1"
               type="date"
               required
@@ -158,7 +166,7 @@ export default function ReportsAnalytics() {
           <div>
             <label>
               Find faculty
-              <input
+              <input aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 type="search"
                 maxLength={100}
@@ -168,7 +176,7 @@ export default function ReportsAnalytics() {
             </label>
             <label className="mt-2 block">
               Faculty
-              <select
+              <select aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 value={filters.facultyId}
                 onChange={(e) => change("facultyId", e.target.value)}
@@ -206,7 +214,7 @@ export default function ReportsAnalytics() {
           ].map(([key, label, values]) => (
             <label key={key}>
               {label}
-              <select
+              <select aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
                 value={filters[key]}
                 onChange={(e) => change(key, e.target.value)}
@@ -233,7 +241,7 @@ export default function ReportsAnalytics() {
         </div>
         {busy && <p role="status">Generating PDF report…</p>}
         {error && (
-          <p role="alert" className="text-red-700">
+          <p id="report-filter-error" role="alert" className="text-red-700">
             {error}
           </p>
         )}

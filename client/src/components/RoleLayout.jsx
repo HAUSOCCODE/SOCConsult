@@ -1,3 +1,4 @@
+import useDialogFocus from "../hooks/useDialogFocus";
 import {
   Bell,
   LogOut,
@@ -6,7 +7,7 @@ import {
   PanelLeftOpen,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import WorkspaceSwitcher from "./navigation/WorkspaceSwitcher";
@@ -57,6 +58,20 @@ function SidebarTooltip({ label, enabled, children, className = "" }) {
 export default function RoleLayout({ role, navigation, workspaceLabel, notificationsPath }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const drawerRef = useRef(null);
+  const contentRef = useRef(null);
+  useDialogFocus(drawerRef, { open: open && !desktop, onClose: () => setOpen(false) });
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const change = () => { setDesktop(query.matches); if (query.matches) setOpen(false); };
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.inert = open && !desktop;
+    return () => { if (contentRef.current) contentRef.current.inert = false; };
+  }, [open, desktop]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_PREFERENCE_KEY) === "true";
@@ -87,13 +102,6 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
       // The sidebar remains usable when storage is unavailable.
     }
   }, [sidebarCollapsed]);
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    if (open) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
   useEffect(() => {
     const load = () =>
       api("/notifications?limit=1")
@@ -131,10 +139,16 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
     <div className="flex min-h-screen w-full min-w-0 max-w-full bg-slate-50">
       <button
         aria-label="Close navigation"
+        tabIndex={-1}
+        aria-hidden="true"
         onClick={() => setOpen(false)}
         className={`fixed inset-0 z-40 bg-slate-950/70 transition-opacity duration-200 lg:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
       />
-      <aside
+      <aside ref={drawerRef} id="workspace-navigation" tabIndex={-1}
+        inert={!desktop && !open}
+        role={!desktop && open ? "dialog" : undefined}
+        aria-modal={!desktop && open ? true : undefined}
+        aria-label="Workspace navigation"
         className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,calc(100vw-2rem))] max-w-full flex-col overflow-hidden bg-[#6E1423] text-white shadow-2xl transition-[width,transform] duration-200 lg:translate-x-0 ${sidebarCollapsed ? "lg:w-20" : "lg:w-72"} ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div
@@ -148,7 +162,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
             onClick={() => setOpen(false)}
             aria-label="Close navigation"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
           <SidebarTooltip
             label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -164,9 +178,9 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
               className="grid h-9 w-9 place-items-center rounded-lg border border-white/20 bg-transparent text-white transition-colors duration-150 hover:border-white/30 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#6E1423]"
             >
               {sidebarCollapsed ? (
-                <PanelLeftOpen size={18} />
+                <PanelLeftOpen aria-hidden="true" size={18} />
               ) : (
-                <PanelLeftClose size={18} />
+                <PanelLeftClose aria-hidden="true" size={18} />
               )}
             </button>
           </SidebarTooltip>
@@ -205,12 +219,12 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
             <SidebarTooltip key={path} label={label} enabled={sidebarCollapsed}>
               <NavLink
                 to={path}
-                aria-label={label}
+                aria-label={label === "Notifications" ? `${label}, ${unread} unread` : label}
                 className={({ isActive }) =>
                   `relative flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gold-400 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : ""} ${isActive ? "bg-[#FFF9F7] text-[#6E1423] shadow-sm" : "text-white hover:bg-[#8A2436]"}`
                 }
               >
-                <Icon size={19} className="shrink-0" />
+                <Icon size={19} aria-hidden="true" className="shrink-0" />
                 <span className={sidebarCollapsed ? "lg:hidden" : ""}>
                   {label}
                 </span>
@@ -218,7 +232,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
                   <span
                     className={`ml-auto rounded-full bg-gold-400 px-2 py-0.5 text-xs font-bold text-maroon-900 ${sidebarCollapsed ? "lg:absolute lg:right-1 lg:top-1 lg:h-2 lg:w-2 lg:p-0 lg:text-transparent" : ""}`}
                   >
-                    {unread}
+                    {unread}<span className="sr-only"> unread notifications</span>
                   </span>
                 )}
               </NavLink>
@@ -232,7 +246,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
               aria-label="Logout"
               className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-[#8A2436] focus-visible:ring-2 focus-visible:ring-gold-400 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : ""}`}
             >
-              <LogOut size={19} />
+              <LogOut aria-hidden="true" size={19} />
               <span className={sidebarCollapsed ? "lg:hidden" : ""}>
                 Logout
               </span>
@@ -240,7 +254,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
           </SidebarTooltip>
         </div>
       </aside>
-      <div
+      <div ref={contentRef}
         className={`box-border w-full min-w-0 max-w-full flex-1 transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-20" : "lg:pl-72"}`}
       >
         <header
@@ -249,9 +263,11 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
           <button
             onClick={() => setOpen(true)}
             aria-label="Open navigation"
+            aria-expanded={open}
+            aria-controls="workspace-navigation"
             className={`grid shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-maroon-800 shadow-sm lg:hidden ${compactStudentHeader ? "h-10 w-10" : "h-11 w-11"}`}
           >
-            <Menu />
+            <Menu aria-hidden="true" />
           </button>
           <div className="min-w-0 flex-1">
             <p className={`truncate text-sm font-extrabold tracking-tight text-maroon-900 ${compactStudentHeader ? "md:hidden" : "sm:hidden"}`}>
@@ -260,19 +276,20 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
             <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.14em] text-gold-600 sm:text-xs sm:tracking-[0.18em]">
               {workspaceLabel || `${role} workspace`}
             </p>
-            <h1
+            <p
               className={`mt-0.5 whitespace-normal text-sm font-bold leading-5 text-slate-900 sm:text-base ${compactStudentHeader ? "hidden md:block" : ""}`}
             >
               {currentPage}
-            </h1>
+            </p>
           </div>
           {role === "dean" && <div className="order-last w-full sm:order-none sm:w-auto sm:max-w-56"><WorkspaceSwitcher /></div>}
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <NavLink
               to={notificationsPath || `/${role}/notifications`}
+              aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications, none unread"}
               className={`relative grid place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-maroon-200 hover:bg-maroon-50 hover:text-maroon-800 ${compactStudentHeader ? "h-10 w-10 md:h-11 md:w-11" : "h-11 w-11"}`}
             >
-              <Bell size={19} />
+              <Bell size={19} aria-hidden="true" />
               {unread > 0 && (
                 <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
               )}

@@ -1,3 +1,6 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import ResponsiveTable from "../../components/ResponsiveTable";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { Link, useSearchParams } from "react-router-dom";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -23,12 +26,12 @@ const sourceLabel = (source) =>
       : "Legacy";
 const dateLabel = (value) =>
   value && Number.isFinite(new Date(value).getTime())
-    ? new Date(value).toLocaleDateString("en-PH", {
+    ? formatManilaDisplay(new Date(value), {
         timeZone: "Asia/Manila",
         year: "numeric",
         month: "short",
         day: "numeric",
-      })
+      }, "date")
     : "Not recorded";
 
 export default function UserManagement() {
@@ -54,9 +57,11 @@ export default function UserManagement() {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
+  const [reasonError, setReasonError] = useState("");
   const inFlight = useRef(false);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const mounted = useRef(true);
   const searchId = useId();
 
   const load = useCallback(async () => {
@@ -126,6 +131,7 @@ export default function UserManagement() {
       if (request === detailRequest.current) setDetailLoading(false);
     }
   };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (linkedUserId) void view({ _id: linkedUserId });
     return () => { ++detailRequest.current; };
@@ -135,6 +141,7 @@ export default function UserManagement() {
     const accountStatus =
       target.accountStatus === "Active" ? "Inactive" : "Active";
     if (accountStatus === "Inactive" && !reason.trim()) {
+      setReasonError("A deactivation reason is required.");
       toast.error("A deactivation reason is required.");
       return;
     }
@@ -150,14 +157,17 @@ export default function UserManagement() {
           ...(accountStatus === "Inactive" && { reason: reason.trim() }),
         }),
       });
+      if (!mounted.current) return;
       setTarget(null);
-      setReason("");
-      setSelected(null);
+      setReason(""); setReasonError("");
+      setSelected(current => current?._id === data.user?._id ? data.user : current);
       ++detailRequest.current;
-      toast.success(data.message);
+      toast.success("Account status updated successfully.");
       await latestLoad.current();
     } catch (requestError) {
+      if (!mounted.current) return;
       const messages = {
+        SERVICE_UNAVAILABLE: "User management is temporarily unavailable. Please try again later.",
         STATUS_CONFLICT:
           "This account has changed. Refresh the user list before trying again.",
         REGISTRATION_CONFLICT:
@@ -182,7 +192,7 @@ export default function UserManagement() {
       }
     } finally {
       inFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const confirmReset = async () => {
@@ -193,9 +203,12 @@ export default function UserManagement() {
       await api(`/dean/users/${resetTarget._id}/reset-password`, {
         method: "POST", headers: { "If-Match": JSON.stringify(resetTarget.version ?? "null") },
       });
+      if (!mounted.current) return;
       toast.success("Password reset successfully.");
     } catch (error) {
+      if (!mounted.current) return;
       const messages = {
+        SERVICE_UNAVAILABLE: "Password reset is temporarily unavailable. Please try again later.",
         PASSWORD_RESET_CONFLICT: "This account has changed. Refresh the user list before trying again.",
         PASSWORD_RESET_INELIGIBLE: "This account is not eligible for password reset.",
         INVALID_INSTITUTIONAL_ID: "This account does not have a valid institutional ID.",
@@ -203,12 +216,14 @@ export default function UserManagement() {
       };
       toast.error(messages[error.code] || "Unable to reset the password. Refresh the user list before trying again.");
     } finally {
-      setResetTarget(null);
-      setSelected(null);
-      ++detailRequest.current;
-      await latestLoad.current();
+      if (mounted.current) {
+        setResetTarget(null);
+        setSelected(null);
+        ++detailRequest.current;
+        await latestLoad.current();
+      }
       inFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const requestStatus = (user) => {
@@ -319,8 +334,8 @@ export default function UserManagement() {
           <Loading />
         ) : users.length === 0 ? (
           <EmptyState
-            title="No users found."
-            text="Try a different search or filter."
+            title={filters.search || filters.role !== "all" || filters.status !== "all" || filters.source !== "all" ? "No accounts match these filters." : "No accounts yet."}
+            text="Create an account or try a different search or filter."
           />
         ) : (
           <>
@@ -335,8 +350,7 @@ export default function UserManagement() {
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block">
-              <table className="w-full bg-white text-left text-sm">
+            <ResponsiveTable label="User accounts" className="hidden overflow-x-auto rounded-xl border border-slate-200 lg:block"><table className="w-full bg-white text-left text-sm">
                 <thead className="bg-maroon-800 text-white">
                   <tr>
                     {[
@@ -349,7 +363,7 @@ export default function UserManagement() {
                       "Date created",
                       "Actions",
                     ].map((label) => (
-                      <th key={label} className="px-3 py-3">
+                      <th scope="col" key={label} className="px-3 py-3">
                         {label}
                       </th>
                     ))}
@@ -372,7 +386,7 @@ export default function UserManagement() {
                         {sourceLabel(user.accountSource)}
                       </td>
                       <td className="px-3 py-3">
-                        <StatusBadge
+                        <StatusBadge allowWrap
                           status={user.accountStatus || "Not recorded"}
                           compact
                         />
@@ -382,8 +396,7 @@ export default function UserManagement() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </table></ResponsiveTable>
             <Pagination
               currentPage={pagination.page}
               totalItems={pagination.total}
@@ -451,8 +464,10 @@ export default function UserManagement() {
             ? "Deactivation reason (required)"
             : undefined
         }
+        inputRequired={target?.accountStatus === "Active"}
+        inputError={reasonError}
         inputValue={reason}
-        onInputChange={setReason}
+        onInputChange={value => { setReason(value); setReasonError(""); }}
         inputMaxLength={500}
         onConfirm={confirmStatus}
         onCancel={() => {
@@ -507,25 +522,7 @@ function AccountDetails({ user }) {
 function UserDetails({ user, loading, onClose }) {
   const titleId = useId();
   const dialogRef = useRef(null);
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialogRef.current?.querySelector("button")?.focus();
-    const keydown = (event) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "Tab") {
-        event.preventDefault();
-        dialogRef.current?.querySelector("button")?.focus();
-      }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", keydown);
-      previousFocus?.focus?.();
-    };
-  }, []);
+  useDialogFocus(dialogRef, { onClose });
   return createPortal(
     <div
       className="fixed inset-0 z-[10000] grid place-items-center bg-slate-950/55 p-4"
@@ -534,7 +531,7 @@ function UserDetails({ user, loading, onClose }) {
       }}
     >
       <section
-        ref={dialogRef}
+        ref={dialogRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -551,7 +548,7 @@ function UserDetails({ user, loading, onClose }) {
             className="btn-action-sm"
             onClick={onClose}
           >
-            <X size={18} />
+            <X aria-hidden="true" size={18} />
           </button>
         </div>
         {loading ? <Loading /> : <AccountDetails user={user} />}

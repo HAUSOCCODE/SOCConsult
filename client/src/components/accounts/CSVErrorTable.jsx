@@ -1,7 +1,7 @@
+import ResponsiveTable from "../ResponsiveTable";
 export default function CSVErrorTable({ rows }) {
   return (
-    <div className="mt-5 overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <ResponsiveTable label="CSV row validation results" className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm">
         <caption className="mb-3 text-left">
           Validation results for every data row
         </caption>
@@ -16,7 +16,7 @@ export default function CSVErrorTable({ rows }) {
               "Validation result",
               "Errors",
             ].map((label) => (
-              <th className="p-2" key={label}>
+              <th scope="col" className="p-2" key={label}>
                 {label}
               </th>
             ))}
@@ -44,7 +44,6 @@ export default function CSVErrorTable({ rows }) {
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </table></ResponsiveTable>
   );
 }

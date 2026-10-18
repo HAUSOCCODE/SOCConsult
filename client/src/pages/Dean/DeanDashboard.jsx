@@ -1,3 +1,6 @@
+import { formatDateOnly } from "../../utils/formatDateTime";
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import ResponsiveTable from "../../components/ResponsiveTable";
 import AttendanceSummary from "../../components/appointments/AttendanceSummary";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -6,11 +9,11 @@ import { Loading, ErrorState } from "../../components/UI";
 
 const dateLabel = (value) =>
   value
-    ? new Date(value).toLocaleString("en-PH", {
+    ? formatManilaDisplay(new Date(value), {
         timeZone: "Asia/Manila",
         dateStyle: "medium",
         timeStyle: "short",
-      })
+      }, "timestamp")
     : "Not yet scheduled";
 export default function DeanDashboard() {
   const [selection, setSelection] = useState(null);
@@ -53,7 +56,7 @@ export default function DeanDashboard() {
           School of Computing account and consultation summaries.
         </p>
       </header>
-      <form
+      <form aria-describedby={error ? "dashboard-range-error" : undefined}
         className="flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4"
         onSubmit={(event) => {
           event.preventDefault();
@@ -62,7 +65,7 @@ export default function DeanDashboard() {
       >
         <label className="text-sm font-semibold">
           Start date
-          <input
+          <input aria-describedby={error ? "dashboard-range-error" : undefined}
             aria-label="Start date"
             type="date"
             required
@@ -75,7 +78,7 @@ export default function DeanDashboard() {
         </label>
         <label className="text-sm font-semibold">
           End date
-          <input
+          <input aria-describedby={error ? "dashboard-range-error" : undefined}
             aria-label="End date"
             type="date"
             required
@@ -98,13 +101,14 @@ export default function DeanDashboard() {
       {loading ? (
         <Loading />
       ) : error ? (
-        <ErrorState
+        <div id="dashboard-range-error"><ErrorState
           message={error}
           onRetry={() => setRetry((value) => value + 1)}
-        />
+        /></div>
       ) : (
         data && (
           <>
+            <p role="status" className="sr-only">Dashboard updated for {formatDateOnly(data.range.start)} to {formatDateOnly(data.range.end)}.</p>
             <section aria-label="Current account totals">
               <h2 className="font-bold text-maroon-900">
                 Current account totals
@@ -128,7 +132,7 @@ export default function DeanDashboard() {
                 Appointments requested during this period
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                {data.range.start} to {data.range.end} · Asia/Manila
+                {formatDateOnly(data.range.start)} to {formatDateOnly(data.range.end)} · Asia/Manila
               </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <Card
@@ -171,19 +175,18 @@ export default function DeanDashboard() {
                 dates.
               </p>
               {data.recentImports.length === 0 ? (
-                <p className="py-4 text-sm text-slate-500">
+                <p role="status" className="py-4 text-sm text-slate-500">
                   No completed imports yet.
                 </p>
               ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                <ResponsiveTable label="Recent imports" className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm">
                     <thead>
                       <tr>
-                        <th className="p-2">Reference</th>
-                        <th className="p-2">Completed (Manila)</th>
-                        <th className="p-2">Successful rows</th>
-                        <th className="p-2">Failed rows</th>
-                        <th className="p-2">Status</th>
+                        <th scope="col" className="p-2">Reference</th>
+                        <th scope="col" className="p-2">Completed (Manila)</th>
+                        <th scope="col" className="p-2">Successful rows</th>
+                        <th scope="col" className="p-2">Failed rows</th>
+                        <th scope="col" className="p-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -199,8 +202,7 @@ export default function DeanDashboard() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                  </table></ResponsiveTable>
               )}
             </section>
             <section className="rounded-xl border bg-white p-4">
@@ -209,7 +211,7 @@ export default function DeanDashboard() {
               </h2>
               <p className="mt-1 text-xs text-slate-500">
                 Latest {data.limits.recentConsultations} updated records
-                requested {data.range.start} to {data.range.end} · Asia/Manila.
+                requested {formatDateOnly(data.range.start)} to {formatDateOnly(data.range.end)} · Asia/Manila.
               </p>
               {data.recentConsultations.length === 0 ? (
                 <p className="py-4 text-sm text-slate-500">

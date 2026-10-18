@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import Groq from "groq-sdk";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
@@ -255,7 +256,7 @@ test("real Unicode PDFs contain safe report content, landscape pages, repeated h
 
 test("HTTP report authorization, bounded projection, atomic metadata/audit and sanitized failures", async () => {
   const previousGroqKey = process.env.GROQ_API_KEY;
-  delete process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "isolated-test-provider-trap";
   const restores = [],
     staged = [],
     committed = [],
@@ -265,6 +266,13 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     object[key] = replacement;
     restores.push(() => (object[key] = before));
   };
+  let providerCalls = 0, failAi = false;
+  const aiAudits = [];
+  patch(Groq.prototype, "post", async () => {
+    providerCalls++;
+    if (failAi) throw new Error("AI_INVALID_OUTPUT");
+    assert.fail("PDF generation must never invoke the AI provider");
+  });
   let rows = [row],
     failure = "",
     active = true,
@@ -322,6 +330,10 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     return values;
   });
   patch(Notification, "create", async (records, options) => {
+    if (!options?.session) {
+      assert.equal(records[0].type, "ai_summary_failed");
+      return records;
+    }
     assert.equal(options.session, session);
     if (failure === "notification") throw new Error("SECRET");
     assert.equal(records[0].category, "Report");
@@ -336,6 +348,7 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     return [{ _id: id, ...values[0] }];
   });
   patch(AuditLog, "create", async (values, options) => {
+    if (!options?.session) { aiAudits.push(...values); return values; }
     assert.equal(options.session, session);
     if (failure === "audit") throw new Error("SECRET");
     staged.push({ type: "audit", ...values[0] });
@@ -369,6 +382,21 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
     active = false;
     assert.equal((await request()).status, 403);
     active = true;
+    assert.equal(pipelines.length, 0, "denied report requests must not query protected records");
+    assert.equal(providerCalls, 0);
+    failAi = true;
+    const aiFailure = await fetch(`http://127.0.0.1:${server.address().port}/api/dean/reports/ai-summaries`, {
+      method: "POST", headers: { "Content-Type": "application/json", Connection: "close",
+        Authorization: `Bearer ${jwt.sign({ sub: "dean-ai-failure" }, env.jwtSecret)}` },
+      body: JSON.stringify(filters),
+    });
+    assert.equal(aiFailure.status, 503);
+    assert.match((await aiFailure.json()).message, /PDF reports remain available/);
+    assert.equal(providerCalls, 1);
+    assert.deepEqual(aiAudits.map(record => record.action), ["ai_generation_started", "ai_generation_attempt"]);
+    assert.equal(committed.length, 0);
+    failAi = false;
+    pipelines.length = 0;
     const response = await request();
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "application/pdf");
@@ -446,6 +474,7 @@ test("HTTP report authorization, bounded projection, atomic metadata/audit and s
       assert.doesNotMatch(await invalid.text(), /SECRET/);
     }
     assert.ok(ended >= 4);
+    assert.equal(providerCalls, 1, "every PDF request after AI failure bypasses the provider");
   } finally {
     if (previousGroqKey === undefined) delete process.env.GROQ_API_KEY;
     else process.env.GROQ_API_KEY = previousGroqKey;

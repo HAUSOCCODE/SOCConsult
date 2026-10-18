@@ -51,7 +51,7 @@ test("transactional password changes hash at cost 12, timestamp, sanitized audit
     const h = await harness(role);
     try {
       const res = response(); await changePassword({ user: h.user, body: passwordBody() }, res);
-      assert.equal(res.statusCode, 200); assert.equal(bcrypt.getRounds(h.user.password), 12);
+      assert.equal(res.statusCode, 200); assert.deepEqual(res.body, { message: "Password changed successfully." }); assert.equal(bcrypt.getRounds(h.user.password), 12);
       assert.ok(await bcrypt.compare("NewPassword2", h.user.password)); assert.ok(h.user.passwordChangedAt instanceof Date);
       assert.equal(h.audits.length, 1); assert.equal(h.audits[0].action, "password_changed");
       assert.equal(h.audits[0].subjectRole, role); assert.equal(h.ended, 1);
@@ -65,7 +65,7 @@ test("audit failure rolls back password and timestamp; conflicts and uncertain c
     const h = await harness(); const before = h.user.password; h[mode] = true;
     try {
       const res = response(); await changePassword({ user: h.user, body: passwordBody() }, res);
-      assert.equal(res.statusCode, 503); assert.equal(h.ended, 1);
+      assert.equal(res.statusCode, 503); assert.equal(res.body.code, mode === "uncertain" ? "PASSWORD_CHANGE_UNCERTAIN" : "PASSWORD_CHANGE_UNAVAILABLE"); assert.equal(h.ended, 1);
       if (mode !== "uncertain") { assert.equal(h.user.password, before); assert.equal(h.user.passwordChangedAt, undefined); assert.equal(h.audits.length, 0); }
       assert.doesNotMatch(JSON.stringify(res.body), /SECRET|provider|audit failure|\$2[aby]\$/);
     } finally { h.restore(); }
@@ -76,7 +76,7 @@ test("password credentials, confirmation, policy, reuse and input types are vali
   const h = await harness();
   try {
     for (const extra of [{ currentPassword: "wrong" }, { currentPassword: {} }, { newPassword: "weak", confirmNewPassword: "weak" }, { newPassword: "lowercase1", confirmNewPassword: "lowercase1" }, { newPassword: "NoNumberHere", confirmNewPassword: "NoNumberHere" }, { newPassword: "Password 2", confirmNewPassword: "Password 2" }, { confirmNewPassword: "mismatch" }, { newPassword: "OldPassword1", confirmNewPassword: "OldPassword1" }, { role: "dean" }]) {
-      const res = response(); await changePassword({ user: h.user, body: passwordBody(extra) }, res); assert.equal(res.statusCode, 400);
+      const res = response(); await changePassword({ user: h.user, body: passwordBody(extra) }, res); assert.equal(res.statusCode, 400); assert.equal(res.body.code, extra.newPassword === "OldPassword1" ? "PASSWORD_SAME" : "PASSWORD_INPUT_INVALID");
     }
     assert.equal(h.writes, 0); assert.equal(h.audits.length, 0);
   } finally { h.restore(); }

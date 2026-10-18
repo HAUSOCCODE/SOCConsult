@@ -1,13 +1,5 @@
-const MANILA_DATE_TIME = new Intl.DateTimeFormat("en-PH", {
-  timeZone: "Asia/Manila",
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-const formatTimestamp = (value) => {
-  const date = value ? new Date(value) : null;
-  return date && Number.isFinite(date.getTime()) ? MANILA_DATE_TIME.format(date) : "Not available";
-};
+import { formatManilaDateTime } from "../../utils/formatDateTime";
+const formatTimestamp = value => formatManilaDateTime(value, "Not available");
 
 export default function AttendanceResponseSummary({ attendance }) {
   if (!attendance) return null;

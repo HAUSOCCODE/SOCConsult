@@ -1,3 +1,6 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import ResponsiveTable from "../ResponsiveTable";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import {
   Bell,
   CalendarDays,
@@ -39,7 +42,10 @@ const NotificationPageContext = createContext(null);
 export default function NotificationsPage(props) {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [category, setCategory] = useState("");
-  return <NotificationPageContext.Provider value={{ pagination, setPagination, category, setCategory }}><NotificationsPageContent {...props} /></NotificationPageContext.Provider>;
+  const [actionBusy, setActionBusy] = useState(false);
+  const [refreshRequest, setRefreshRequest] = useState(0);
+  const retry = () => setRefreshRequest(n => n + 1);
+  return <NotificationPageContext.Provider value={{ pagination, setPagination, category, setCategory, actionBusy, setActionBusy, refreshRequest, retry }}><NotificationsPageContent {...props} /></NotificationPageContext.Provider>;
 }
 function NotificationsPageContent({
   compact = false,
@@ -47,8 +53,13 @@ function NotificationsPageContent({
   student = false,
   faculty = false,
 }) {
-  const { setPagination, category, setCategory } = useContext(NotificationPageContext);
+  const { setPagination, category, setCategory, actionBusy, setActionBusy, refreshRequest, retry } = useContext(NotificationPageContext);
   const requestVersion = useRef(0);
+  const actionPending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const startAction = () => { if (actionPending.current) return false; actionPending.current = true; setActionBusy(true); ++requestVersion.current; return true; };
+  const endAction = () => { actionPending.current = false; if (mounted.current) setActionBusy(false); };
   const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -82,7 +93,7 @@ function NotificationsPageContent({
   latestLoad.current = load;
   useEffect(() => {
     void load();
-    const refresh = () => void load(true);
+    const refresh = () => { if (!actionPending.current) void load(true); };
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     return () => {
@@ -90,7 +101,7 @@ function NotificationsPageContent({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [currentPage, filter, category]);
+  }, [currentPage, filter, category, refreshRequest]);
 
   const refreshBadge = (nextUnreadCount) =>
     window.dispatchEvent(
@@ -101,8 +112,10 @@ function NotificationsPageContent({
         : new Event("notifications:updated"),
     );
   const read = async (id) => {
+    if (!startAction()) return false;
     try {
       await api(`/notifications/${id}/read`, { method: "PUT" });
+      if (!mounted.current) return false;
       setNotifications((current) =>
         current.map((item) =>
           item._id === id
@@ -116,17 +129,22 @@ function NotificationsPageContent({
           : current,
       );
       setUnreadCount((current) => Math.max(0, current - 1));
+      toast.success("Notifications updated.");
       refreshBadge();
-      await latestLoad.current(true);
+      if (mounted.current) await latestLoad.current(true);
       return true;
     } catch {
-      toast.error("Unable to update this notification. Please try again.");
+      if (mounted.current) {
+        toast.error("Unable to update this notification. Refresh before trying again.");
+      }
       return false;
-    }
+    } finally { endAction(); }
   };
   const readAll = async () => {
+    if (!startAction()) return;
     try {
       await api("/notifications/read-all", { method: "PUT" });
+      if (!mounted.current) return;
       setNotifications((current) =>
         current.map((item) => ({
           ...item,
@@ -135,17 +153,19 @@ function NotificationsPageContent({
         })),
       );
       setUnreadCount(0);
+      toast.success("All notifications marked as read.");
       refreshBadge();
-      await latestLoad.current(true);
+      if (mounted.current) await latestLoad.current(true);
     } catch {
-      toast.error("Unable to update notifications. Please try again.");
-    }
+      toast.error("Unable to update notifications. Refresh before trying again.");
+    } finally { endAction(); }
   };
   const unreadAll = async () => {
-    if (markingUnread) return;
+    if (!startAction()) return;
     setMarkingUnread(true);
     try {
       const data = await api("/notifications/unread-all", { method: "PUT" });
+      if (!mounted.current) return;
       setNotifications((current) =>
         current.map((item) => ({
           ...item,
@@ -158,25 +178,26 @@ function NotificationsPageContent({
       );
       const nextUnreadCount = Number(data?.unreadCount) || notifications.length;
       setUnreadCount(nextUnreadCount);
-      toast.success(data.message || "All notifications marked as unread.");
+      toast.success("All notifications marked as unread.");
       refreshBadge(nextUnreadCount);
-      await latestLoad.current(true);
+      if (mounted.current) await latestLoad.current(true);
     } catch {
-      toast.error("Unable to update notifications. Please try again.");
+      toast.error("Unable to update notifications. Refresh before trying again.");
     } finally {
-      setMarkingUnread(false);
+      if (mounted.current) setMarkingUnread(false);
+      endAction();
     }
   };
-  const confirmDelete = (notification) =>
-    setConfirmation({ type: "delete", notification });
-  const confirmClear = (scope) => setConfirmation({ type: scope });
+  const confirmDelete = (notification) => { if (!actionPending.current) setConfirmation({ type: "delete", notification }); };
+  const confirmClear = (scope) => { if (!actionPending.current) setConfirmation({ type: scope }); };
   const performConfirmedAction = async () => {
-    if (!confirmation || mutating) return;
+    if (!confirmation || !startAction()) return;
     setMutating(true);
     try {
       if (confirmation.type === "delete") {
         const notification = confirmation.notification;
         await api(`/notifications/${notification._id}`, { method: "DELETE" });
+        if (!mounted.current) return;
         setNotifications((current) =>
           current.filter((item) => item._id !== notification._id),
         );
@@ -186,6 +207,7 @@ function NotificationsPageContent({
         toast.success("Notification deleted.");
       } else if (confirmation.type === "read") {
         await api("/notifications/read", { method: "DELETE" });
+        if (!mounted.current) return;
         setNotifications((current) =>
           current.filter((notification) => !notification.isRead),
         );
@@ -193,6 +215,7 @@ function NotificationsPageContent({
         toast.success("Read notifications cleared.");
       } else {
         await api("/notifications", { method: "DELETE" });
+        if (!mounted.current) return;
         setNotifications([]);
         setUnreadCount(0);
         setSelected(null);
@@ -200,23 +223,25 @@ function NotificationsPageContent({
       }
       setConfirmation(null);
       refreshBadge();
-      await latestLoad.current(true);
+      if (mounted.current) await latestLoad.current(true);
     } catch {
       toast.error(
         confirmation.type === "delete"
-          ? "Unable to delete notification. Please try again."
-          : "Unable to clear notifications. Please try again.",
+          ? "Unable to confirm deletion. Refresh notifications before trying again."
+          : "Unable to confirm clearing notifications. Refresh before trying again.",
       );
     } finally {
-      setMutating(false);
+      if (mounted.current) setMutating(false);
+      endAction();
     }
   };
 
   if (error && notifications.length === 0)
-    return <ErrorState message={error} onRetry={load} />;
+    return <ErrorState message={error} onRetry={() => load()} />;
   if (compact)
     return (
       <>
+        {actionBusy && <p role="status">Updating notifications...</p>}
         <label className="mb-3 block text-sm font-semibold">Category
           <select aria-label="Notification category" className="ml-2 rounded border p-2" value={category} onChange={event => { setCategory(event.target.value); setCurrentPage(1); }}>
             <option value="">All categories</option>
@@ -293,12 +318,12 @@ function NotificationsPageContent({
         />
       </div>
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error} <button type="button" className="underline" onClick={retry}>Retry</button>
         </p>
       )}
       {loading ? (
-        <p className="py-12 text-center font-semibold text-maroon-800">
+        <p role="status" className="py-12 text-center font-semibold text-maroon-800">
           Loading notifications...
         </p>
       ) : notifications.length === 0 ? (
@@ -320,7 +345,7 @@ function NotificationsPageContent({
                   <span
                     className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${notification.isRead ? "bg-slate-100 text-slate-600" : "bg-maroon-800 text-gold-300"}`}
                   >
-                    <Icon size={20} />
+                    <Icon aria-hidden="true" size={20} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
@@ -340,7 +365,7 @@ function NotificationsPageContent({
                     <p className="mt-2 text-xs text-slate-500">
                       {Number.isNaN(createdAt.getTime())
                         ? "Date unavailable"
-                        : createdAt.toLocaleString()}
+                        : formatManilaDisplay(createdAt, undefined, "timestamp")}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-4">
                       {!notification.isRead && (
@@ -400,7 +425,7 @@ function StudentNotificationsContent({
 }) {
   const navigate = useNavigate();
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
-  const { pagination } = useContext(NotificationPageContext);
+  const { pagination, category, actionBusy, retry } = useContext(NotificationPageContext);
   const shown = notifications;
   const totalPages = Math.max(1, pagination.totalPages);
   const safePage = Math.min(currentPage, totalPages);
@@ -437,14 +462,13 @@ function StudentNotificationsContent({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Date unavailable"
-      : parsed.toLocaleString("en-PH", {
-          timeZone: "Asia/Manila",
+      : formatManilaDisplay(parsed, {
           year: "numeric",
           month: "short",
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
-        });
+        }, "timestamp");
   };
   const typeLabel = (notification) =>
     notification.type
@@ -456,9 +480,9 @@ function StudentNotificationsContent({
       return { month: "---", day: "--", year: "" };
     }
     return {
-      month: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short" }).toUpperCase(),
-      day: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", day: "2-digit" }),
-      year: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", year: "numeric" }),
+      month: formatManilaDisplay(parsed, { month: "short" }, "timestamp").toUpperCase(),
+      day: formatManilaDisplay(parsed, { day: "2-digit" }, "timestamp"),
+      year: formatManilaDisplay(parsed, { year: "numeric" }, "timestamp"),
     };
   };
   const changePage = (page) => {
@@ -529,7 +553,7 @@ function StudentNotificationsContent({
       </div>
 
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </p>
       )}
@@ -817,7 +841,7 @@ function StudentNotificationsContent({
 
       {selected && (
         <NotificationDetailsModal
-          notification={{ ...selected, isRead: true }}
+          notification={selected}
           date={date}
           typeLabel={typeLabel}
           onClose={() => setSelected(null)}
@@ -838,6 +862,7 @@ function FacultyNotificationCard({
   onRead,
   onDelete,
 }) {
+  const { actionBusy } = useContext(NotificationPageContext);
   const title = notification.title || "SOCConsult Notification";
   return (
     <article
@@ -914,11 +939,11 @@ function FacultyNotificationCard({
               <Eye size={14} aria-hidden="true" /> View
             </button>
             {!notification.isRead && (
-              <button type="button" onClick={onRead} className="btn-action-sm h-9 min-w-0 gap-1 px-2">
+              <button type="button" disabled={actionBusy} onClick={onRead} className="btn-action-sm h-9 min-w-0 gap-1 px-2">
                 <MailOpen size={14} aria-hidden="true" /> Mark Read
               </button>
             )}
-            <button type="button" onClick={onDelete} className="btn-danger-action-sm h-9 min-w-0 gap-1 px-2">
+            <button type="button" disabled={actionBusy} onClick={onDelete} className="btn-danger-action-sm h-9 min-w-0 gap-1 px-2">
               <Trash2 size={14} aria-hidden="true" /> Delete
             </button>
           </div>
@@ -937,6 +962,7 @@ function StudentNotificationActions({
   onClear,
   faculty = false,
 }) {
+  const { actionBusy } = useContext(NotificationPageContext);
   if (notifications.length === 0) return null;
   const hasRead = notifications.some((notification) => notification.isRead);
   const actions = [
@@ -944,27 +970,28 @@ function StudentNotificationActions({
       label: markingUnread ? "Marking Unread..." : "Mark All as Unread",
       icon: Mail,
       onClick: onUnreadAll,
-      disabled: !hasRead || markingUnread,
+      disabled: actionBusy || !hasRead || markingUnread,
       danger: false,
     },
     {
       label: "Mark All as Read",
       icon: CheckCircle2,
       onClick: onReadAll,
-      disabled: unreadCount === 0,
+      disabled: actionBusy || unreadCount === 0,
       danger: false,
     },
     {
       label: "Clear Read",
       icon: MailOpen,
       onClick: () => onClear("read"),
-      disabled: !hasRead,
+      disabled: actionBusy || !hasRead,
       danger: true,
     },
     {
       label: "Clear All",
       icon: Trash2,
       onClick: () => onClear("all"),
+      disabled: actionBusy,
       danger: true,
     },
   ];
@@ -976,7 +1003,7 @@ function StudentNotificationActions({
           key={label}
           type="button"
           onClick={onClick}
-          disabled={disabled}
+          disabled={actionBusy || disabled}
           className={faculty ? `${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1 border-slate-200 px-1 text-[9px] min-[430px]:px-1.5 min-[430px]:text-[10px] md:w-auto md:px-2.5 md:text-xs` : `${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 justify-center gap-1.5 border-slate-200 px-1.5 text-[10px] min-[360px]:px-2 min-[360px]:text-xs md:justify-start md:px-3 md:text-sm`}
         >
           <Icon size={15} aria-hidden="true" />
@@ -1006,7 +1033,7 @@ function CompactNotifications({
   confirmClear,
   dean,
 }) {
-  const { pagination } = useContext(NotificationPageContext);
+  const { pagination, category, actionBusy } = useContext(NotificationPageContext);
   const shown = notifications;
   const totalPages = Math.max(1, pagination.totalPages);
   const safePage = Math.min(currentPage, totalPages);
@@ -1022,13 +1049,13 @@ function CompactNotifications({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Date unavailable"
-      : parsed.toLocaleString(undefined, {
+      : formatManilaDisplay(parsed, {
           year: "numeric",
           month: "short",
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
-        });
+        }, "timestamp");
   };
   const typeLabel = (notification) =>
     notification.type
@@ -1100,27 +1127,26 @@ function CompactNotifications({
         ))}
       </div>
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </p>
       )}
       {loading ? (
-        <p className="py-12 text-center font-semibold text-maroon-800">
+        <p role="status" className="py-12 text-center font-semibold text-maroon-800">
           Loading notifications...
         </p>
       ) : shown.length === 0 ? (
-        <NotificationEmptyState />
+        <NotificationEmptyState filter={filter} />
       ) : (
         <>
-          <div className="responsive-table-shell responsive-table-scroll hidden md:block xl:overflow-visible">
-            <table className="responsive-table min-w-[760px] text-xs xl:min-w-0 2xl:text-sm">
+          <ResponsiveTable label="Notifications" className="responsive-table-shell responsive-table-scroll hidden md:block xl:overflow-visible"><table className="responsive-table min-w-[760px] text-xs xl:min-w-0 2xl:text-sm">
               <thead className="h-11 bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
                 <tr>
-                  <th className="w-[12%] px-3 py-3">Type</th>
-                  <th className="w-[35%] px-3 py-3">Notification</th>
-                  <th className="w-[21%] px-3 py-3">Date &amp; Time</th>
-                  <th className="w-[10%] px-3 py-2 text-center">Status</th>
-                  <th className="w-[22%] px-3 py-2">Action</th>
+                  <th scope="col" className="w-[12%] px-3 py-3">Type</th>
+                  <th scope="col" className="w-[35%] px-3 py-3">Notification</th>
+                  <th scope="col" className="w-[21%] px-3 py-3">Date &amp; Time</th>
+                  <th scope="col" className="w-[10%] px-3 py-2 text-center">Status</th>
+                  <th scope="col" className="w-[22%] px-3 py-2">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -1186,8 +1212,7 @@ function CompactNotifications({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </table></ResponsiveTable>
           <div className="grid gap-3 md:hidden">
             {pageNotifications.map((notification) => (
               <article
@@ -1288,7 +1313,7 @@ function DeanNotificationsContent({
   date,
   typeLabel,
 }) {
-  const { pagination } = useContext(NotificationPageContext);
+  const { pagination, category, actionBusy } = useContext(NotificationPageContext);
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
 
   useEffect(() => {
@@ -1346,17 +1371,17 @@ function DeanNotificationsContent({
       </div>
 
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </p>
       )}
       {loading ? (
-        <p className="py-12 text-center font-semibold text-maroon-800">
+        <p role="status" className="py-12 text-center font-semibold text-maroon-800">
           Loading notifications...
         </p>
       ) : shown.length === 0 ? (
         <EmptyState
-          title="No notifications found."
+          title={filter !== "All" || category ? "No notifications match these filters." : "No notifications yet."}
           text="Consultation updates will appear here."
         />
       ) : (
@@ -1415,6 +1440,7 @@ function DeanNotificationRow({
   date,
   typeLabel,
 }) {
+  const { actionBusy } = useContext(NotificationPageContext);
   const title = notification.title || "SOCConsult Notification";
   const detailsId = `dean-notification-details-${notification._id}`;
   const status = notification.isRead ? "Read" : "Unread";
@@ -1495,11 +1521,11 @@ function DeanNotificationRow({
               <Eye size={14} aria-hidden="true" /> View
             </button>
             {!notification.isRead && (
-              <button type="button" onClick={onRead} className="btn-action h-10 w-full gap-1.5 px-3 md:w-auto">
+              <button type="button" disabled={actionBusy} onClick={onRead} className="btn-action h-10 w-full gap-1.5 px-3 md:w-auto">
                 <MailOpen size={14} aria-hidden="true" /> Mark as Read
               </button>
             )}
-            <button type="button" onClick={onDelete} className="btn-danger-action h-10 w-full gap-1.5 px-3 md:w-auto">
+            <button type="button" disabled={actionBusy} onClick={onDelete} className="btn-danger-action h-10 w-full gap-1.5 px-3 md:w-auto">
               <Trash2 size={14} aria-hidden="true" /> Delete
             </button>
           </div>
@@ -1530,6 +1556,7 @@ function DeanNotificationActions({
   markingUnread,
   onClear,
 }) {
+  const { actionBusy } = useContext(NotificationPageContext);
   if (notifications.length === 0) return null;
   const hasRead = notifications.some((notification) => notification.isRead);
   const actions = [
@@ -1537,19 +1564,19 @@ function DeanNotificationActions({
       label: markingUnread ? "Marking Unread..." : "Mark All as Unread",
       icon: Mail,
       onClick: onUnreadAll,
-      disabled: !hasRead || markingUnread,
+      disabled: actionBusy || !hasRead || markingUnread,
     },
     {
       label: "Mark All as Read",
       icon: CheckCircle2,
       onClick: onReadAll,
-      disabled: unreadCount === 0,
+      disabled: actionBusy || unreadCount === 0,
     },
     {
       label: "Clear Read",
       icon: MailOpen,
       onClick: () => onClear("read"),
-      disabled: !hasRead,
+      disabled: actionBusy || !hasRead,
     },
     {
       label: "Clear All",
@@ -1565,7 +1592,7 @@ function DeanNotificationActions({
           key={label}
           type="button"
           onClick={onClick}
-          disabled={disabled}
+          disabled={actionBusy || disabled}
           className={`${danger ? "btn-danger-action" : "btn-action"} h-10 w-full min-w-0 gap-1.5 px-2 text-[10px] disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs md:w-auto md:px-3`}
         >
           <Icon size={14} aria-hidden="true" /> {label}
@@ -1584,6 +1611,7 @@ function NotificationActions({
   onClear,
   compact = false,
 }) {
+  const { actionBusy } = useContext(NotificationPageContext);
   if (notifications.length === 0) return null;
   const hasRead = notifications.some((notification) => notification.isRead);
   return (
@@ -1591,7 +1619,7 @@ function NotificationActions({
       <button
         type="button"
         onClick={onUnreadAll}
-        disabled={!hasRead || markingUnread}
+        disabled={actionBusy || !hasRead || markingUnread}
         className={`${compact ? "btn-action" : "btn-secondary"} w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto`}
       >
         {markingUnread ? "Marking Unread..." : "Mark All as Unread"}
@@ -1599,7 +1627,7 @@ function NotificationActions({
       {unreadCount > 0 && (
         <button
           type="button"
-          onClick={onReadAll}
+          disabled={actionBusy} onClick={onReadAll}
           className={`${compact ? "btn-action" : "btn-secondary"} w-full sm:w-auto`}
         >
           Mark All as Read
@@ -1608,7 +1636,7 @@ function NotificationActions({
       {hasRead && (
         <button
           type="button"
-          onClick={() => onClear("read")}
+          disabled={actionBusy} onClick={() => onClear("read")}
           className={`${compact ? "btn-action" : "btn-secondary"} w-full sm:w-auto`}
         >
           Clear Read
@@ -1616,7 +1644,7 @@ function NotificationActions({
       )}
       <button
         type="button"
-        onClick={() => onClear("all")}
+        disabled={actionBusy} onClick={() => onClear("all")}
         className={`${compact ? "btn-danger-action" : "btn-danger-action"} w-full gap-2 sm:w-auto`}
       >
         <Trash2 size={16} aria-hidden="true" />
@@ -1660,18 +1688,18 @@ function DeleteConfirmationModal({ action, loading, onCancel, onConfirm }) {
   );
 }
 
-function NotificationEmptyState() {
+function NotificationEmptyState({ filter = "All" }) {
+  const { category } = useContext(NotificationPageContext);
   return (
     <>
-      <div className="hidden max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
-        <table className="w-full min-w-[800px] table-fixed text-left text-sm">
+      <ResponsiveTable label="Notifications" className="hidden max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block"><table className="w-full min-w-[800px] table-fixed text-left text-sm">
           <thead className="bg-maroon-800 text-white">
             <tr>
-              <th className="w-[14%] px-4 py-3">Type</th>
-              <th className="w-[34%] px-4 py-3">Notification</th>
-              <th className="w-[22%] px-4 py-3">Date &amp; Time</th>
-              <th className="w-[12%] px-4 py-3">Status</th>
-              <th className="w-[18%] px-4 py-3">Action</th>
+              <th scope="col" className="w-[14%] px-4 py-3">Type</th>
+              <th scope="col" className="w-[34%] px-4 py-3">Notification</th>
+              <th scope="col" className="w-[22%] px-4 py-3">Date &amp; Time</th>
+              <th scope="col" className="w-[12%] px-4 py-3">Status</th>
+              <th scope="col" className="w-[18%] px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -1680,15 +1708,14 @@ function NotificationEmptyState() {
                 colSpan={5}
                 className="px-4 py-10 text-center text-sm text-slate-500"
               >
-                No notifications found.
+                {filter !== "All" || category ? "No notifications match these filters." : "No notifications yet."}
               </td>
             </tr>
           </tbody>
-        </table>
-      </div>
+        </table></ResponsiveTable>
       <div className="md:hidden">
         <EmptyState
-          title="No notifications found."
+          title={filter !== "All" || category ? "No notifications match these filters." : "No notifications yet."}
           text="Consultation updates will appear here."
         />
       </div>
@@ -1697,16 +1724,8 @@ function NotificationEmptyState() {
 }
 
 function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    const escape = (event) => event.key === "Escape" && onClose();
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", escape);
-    };
-  }, [onClose]);
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, { onClose });
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex h-[100dvh] w-full min-w-0 items-center justify-center bg-black/50 p-3 sm:p-4"
@@ -1715,6 +1734,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
       <section
         role="dialog"
         aria-modal="true"
+        ref={dialogRef} tabIndex={-1}
         aria-labelledby="notification-details-title"
         onMouseDown={(event) => event.stopPropagation()}
         className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
@@ -1732,7 +1752,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
             aria-label="Close notification details"
             className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
         <div className="space-y-5 px-5 py-5 sm:px-6">

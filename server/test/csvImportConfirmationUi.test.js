@@ -1,3 +1,5 @@
+import { sharedClientImports } from "./helpers/clientImports.js";
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -7,11 +9,12 @@ const React = requireClient("react");
 const { renderToString } = requireClient("react-dom/server");
 const { transform } = requireClient("esbuild");
 async function component(path, imports) {
+  imports = { deanUiError, ...imports };
   const raw = await readFile(new URL(`../../client/src/${path}.jsx`, import.meta.url), "utf8");
   const name = /export default function (\w+)/.exec(raw)[1];
   const body = raw.replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replace("export default function", "function");
   const compiled = await transform(body, { loader: "jsx", jsx: "transform" });
-  return new Function("React", ...Object.keys(imports), `${compiled.code}; return ${name};`)(React, ...Object.values(imports));
+  return new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${compiled.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
 }
 const result = { importId: "safe-import", totalRows: 2, successfulRows: 2, failedRows: 0, studentCount: 1,
   facultyCount: 1, status: "completed", importedAt: "2026-10-13T00:00:00.000Z", message: "Accounts created successfully." };
@@ -39,7 +42,7 @@ test("actual page confirmation blocks repeated clicks and recovers completed sta
     const ConfirmDialog = () => null;
     const Component = await component("pages/Dean/CsvImport", {
       useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], (value) => { state[slot] = value; }]; },
-      useRef: () => ref, useEffect: () => {},
+      useRef: initial => initial === false ? ref : { current: initial }, useEffect: () => {},
       useSearchParams: () => [new URLSearchParams("preview=preview-id"), () => {}],
       api: (path, options) => {
         calls.push({ path, options });

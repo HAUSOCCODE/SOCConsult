@@ -771,6 +771,9 @@ test("HTTP routes enforce authentication and Dean role, remove four registration
       for (const [path, method] of endpoints)
         assert.equal((await call(path, method)).status, 403);
     }
+    assert.equal(h.reads.length, 0, "denied requests must not read managed users");
+    assert.equal(h.countFilter, undefined, "denied requests must not count managed users");
+    assert.equal(h.writes.length, 0);
     h.role = "dean";
     const list = await call("/users");
     assert.equal(list.status, 200);
