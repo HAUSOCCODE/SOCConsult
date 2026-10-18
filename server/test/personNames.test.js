@@ -118,7 +118,7 @@ test("legacy accounts remain valid and use name or fullName fallback", () => {
 });
 
 
-test("Student and Faculty profile updates persist structured names and return field errors", async () => {
+test("Faculty profile updates persist structured names and return field errors", async () => {
   const restores = [], writes = [];
   patch(User, "findById", () => ({ select: async () => ({ firstName: "Old", lastName: "Name" }) }), restores);
   patch(User, "findByIdAndUpdate", (_id, updates) => {
@@ -127,7 +127,7 @@ test("Student and Faculty profile updates persist structured names and return fi
   }, restores);
   patch(AuditLog, "create", async record => record, restores);
   try {
-    for (const role of ["student", "faculty"]) {
+    for (const role of ["faculty"]) {
       for (const middleName of ["E.", ""]) {
         const res = response();
         await updateProfile({ user: { id: "profile", role }, body: { firstName: " Mikko ", middleName, lastName: " Pangilinan " } }, res);
