@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import ManagementAuditFeed from "./ManagementAuditFeed";
 import {
   ArrowLeft,
@@ -87,6 +88,13 @@ export default function AuditLogs() {
   const [exporting, setExporting] = useState(false);
   const userRequest = useRef(0);
   const logRequest = useRef(0);
+  const exportPending = useRef(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportError, setExportError] = useState("");
+  const exportController = useRef(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => () => exportController.current?.abort(), [selectedId, category, startDate, endDate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -117,12 +125,12 @@ export default function AuditLogs() {
       );
     } catch (error) {
       if (request === userRequest.current)
-        setUsersError(error.message || "Unable to load registered users.");
+        setUsersError(deanUiError(error, "audit"));
     } finally {
       if (request === userRequest.current) setUsersLoading(false);
     }
   }, [role, search, userPage]);
-  useEffect(() => void loadUsers(), [loadUsers]);
+  useEffect(() => { void loadUsers(); return () => { ++userRequest.current; }; }, [loadUsers]);
 
   const loadLogs = useCallback(async () => {
     if (!selectedId) {
@@ -130,6 +138,7 @@ export default function AuditLogs() {
       return;
     }
     const request = ++logRequest.current;
+    setDetails(current => current?.user?.id === selectedId ? current : null);
     setLogsLoading(true);
     setLogsError("");
     try {
@@ -141,12 +150,12 @@ export default function AuditLogs() {
       if (request === logRequest.current) setDetails(data);
     } catch (error) {
       if (request === logRequest.current)
-        setLogsError(error.message || "Unable to load audit activity.");
+        setLogsError(deanUiError(error, "audit"));
     } finally {
       if (request === logRequest.current) setLogsLoading(false);
     }
   }, [selectedId, logPage, category, startDate, endDate]);
-  useEffect(() => void loadLogs(), [loadLogs]);
+  useEffect(() => { void loadLogs(); return () => { ++logRequest.current; }; }, [loadLogs]);
 
   const switchRole = (nextRole) => {
     setRole(nextRole);
@@ -159,6 +168,8 @@ export default function AuditLogs() {
     setMobileDetails(false);
   };
   const selectUser = (id) => {
+    ++logRequest.current;
+    if (id !== selectedId) setDetails(null);
     setSelectedId(id);
     setLogPage(1);
     setMobileDetails(true);
@@ -168,7 +179,11 @@ export default function AuditLogs() {
     setLogPage(1);
   };
   const exportLogs = async () => {
-    if (!selectedId) return;
+    if (!selectedId || exportPending.current) return;
+    exportPending.current = true;
+    const controller = new AbortController(); exportController.current = controller;
+    setExportError("");
+    setExportMessage("");
     setExporting(true);
     try {
       const query = new URLSearchParams({
@@ -182,16 +197,17 @@ export default function AuditLogs() {
       const response = await fetch(
         `${API_URL}/dean/audit-logs/export?${query}`,
         {
+          signal: controller.signal,
           headers: {
             Authorization: `Bearer ${sessionStorage.getItem("consultio_token") || ""}`,
           },
         },
       );
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.message || "Unable to export audit logs.");
+        throw Object.assign(new Error(), { status: response.status });
       }
       const blob = await response.blob();
+      if (controller.signal.aborted) return;
       const disposition = response.headers.get("Content-Disposition") || "";
       const filename =
         disposition.match(/filename="([^"]+)"/)?.[1] ||
@@ -201,11 +217,13 @@ export default function AuditLogs() {
       anchor.href = url;
       anchor.download = filename;
       anchor.click();
+      setExportMessage("Audit export generated; download started.");
       URL.revokeObjectURL(url);
     } catch (error) {
-      setLogsError(error.message);
+      if (!controller.signal.aborted) setExportError("Unable to generate the audit export. Check the filters and try again.");
     } finally {
-      setExporting(false);
+      exportPending.current = false;
+      if (mounted.current) setExporting(false);
     }
   };
 
@@ -221,6 +239,9 @@ export default function AuditLogs() {
         </p>
       </header>
       <ManagementAuditFeed />
+      {exporting && <p role="status">Generating audit export?</p>}
+      {exportMessage && <p role="status">{exportMessage}</p>}
+      {exportError && <p role="alert">{exportError}</p>}
       <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div
           role="tablist"
@@ -332,8 +353,7 @@ export default function AuditLogs() {
               <div className="px-4 py-12 text-center">
                 <UserRound className="mx-auto text-slate-300" size={34} />
                 <p className="mt-3 font-semibold text-slate-700">
-                  No registered {role === "student" ? "students" : "faculty"}{" "}
-                  found.
+                  {search ? "No registered users match this search." : `No registered ${role === "student" ? "students" : "faculty"} yet.`}
                 </p>
               </div>
             ) : (
@@ -415,7 +435,7 @@ export default function AuditLogs() {
                   <div className="py-12 text-center">
                     <Clock3 className="mx-auto text-slate-300" size={34} />
                     <p className="mt-3 font-semibold text-slate-700">
-                      No recorded activity is available for this user yet.
+                      {category !== "All Activities" || startDate || endDate ? "No activity matches these filters." : "No recorded activity is available for this user yet."}
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
                       New activity will appear here as it occurs.
@@ -651,7 +671,7 @@ function Pager({ pagination, onPage, label = "page" }) {
 function InlineError({ message, retry }) {
   return (
     <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-5 text-center text-sm text-red-700">
-      <p>{message}</p>
+      <p role="alert">{message}</p>
       <button
         type="button"
         onClick={retry}
@@ -664,7 +684,7 @@ function InlineError({ message, retry }) {
 }
 function UserListSkeleton() {
   return (
-    <div className="space-y-2 p-2" aria-label="Loading registered users">
+    <div className="space-y-2 p-2" role="status" aria-label="Loading registered users">
       {Array.from({ length: 5 }, (_, index) => (
         <div
           key={index}
@@ -676,7 +696,7 @@ function UserListSkeleton() {
 }
 function DetailsSkeleton() {
   return (
-    <div className="space-y-4 p-6" aria-label="Loading audit details">
+    <div className="space-y-4 p-6" role="status" aria-label="Loading audit details">
       <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
       <div className="h-36 animate-pulse rounded-xl bg-slate-100" />
       <div className="h-36 animate-pulse rounded-xl bg-slate-100" />

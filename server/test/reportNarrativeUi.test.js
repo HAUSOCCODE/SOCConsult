@@ -1,3 +1,4 @@
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -12,7 +13,7 @@ test("Reports narrative panel keeps filters intact, guards duplicates, reviews e
   const useState = value => { const slot = index++; if (!(slot in state)) state[slot] = value; return [state[slot], v => state[slot] = v]; };
   const useRef = value => { const slot = index++; if (!(slot in state)) state[slot] = { current: value }; return state[slot]; };
   const api = (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject }));
-  const Panel = new Function("React", "useState", "useRef", "api", code + "; return ReportNarrativePanel;")(React, useState, useRef, api);
+  const Panel = new Function("React", "useState", "useRef", "api", "useEffect", "deanUiError", code + "; return ReportNarrativePanel;")(React, useState, useRef, api, () => {}, deanUiError);
   const filters = { start: "2026-10-01", end: "2026-10-16", facultyId: "", status: "", mode: "", attendanceOutcome: "" };
   const original = { ...filters };
   const render = () => { index = 0; return Panel({ filters }); };
@@ -21,7 +22,7 @@ test("Reports narrative panel keeps filters intact, guards duplicates, reviews e
   const first = buttons(tree)[0].props.onClick(); await buttons(tree)[0].props.onClick(); assert.equal(requests.length, 1);
   assert.deepEqual(JSON.parse(requests[0].options.body), { start: filters.start, end: filters.end });
   requests[0].reject(new Error("AI unavailable")); await first;
-  assert.match(JSON.stringify(render()), /AI unavailable/); assert.deepEqual(filters, original);
+  assert.match(JSON.stringify(render()), /AI summary is unavailable/); assert.deepEqual(filters, original);
   const generation = buttons(render())[0].props.onClick();
   const summary = { id: "summary-id", filters: { start: filters.start, end: filters.end }, narrative: "Zero consultations.", reviewState: "unreviewed", version: 1, generatedAt: "now" };
   requests[1].resolve(summary); await generation;

@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { deanUiError } from "../../utils/deanUiErrors";
+import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   CalendarDays,
@@ -83,10 +84,10 @@ export default function ProfilePage() {
       });
       updateUser(data.user);
       setNameErrors({});
-      toast.success(data.message || "Profile updated successfully.");
+      toast.success("Profile updated successfully.");
     } catch (error) {
       if (error.errors) setNameErrors(error.errors);
-      toast.error(error.message || "Unable to update profile.");
+      toast.error(deanUiError(error, "profile"));
     }
   };
   return (
@@ -309,6 +310,8 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const change = (key, value) =>
     setPasswords((current) => ({ ...current, [key]: value }));
@@ -355,14 +358,15 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
           confirmNewPassword: passwords.confirmPassword,
         }),
       });
+      if (!mounted.current) return;
       clear();
       onPasswordChanged?.();
-      toast.success(data.message || "Password changed successfully.");
+      toast.success("Password changed successfully.");
     } catch (error) {
-      toast.error(error.message || "Unable to change password.");
+      if (mounted.current) toast.error(deanUiError(error, "password"));
     } finally {
       pending.current = false;
-      setSubmitting(false);
+      if (mounted.current) setSubmitting(false);
     }
   };
 
@@ -379,14 +383,15 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
           Manage your account password and security.
         </p>
       </div>
-      <form onSubmit={submit} className="panel">
+      <form aria-busy={submitting} onSubmit={submit} className="panel">
         <h3 className="text-lg font-bold text-maroon-900">Change Password</h3>
         <p className="mt-1 text-sm text-slate-500">
           Use at least 8 characters, one uppercase letter, and one number.
           Spaces are not allowed.
         </p>
+        {submitting && <p role="status">Changing password...</p>}
         {validationError && (
-          <p
+          <p id="password-validation-error"
             role="alert"
             className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
           >
@@ -411,6 +416,8 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
                       : "new-password"
                   }
                   className="field pr-11"
+                  aria-invalid={Boolean(validationError)}
+                  aria-describedby={validationError ? "password-validation-error" : undefined}
                   value={passwords[key]}
                   onChange={(event) => change(key, event.target.value)}
                 />

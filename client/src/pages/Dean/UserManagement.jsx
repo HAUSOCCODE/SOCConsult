@@ -57,6 +57,7 @@ export default function UserManagement() {
   const inFlight = useRef(false);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const mounted = useRef(true);
   const searchId = useId();
 
   const load = useCallback(async () => {
@@ -126,6 +127,7 @@ export default function UserManagement() {
       if (request === detailRequest.current) setDetailLoading(false);
     }
   };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (linkedUserId) void view({ _id: linkedUserId });
     return () => { ++detailRequest.current; };
@@ -150,14 +152,17 @@ export default function UserManagement() {
           ...(accountStatus === "Inactive" && { reason: reason.trim() }),
         }),
       });
+      if (!mounted.current) return;
       setTarget(null);
       setReason("");
-      setSelected(null);
+      setSelected(current => current?._id === data.user?._id ? data.user : current);
       ++detailRequest.current;
-      toast.success(data.message);
+      toast.success("Account status updated successfully.");
       await latestLoad.current();
     } catch (requestError) {
+      if (!mounted.current) return;
       const messages = {
+        SERVICE_UNAVAILABLE: "User management is temporarily unavailable. Please try again later.",
         STATUS_CONFLICT:
           "This account has changed. Refresh the user list before trying again.",
         REGISTRATION_CONFLICT:
@@ -182,7 +187,7 @@ export default function UserManagement() {
       }
     } finally {
       inFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const confirmReset = async () => {
@@ -193,9 +198,12 @@ export default function UserManagement() {
       await api(`/dean/users/${resetTarget._id}/reset-password`, {
         method: "POST", headers: { "If-Match": JSON.stringify(resetTarget.version ?? "null") },
       });
+      if (!mounted.current) return;
       toast.success("Password reset successfully.");
     } catch (error) {
+      if (!mounted.current) return;
       const messages = {
+        SERVICE_UNAVAILABLE: "Password reset is temporarily unavailable. Please try again later.",
         PASSWORD_RESET_CONFLICT: "This account has changed. Refresh the user list before trying again.",
         PASSWORD_RESET_INELIGIBLE: "This account is not eligible for password reset.",
         INVALID_INSTITUTIONAL_ID: "This account does not have a valid institutional ID.",
@@ -203,12 +211,14 @@ export default function UserManagement() {
       };
       toast.error(messages[error.code] || "Unable to reset the password. Refresh the user list before trying again.");
     } finally {
-      setResetTarget(null);
-      setSelected(null);
-      ++detailRequest.current;
-      await latestLoad.current();
+      if (mounted.current) {
+        setResetTarget(null);
+        setSelected(null);
+        ++detailRequest.current;
+        await latestLoad.current();
+      }
       inFlight.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const requestStatus = (user) => {
@@ -319,8 +329,8 @@ export default function UserManagement() {
           <Loading />
         ) : users.length === 0 ? (
           <EmptyState
-            title="No users found."
-            text="Try a different search or filter."
+            title={filters.search || filters.role !== "all" || filters.status !== "all" || filters.source !== "all" ? "No accounts match these filters." : "No accounts yet."}
+            text="Create an account or try a different search or filter."
           />
         ) : (
           <>

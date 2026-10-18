@@ -1,3 +1,4 @@
+import { deanUiError } from "../../client/src/utils/deanUiErrors.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -7,6 +8,7 @@ const React = requireClient("react");
 const { renderToString } = requireClient("react-dom/server");
 const { transform } = requireClient("esbuild");
 async function component(path, imports) {
+  imports = { deanUiError, ...imports };
   const raw = await readFile(new URL(`../../client/src/${path}.jsx`, import.meta.url), "utf8");
   const name = /export default function (\w+)/.exec(raw)[1];
   const body = raw.replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replace("export default function", "function");
@@ -39,7 +41,7 @@ test("actual page confirmation blocks repeated clicks and recovers completed sta
     const ConfirmDialog = () => null;
     const Component = await component("pages/Dean/CsvImport", {
       useState: (initial) => { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], (value) => { state[slot] = value; }]; },
-      useRef: () => ref, useEffect: () => {},
+      useRef: initial => initial === false ? ref : { current: initial }, useEffect: () => {},
       useSearchParams: () => [new URLSearchParams("preview=preview-id"), () => {}],
       api: (path, options) => {
         calls.push({ path, options });

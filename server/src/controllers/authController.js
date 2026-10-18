@@ -265,12 +265,12 @@ export async function changePassword(req, res) {
   const keys = ["currentPassword", "newPassword", "confirmNewPassword"];
   if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !keys.includes(key)) ||
       keys.some(key => typeof req.body[key] !== "string" || !req.body[key]))
-    return res.status(400).json({ message: "Current password, new password, and password confirmation are required." });
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: "Current password, new password, and password confirmation are required." });
   const { currentPassword, newPassword, confirmNewPassword } = req.body;
   if (newPassword !== confirmNewPassword)
-    return res.status(400).json({ message: "New password and confirmation do not match." });
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: "New password and confirmation do not match." });
   if (!validPassword(newPassword))
-    return res.status(400).json({ message: passwordValidationMessage });
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: passwordValidationMessage });
   let session;
   try {
     session = await mongoose.startSession();
@@ -279,11 +279,11 @@ export async function changePassword(req, res) {
       if (!user || user.accountStatus !== "Active" || user.role !== req.user.role ||
           !(await bcrypt.compare(currentPassword, user.password))) {
         const error = new Error("Unable to change password. Check your input and try again.");
-        error.statusCode = 400; throw error;
+        error.statusCode = 400; error.code = "PASSWORD_INPUT_INVALID"; throw error;
       }
       if (await bcrypt.compare(newPassword, user.password)) {
         const error = new Error("New password must be different from your current password.");
-        error.statusCode = 400; throw error;
+        error.statusCode = 400; error.code = "PASSWORD_SAME"; throw error;
       }
       const timestamp = new Date();
       const updated = await User.updateOne({ _id: user._id, password: user.password, accountStatus: "Active", role: user.role },
@@ -298,7 +298,7 @@ export async function changePassword(req, res) {
     res.json({ message: "Password changed successfully." });
   } catch (error) {
     const uncertain = error.hasErrorLabel?.("UnknownTransactionCommitResult");
-    res.status(error.statusCode === 400 ? 400 : 503).json({ message: error.statusCode === 400 ? error.message :
+    res.status(error.statusCode === 400 ? 400 : 503).json({ code: error.statusCode === 400 ? error.code : uncertain ? "PASSWORD_CHANGE_UNCERTAIN" : "PASSWORD_CHANGE_UNAVAILABLE", message: error.statusCode === 400 ? error.message :
       uncertain ? "Unable to confirm password change. Try signing in before retrying." : "Password change is temporarily unavailable." });
   } finally {
     if (session) await session.endSession().catch(() => {});

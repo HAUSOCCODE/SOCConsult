@@ -1,3 +1,4 @@
+import { deanUiError } from "../../utils/deanUiErrors";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { APPOINTMENT_STATUSES } from "../../utils/appointmentStatus";
@@ -33,6 +34,9 @@ export default function ReportsAnalytics() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const pending = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++generation.current; }; }, []);
   useEffect(() => {
     let active = true;
     setOptionsState("loading");
@@ -57,6 +61,7 @@ export default function ReportsAnalytics() {
     };
   }, [search]);
   const change = (key, value) => {
+    ++generation.current;
     setFilters((current) => ({ ...current, [key]: value }));
     setError("");
     setMessage("");
@@ -76,6 +81,7 @@ export default function ReportsAnalytics() {
       return;
     }
     pending.current = true;
+    const request = ++generation.current;
     setBusy(true);
     setError("");
     setMessage("");
@@ -88,6 +94,7 @@ export default function ReportsAnalytics() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
+      if (request !== generation.current) return;
       if (result.blob.type !== "application/pdf")
         throw new Error(
           "The report could not be downloaded. Please try again.",
@@ -102,16 +109,17 @@ export default function ReportsAnalytics() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMessage(
         result.total === 0
-          ? "No consultations match these filters. An empty PDF report was downloaded."
-          : "PDF report downloaded.",
+          ? "No consultations match these filters. An empty PDF was generated; download started."
+          : "PDF generated successfully; download started.",
       );
     } catch (failure) {
+      if (request !== generation.current) return;
       setError(
-        failure.message || "Unable to generate the report. Please try again.",
+        deanUiError(failure, "pdf"),
       );
     } finally {
       pending.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   return (

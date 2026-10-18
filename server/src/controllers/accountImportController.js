@@ -45,12 +45,13 @@ export async function validateAccountImport(req, res) {
     if (error instanceof CsvValidationError) {
       try { await AuditLog.create({ subjectUser: req.user._id, subjectRole: "dean", actorUser: req.user._id, actorRole: "dean",
         action: "accounts_csv_validated", category: "Account", relatedEntityType: "AuditAttempt", relatedEntityId: attemptId,
-        metadata: { outcome: "rejected", code: "CSV_REJECTED" } }); } catch { return res.status(503).json({ message: "Unable to record CSV validation." }); }
+        metadata: { outcome: "rejected", code: "CSV_REJECTED" } }); } catch { return res.status(503).json({ code: "SERVICE_UNAVAILABLE", message: "Unable to record CSV validation." }); }
     }
     if (error instanceof CsvValidationError) await bestEffortNotification({ recipient: req.user.id, event: "import_failed", actionUrl: "/dean/import" });
     return res
       .status(error instanceof CsvValidationError ? 400 : 500)
       .json({
+        code: error instanceof CsvValidationError ? error.code : "SERVICE_UNAVAILABLE",
         message:
           error instanceof CsvValidationError
             ? error.message
@@ -63,7 +64,7 @@ export async function validateAccountImport(req, res) {
 }
 export async function getAccountImport(req, res) {
   const missing = () =>
-    res.status(404).json({ message: "Preview is unavailable." });
+    res.status(404).json({ code: "PREVIEW_UNAVAILABLE", message: "Preview is unavailable." });
   if (!validPreviewId(req.params.previewId))
     return missing();
   try {
@@ -77,7 +78,7 @@ export async function getAccountImport(req, res) {
   } catch {
     return res
       .status(500)
-      .json({ message: "Unable to retrieve preview. Please try again." });
+      .json({ code: "SERVICE_UNAVAILABLE", message: "Unable to retrieve preview. Please try again." });
   }
 }
 

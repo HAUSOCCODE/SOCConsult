@@ -33,7 +33,7 @@ export default function ConsultationMonitoring() {
   useEffect(() => { setFilters(Object.fromEntries(new URLSearchParams(query))); }, [query]);
   useEffect(() => {
     const controller = new AbortController();
-    setData(null); setError(""); setDetails(null);
+    setData(null); setError("");
     api(`/dean/consultations${query ? `?${query}` : ""}`, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setData(result); })
       .catch(err => { if (!controller.signal.aborted) setError(err.status === 400 ? "Invalid filters. Check the request dates and filter values, or reset filters." : "Unable to load consultations. Please try again."); });
     return () => controller.abort();
