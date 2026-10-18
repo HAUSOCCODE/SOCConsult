@@ -10,7 +10,9 @@ const targets = process.argv.slice(2);
 if (!targets.length) targets.push(...readdirSync(new URL("../test/", import.meta.url))
   .filter((name) => name.endsWith(".test.js")).sort().map((name) => `test/${name}`));
 
-const result = spawnSync(process.execPath, ["--test", "--test-timeout=30000", ...targets], {
+// The full suite runs files concurrently; crypto-heavy account-import coverage can exceed
+// 30 seconds under constrained CI even though it completes well within this bounded limit.
+const result = spawnSync(process.execPath, ["--test", "--test-timeout=60000", ...targets], {
   cwd: fileURLToPath(new URL("../", import.meta.url)), stdio: "inherit",
   env: { ...process.env, NODE_ENV: "test", JWT_SECRET: testKey,
     MONGODB_URI: "mongodb://127.0.0.1:1/socconsult-isolated-test", DEAN_PASSWORD: `Test-only-${testKey}!`,

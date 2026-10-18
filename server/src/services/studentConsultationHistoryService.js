@@ -123,10 +123,13 @@ export function safeStudentHistoryRecord(row) {
   };
 }
 export async function listStudentConsultationHistory({ student, input, now = new Date() }) {
+  if (Object.keys(input).some(key => !["page", "status", "mode", "faculty", "from", "to", "appointment"].includes(key))) fail("Invalid history filter.");
   const page = Number(input.page || 1);
   if (!Number.isInteger(page) || page < 1 || page > 10000) fail("Invalid history page.");
+  if (input.appointment && !mongoose.isValidObjectId(input.appointment)) fail("Invalid appointment reference.");
   const query = studentHistoryQuery({ student, status: input.status, mode: input.mode,
     faculty: input.faculty, from: input.from, to: input.to, now });
+  if (input.appointment) query._id = input.appointment;
   const base = { student, ...historicalEligibility(now) };
   const projection = "faculty subject reason startAt endAt estimatedDurationMinutes consultationMode location meetingPlatform status createdAt responseNote cancellationReason expirationReason supportingDocument.name supportingDocument.mimeType supportingDocument.size supportingDocuments statusHistory +attendance";
   const [rows, total, providerRows] = await Promise.all([

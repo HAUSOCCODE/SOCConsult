@@ -12,7 +12,9 @@ export function safeActionUrl(value, user, category) {
   const base = user.role === "dean" ? "/dean" : user.role === "student" ? "/student" : "/faculty";
   const allowed = user.role === "dean"
     ? /^\/dean\/(?:import(?:\?preview=[a-f\d-]{36})?|users(?:\?userId=[a-f\d]{24})?|attendance-review(?:\/[a-f\d]{24})?|reports|consultations|faculty\/(?:consultations|requests|history))$/i
-    : new RegExp(`^${base}/(?:consultations|appointments|requests|history)$`);
+    : user.role === "student"
+      ? /^\/student\/(?:consultations|history)(?:\?appointment=[a-f\d]{24})?$/i
+      : new RegExp(`^${base}/(?:consultations|appointments|requests|history)$`);
   if (!allowed.test(value)) return undefined;
   if (user.role === "dean") {
     if (category === "Management" && !/^\/dean\/(?:users|import|consultations)(?:\?|$)/.test(value)) return undefined;

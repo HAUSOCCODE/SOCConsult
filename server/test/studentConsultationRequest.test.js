@@ -52,7 +52,8 @@ test("selected-slot booking validates authoritative data, rolls back and prevent
     assert.equal(result.startAt, record.startAt.toISOString()); assert.equal(result.subject, "Project");
     assert.equal(result.reservationToken, undefined); assert.equal(result.statusHistory.length, 1);
     assert.equal((await h.request('/appointments', "otherStudent", "POST", body)).status, 409);
-    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
+    assert.ok(h.state.notifications.some(notification => notification.recipient === h.users.student.id && notification.type === "request_submitted"));
   } finally { await h.close(); }
 });
 

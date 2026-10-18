@@ -20,7 +20,10 @@ for (const role of ["faculty", "dean"]) test(role+" unscheduled requests remain 
     assert.equal(h.state.appointments.length, 1); assert.equal(h.state.appointments[0].status, "Confirmed");
     assert.equal(h.state.appointments[0].statusHistory.length, 2); assert.equal(h.state.holds.length, 30);
     assert.equal((await h.request(path, role, "PUT", decision)).status, 409);
-    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 2);
+    assert.equal(h.state.audits.length, 2); assert.equal(h.state.notifications.length, 3);
+    assert.equal(h.state.notifications.filter(notification => notification.recipient === h.users.student.id).length, 2);
+    assert.ok(h.state.notifications.some(notification => notification.type === "request_submitted"));
+    assert.ok(h.state.notifications.some(notification => notification.type === "confirmed"));
     // A different pending request can be cancelled without inventing a schedule.
     const second = await h.request('/schedule-requests', "student", "POST", body);
     const pending = (await second.json()).appointment;

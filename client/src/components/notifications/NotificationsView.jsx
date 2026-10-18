@@ -3,7 +3,6 @@ import {
   CalendarDays,
   CalendarCheck,
   CheckCircle2,
-  CheckSquare,
   ChevronRight,
   ChevronUp,
   Clock3,
@@ -23,11 +22,11 @@ import Pagination from "../Pagination";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../ConfirmDialog";
 import { formatPersonNameInNotification } from "../../utils/formatPersonName";
+import { useNavigate } from "react-router-dom";
 
 const ITEMS_PER_PAGE = 6;
 
 const iconFor = (notification) => {
-  if (notification.type === "task") return CheckSquare;
   if (/rejected|cancelled/i.test(notification.title || "")) return XCircle;
   if (/approved|completed/i.test(notification.title || ""))
     return CalendarCheck;
@@ -119,8 +118,10 @@ function NotificationsPageContent({
       setUnreadCount((current) => Math.max(0, current - 1));
       refreshBadge();
       await latestLoad.current(true);
+      return true;
     } catch {
       toast.error("Unable to update this notification. Please try again.");
+      return false;
     }
   };
   const readAll = async () => {
@@ -397,6 +398,7 @@ function StudentNotificationsContent({
   confirmClear,
   faculty = false,
 }) {
+  const navigate = useNavigate();
   const [expandedNotificationId, setExpandedNotificationId] = useState(null);
   const { pagination } = useContext(NotificationPageContext);
   const shown = notifications;
@@ -424,14 +426,19 @@ function StudentNotificationsContent({
   }, [expandedNotificationId, pageNotifications]);
 
   const open = async (notification) => {
+    if (!notification.isRead && !(await read(notification._id))) return;
+    if (!faculty && /^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i.test(notification.actionUrl || "")) {
+      navigate(notification.actionUrl);
+      return;
+    }
     setSelected(notification);
-    if (!notification.isRead) await read(notification._id);
   };
   const date = (value) => {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Date unavailable"
-      : parsed.toLocaleString(undefined, {
+      : parsed.toLocaleString("en-PH", {
+          timeZone: "Asia/Manila",
           year: "numeric",
           month: "short",
           day: "numeric",
@@ -449,9 +456,9 @@ function StudentNotificationsContent({
       return { month: "---", day: "--", year: "" };
     }
     return {
-      month: parsed.toLocaleString(undefined, { month: "short" }).toUpperCase(),
-      day: parsed.toLocaleString(undefined, { day: "2-digit" }),
-      year: parsed.toLocaleString(undefined, { year: "numeric" }),
+      month: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short" }).toUpperCase(),
+      day: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", day: "2-digit" }),
+      year: parsed.toLocaleString("en-PH", { timeZone: "Asia/Manila", year: "numeric" }),
     };
   };
   const changePage = (page) => {

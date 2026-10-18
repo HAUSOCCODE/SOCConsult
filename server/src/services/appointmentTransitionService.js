@@ -9,6 +9,7 @@ import Notification from "../models/Notification.js";
 import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
 import { safeReason, scheduleSnapshot, statusHistoryEntry } from "./appointmentHistoryService.js";
+import { appointmentEvent, bestEffortStudentConsultationEmail, createStudentConsultationNotification } from "./consultationNotificationService.js";
 
 const fail = (message, statusCode = 409, code = "APPOINTMENT_TRANSITION_BLOCKED") => {
   throw Object.assign(new Error(message), { statusCode, code });
@@ -125,16 +126,16 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
     changes: { before: { status: from }, after: { status: to } },
     metadata: { source: action }, createdAt: now,
   }], { session });
-  const recipient = actor.role === "student" ? appointment.faculty : appointment.student;
-  const title = action === "propose" ? "Consultation Reschedule Proposed"
-    : action === "expire" ? "Consultation Request Expired" : `Consultation ${to}`;
-  const targetUser = await User.findById(recipient).select("role").session(session);
-  await Notification.create([{
-    recipient, type: "appointment", category: "Consultation", title, message: action === "propose"
-      ? "A new consultation schedule was proposed. Review the proposal in My Consultations."
-      : `The consultation status is now ${to}.`, relatedEntityId: appointment._id,
-    actionUrl: actor.role === "student" ? (targetUser?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments") : "/student/consultations",
-  }], { session });
+  if (actor.role === "student") {
+    const targetUser = await User.findById(appointment.faculty).select("role").session(session);
+    await Notification.create([{ recipient: appointment.faculty, type: "appointment", category: "Consultation",
+      title: action === "request" ? "Consultation Request Submitted" : action.endsWith("_proposal") ? "Reschedule Response Recorded" : `Consultation ${to}`,
+      message: action === "request" ? "A Student submitted a consultation request." : `The consultation status is now ${to}.`,
+      relatedEntityId: appointment._id,
+      actionUrl: targetUser?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" }], { session });
+  }
+  const event = appointmentEvent(action);
+  if (event) await createStudentConsultationNotification({ student: appointment.student, appointmentId: appointment._id, event, session });
 }
 
 export async function transitionAppointment({ id, actor, action, reason = "", schedule: inputSchedule, availabilityId,
@@ -258,6 +259,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
     if (error.code === 11000) fail("The schedule conflicts with another active request.");
     throw error;
   } finally { await session.endSession(); }
+  const event = appointmentEvent(action);
+  if (event) await bestEffortStudentConsultationEmail({ student: result.student, appointmentId: result._id, event });
   return safeAppointment(result, actor.role);
 }
 
@@ -286,5 +289,6 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
     if (error.code === 11000) fail("An active consultation request already exists.");
     throw error;
   } finally { await session.endSession(); }
+  await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "request_submitted" });
   return safeAppointment(appointment, actor.role);
 }

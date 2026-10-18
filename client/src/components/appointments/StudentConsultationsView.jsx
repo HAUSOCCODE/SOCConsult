@@ -1,5 +1,6 @@
 import { CalendarDays, Clock3, Eye, MapPin, Monitor, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import { formatPersonName } from "../../utils/formatPersonName";
@@ -36,6 +37,7 @@ const timeLabel = (value) =>
   }) || "Not available";
 
 export default function StudentConsultationsView() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
@@ -52,6 +54,20 @@ export default function StudentConsultationsView() {
       .catch(() => setError("Unable to load consultations. Please try again."));
   };
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const linkedId = searchParams.get("appointment");
+    if (!items || !/^[a-f\d]{24}$/i.test(linkedId || "")) return;
+    const linked = items.find(item => String(item._id) === linkedId);
+    if (linked) {
+      const linkedTab = TABS.find(entry => entry.statuses.includes(linked.status));
+      if (linkedTab) setTab(linkedTab.id);
+      setDetails(linked);
+    }
+  }, [items, searchParams]);
+  const closeDetails = () => {
+    setDetails(null);
+    if (searchParams.has("appointment")) setSearchParams({}, { replace: true });
+  };
   const groups = useMemo(() => {
     const source = Array.isArray(items) ? items : [];
     return Object.fromEntries(TABS.map((entry) => [entry.id, source
@@ -137,7 +153,7 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} onClose={() => setDetails(null)} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} onClose={closeDetails} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
       {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
     </div>
   );

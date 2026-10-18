@@ -54,7 +54,8 @@ test("two expiration workers have one committed transition, history, audit, Stud
     assert.equal(stored.expirationReason, "faculty_response_deadline_passed");
     assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
     assert.equal(h.state.notifications[0].recipient, record.student);
-    assert.equal(h.state.notifications[0].title, "Consultation Request Expired");
+    assert.equal(h.state.notifications[0].title, "Consultation Expired");
+    assert.equal(h.state.notifications[0].type, "expired");
     assert.equal(h.state.slots[0].reservationToken, undefined);
     assert.equal(h.state.slots[1].reservationToken, unrelated.reservationToken);
     assert.deepEqual(h.state.holds.map((hold) => hold.appointment), [unrelated._id]);
