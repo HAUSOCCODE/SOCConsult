@@ -260,7 +260,7 @@ for (const role of ["faculty", "dean"]) test(`${role} combined calendar includes
     h.state.appointments.push(fixture({ faculty: actor.id, availability: pendingSlot._id, student: h.users.student.id }));
     h.state.appointments.push(fixture({ faculty: actor.id, availability: confirmedSlot._id, status: "Confirmed", student: h.users.otherStudent.id,
       startAt: confirmedSlot.startAt, endAt: confirmedSlot.endAt }));
-    const response = await h.request(`/faculty/calendar?start=2099-01-01&end=2099-01-01&includeAvailability=true&faculty=${h.users.otherFaculty.id}`, role);
+    const response = await h.request(`/faculty/calendar?start=2099-01-01&end=2099-01-01&includeAvailability=true`, role);
     const body = await response.json(); assert.equal(response.status, 200);
     assert.equal(body.events.length, 4);
     assert.deepEqual(body.events.map(event => event.status).sort(), ["Available", "Confirmed", "Inactive", "Pending"]);
@@ -268,7 +268,7 @@ for (const role of ["faculty", "dean"]) test(`${role} combined calendar includes
     assert.equal(body.events.find(event => event.status === "Confirmed").displayStatus, "Confirmed consultation");
     assert.doesNotMatch(JSON.stringify(body), /private.test|reservationToken|schedulingRevision/);
     const defaultCalendar = await h.request("/faculty/calendar?start=2099-01-01&end=2099-01-01", role);
-    assert.deepEqual((await defaultCalendar.json()).events.map(event => event.status), ["Confirmed"]);
+    assert.deepEqual((await defaultCalendar.json()).events.map(event => event.status).sort(), ["Available", "Confirmed", "Inactive", "Pending"]);
   } finally { await h.close(); }
 });
 

@@ -191,7 +191,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     account: "DeanAccountSettings",
     "faculty/dashboard": "FacultyDashboard",
     "faculty/requests": "AppointmentRequests",
-    "faculty/availability": "ManageAvailability",
+    "faculty/availability": "FacultyAvailabilityCalendar",
     "faculty/consultations": "FacultyAppointments",
     "faculty/history": "FacultyHistory",
     "faculty/reports": "DeferredFeaturePage",

@@ -1,18 +1,8 @@
-import { Link } from "react-router-dom";
-import ConsultationCalendar from "../../components/calendar/ConsultationCalendar";
+import { Navigate, useLocation } from "react-router-dom";
+import { calendarAliasSuffix } from "../../utils/deanWorkspace";
 
-export default function FacultyConsultationCalendar({
-  consultationsPath = "/faculty/consultations",
-}) {
-  return (
-    <div className="space-y-4">
-      {consultationsPath === "/faculty/consultations" && (
-        <Link className="btn-secondary inline-flex" to="/faculty/availability">
-          Back to Availability &amp; Calendar
-        </Link>
-      )}
-      <ConsultationCalendar includeAvailability consultationsPath={consultationsPath}
-        description="View your available slots, pending requests, confirmed consultations, and inactive slots in Asia/Manila." />
-    </div>
-  );
+export default function FacultyConsultationCalendar({ consultationsPath = "/faculty/consultations" }) {
+  const location = useLocation();
+  const base = consultationsPath === "/dean/faculty/consultations" ? "/dean/faculty" : "/faculty";
+  return <Navigate replace to={base + "/availability" + calendarAliasSuffix(location.search, location.hash)} />;
 }

@@ -134,8 +134,8 @@ test("Dean publishes without an optional link, Student books, and management nev
     assert.equal(ownedPersonal.status, 200);
     assert.deepEqual((await ownedPersonal.json()).appointments.map(row => row._id), [consultation._id]);
     const mine = await h.request(`/availability/mine?${forged}`, "dean");
-    assert.equal(mine.status, 200);
-    assert.deepEqual((await mine.json()).availability.map(row => row._id), [slot._id]);
+    assert.equal(mine.status, 400);
+    assert.deepEqual((await (await h.request("/availability/mine", "dean")).json()).availability.map(row => row._id), [slot._id]);
     const requestSchedules = await h.request(`/availability/request-schedules?${forged}`, "dean");
     assert.equal(requestSchedules.status, 200);
     assert.deepEqual((await requestSchedules.json()).schedules.map(row => row._id), [slot._id]);
@@ -143,8 +143,10 @@ test("Dean publishes without an optional link, Student books, and management nev
     assert.equal(redirectedOwner.status, 200);
     assert.deepEqual((await redirectedOwner.json()).schedules.map(row => row._id), [slot._id]);
     const calendar = await h.request(`/faculty/calendar?start=2099-02-01&end=2099-02-01&${forged}`, "dean");
-    assert.equal(calendar.status, 200);
-    assert.deepEqual((await calendar.json()).events.map(row => row.id), [consultation._id]);
+    assert.equal(calendar.status, 400);
+    const ownCalendar = await h.request("/faculty/calendar?start=2099-02-01&end=2099-02-01", "dean");
+    assert.equal(ownCalendar.status, 200);
+    assert.deepEqual((await ownCalendar.json()).events.map(row => row.appointmentId), [consultation._id]);
     for (const [path, method, payload] of [
       [`/availability/${foreign.availability}/details`, "GET"],
       [`/availability/${foreign.availability}`, "PUT", body],

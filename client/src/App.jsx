@@ -21,7 +21,6 @@ import FacultyAppointments from "./pages/Faculty/FacultyAppointments";
 import FacultyConsultationCalendar from "./pages/Faculty/FacultyConsultationCalendar";
 import AppointmentRequests from "./pages/Faculty/AppointmentRequests";
 import FacultyHistory from "./pages/Faculty/FacultyConsultationHistory";
-import ManageAvailability from "./pages/Faculty/ManageAvailability";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
 import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
@@ -139,7 +138,7 @@ export default function App() {
                 }
               />
               <Route path="requests" element={<AppointmentRequests />} />
-              <Route path="availability" element={<ManageAvailability routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
+              <Route path="availability" element={<FacultyAvailabilityCalendar routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
               <Route path="consultations" element={<FacultyAppointments />} />
               <Route path="history" element={<FacultyHistory />} />
               <Route

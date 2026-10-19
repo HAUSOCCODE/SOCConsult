@@ -64,7 +64,7 @@ const formatLocation = (value) => {
     .join("");
 };
 
-export default function ManageAvailability({ routeBase = "/faculty", consultationsPath = "/faculty/appointments", showCalendarLink = true }) {
+export default function ManageAvailability({ routeBase = "/faculty", consultationsPath = "/faculty/appointments", showCalendarLink = true, onChanged, revision = 0 }) {
   const requestSequence = useRef(0);
   const mutationBusy = useRef(false);
   const [editingVersion, setEditingVersion] = useState(0);
@@ -94,7 +94,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
   const load = async () => {
     const sequence = ++requestSequence.current;
     try {
-      const data = await api("/availability/mine");
+      const data = await api("/availability/mine", { cache: "no-store" });
       if (sequence !== requestSequence.current) return;
       setAvailability(
         Array.isArray(data?.availability) ? data.availability : [],
@@ -116,7 +116,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [revision]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -190,6 +190,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
         },
       );
       await load();
+      onChanged?.();
       resetForm();
       toast.success(data.message);
     } catch (requestError) {
@@ -238,6 +239,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
       });
       toast.success(data.message);
       await load();
+      onChanged?.();
       setDeactivateTarget(null);
     } catch (requestError) {
       showRequestError(requestError, "Unable to update availability.");
@@ -266,6 +268,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
         data.message || "Consultation availability removed successfully.",
       );
       await load();
+      onChanged?.();
     } catch (requestError) {
       showRequestError(requestError, "Unable to remove availability.");
     } finally {
@@ -303,9 +306,9 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
         onCancel={() => !toggling && setDeactivateTarget(null)}
       />
       <section className="w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-[1200px]:p-5">
-        <h1 className="text-base font-bold text-maroon-900">
+        <h2 className="text-base font-bold text-maroon-900">
           Add Consultation Availability
-        </h1>
+        </h2>
         <p className="mt-1 text-xs leading-5 text-slate-500">
           Publish one consultation slot for one Student. Times use Asia/Manila.
         </p>

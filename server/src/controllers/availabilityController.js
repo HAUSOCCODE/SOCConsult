@@ -156,6 +156,8 @@ export const getFacultyAvailability = async (req, res) => {
 };
 
 export const getMyAvailability = async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (Object.keys(req.query).length) return res.status(400).json({ message: "Invalid personal availability filters. Owner IDs are not accepted." });
   const now = new Date();
   const availability = await Availability.find({ faculty: req.user.id })
     .select("+meetingLink +reservationToken")

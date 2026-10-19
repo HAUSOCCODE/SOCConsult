@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { legacyFacultyDestination } from "../../client/src/utils/deanWorkspace.js";
+import { calendarAliasSuffix, legacyFacultyDestination } from "../../client/src/utils/deanWorkspace.js";
 const require = createRequire(
   new URL("../../client/package.json", import.meta.url),
 );
@@ -169,26 +169,25 @@ test("canonical titles, reused account components and calendar links remain avai
     React.Children.toArray(Account().props.children).map((x) => x.type),
     [Profile, Security],
   );
-  const Availability = await load(
-    "pages/Faculty/FacultyAvailabilityCalendar.jsx",
-    { Link: router.Link, ManageAvailability: Profile },
-  );
-  assert.equal(
-    React.Children.toArray(Availability().props.children)[0].props.to,
-    "/faculty/calendar",
-  );
-  const Calendar = await load("pages/Faculty/FacultyConsultationCalendar.jsx", {
-    Link: router.Link,
-    ConsultationCalendar: Profile,
+  const Availability = await load("pages/Faculty/FacultyAvailabilityCalendar.jsx", {
+    Link: router.Link, ManageAvailability: Profile, ConsultationCalendar: Profile,
+    FacultyConsultationsView: Profile, AvailabilityCalendarDetails: Profile,
+    useState: initial => [initial, () => {}], useCallback: fn => fn, useRef: () => ({ current: null }),
   });
-  const calendar = React.Children.toArray(Calendar({}).props.children);
-  assert.equal(calendar[0].props.to, "/faculty/availability");
-  assert.equal(calendar[1].props.consultationsPath, "/faculty/consultations");
-  assert.equal(
-    React.Children.toArray(
-      Calendar({ consultationsPath: "/dean/faculty/consultations" }).props
-        .children,
-    ).length,
-    1,
-  );
+  const integrated = React.Children.toArray(Availability({}).props.children);
+  assert.equal(integrated[0].props.title, "Availability & Calendar");
+  assert.equal(integrated[0].props.personalCalendar, true);
+  assert.equal(integrated[2].props.showCalendarLink, false);
+  assert.equal(integrated[3].props.detailOnly, true);
+  const Calendar = await load("pages/Faculty/FacultyConsultationCalendar.jsx", {
+    Navigate: router.Navigate, calendarAliasSuffix,
+    useLocation: () => ({ search: "?view=week&owner=forged&includeFinalized=true", hash: "#details" }),
+  });
+  assert.equal(Calendar({}).props.to, "/faculty/availability?view=week&includeFinalized=true#details");
+  assert.equal(Calendar({}).props.replace, true);
+  assert.equal(Calendar({ consultationsPath: "/dean/faculty/consultations" }).props.to, "/dean/faculty/availability?view=week&includeFinalized=true#details");
+  assert.equal(calendarAliasSuffix("?date=2026-02-30&view=week&view=month&includeInactive=maybe", "#//evil"), "");
+  const app = await source("App.jsx");
+  assert.ok(app.includes('FacultyAvailabilityCalendar routeBase="/dean/faculty"'));
+
 });

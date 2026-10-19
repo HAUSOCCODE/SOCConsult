@@ -1,6 +1,21 @@
 export const isDeanPersonalPath = (pathname) =>
   pathname === "/dean/faculty" || pathname.startsWith("/dean/faculty/");
 
+// Compatibility aliases preserve inert calendar options only, never owner/redirect inputs.
+export function calendarAliasSuffix(search = "", hash = "") {
+  const input = new URLSearchParams(search), output = new URLSearchParams();
+  for (const key of ["view", "date", "includeInactive", "includeFinalized"]) {
+    const value = input.get(key);
+    if (input.getAll(key).length !== 1) continue;
+    const valid = key === "view" ? ["month", "week"].includes(value)
+      : key === "date" ? /^\d{4}-\d{2}-\d{2}$/.test(value || "") && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+      : ["true", "false"].includes(value);
+    if (valid) output.set(key, value);
+  }
+  const safeHash = /^#[a-z\d_-]{1,80}$/i.test(hash) ? hash : "";
+  return (output.size ? `?${output}` : "") + safeHash;
+}
+
 export const isDeanManagementPath = (pathname) =>
   pathname.startsWith("/dean/") && !isDeanPersonalPath(pathname);
 

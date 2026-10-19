@@ -100,7 +100,8 @@ const fullDateLabel = (value) =>
   }).format(new Date(value));
 const range = (count, start) =>
   Array.from({ length: count }, (_, index) => addDays(start, index));
-const eventStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Confirmed;
+const FINALIZED_STYLES = Object.fromEntries(["Rejected", "Cancelled", "Expired", "No Show"].map(status => [status, STATUS_STYLES.Inactive]));
+const eventStyle = (status) => STATUS_STYLES[status] || FINALIZED_STYLES[status] || STATUS_STYLES.Confirmed;
 const eventParticipantName = (event) =>
   event.participantName || formatPersonName(event.student?.name);
 
@@ -113,6 +114,8 @@ export default function ConsultationCalendar({
   onEventClick,
   showUpcoming = true,
   emptyMessage,
+  personalCalendar = false,
+  revision = 0,
 }) {
   const today = manilaDateKey();
   const [view, setView] = useState("month");
@@ -124,6 +127,8 @@ export default function ConsultationCalendar({
   const [error, setError] = useState("");
   const [errorRetryable, setErrorRetryable] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
+  const [includeInactive, setIncludeInactive] = useState(true);
+  const [includeFinalized, setIncludeFinalized] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [expandedDay, setExpandedDay] = useState(null);
   const requestSequence = useRef(0);
@@ -138,37 +143,52 @@ export default function ConsultationCalendar({
     const sequence = ++requestSequence.current;
     setLoading(true);
     setError("");
-    api(`${apiPath}?start=${period.start}&end=${period.end}${includeAvailability ? "&includeAvailability=true" : ""}`, {
+    api(`${apiPath}?start=${period.start}&end=${period.end}${includeAvailability ? "&includeAvailability=true" : ""}${personalCalendar ? `&includeInactive=${includeInactive}&includeFinalized=${includeFinalized}` : ""}`, {
       signal: controller.signal,
+      cache: "no-store",
     })
       .then((data) => {
-        if (sequence !== requestSequence.current) return;
+        if (controller.signal.aborted || sequence !== requestSequence.current) return;
         setEvents(Array.isArray(data.events) ? data.events : []);
         setUpcoming(Array.isArray(data.upcoming) ? data.upcoming : []);
       })
       .catch((requestError) => {
         if (requestError.name === "AbortError") return;
-        if (sequence !== requestSequence.current) return;
+        if (controller.signal.aborted || sequence !== requestSequence.current) return;
         setEvents([]);
         setUpcoming([]);
-        setErrorRetryable(isRecoverableStudentError(requestError));
-        setError(safeStudentError(requestError, "We couldn't load the calendar. Please try again."));
+        setErrorRetryable(requestError.status === 422 || isRecoverableStudentError(requestError));
+        setError(personalCalendar && requestError.status === 422 ? "Too many calendar records. Choose a narrower range using Week view." : safeStudentError(requestError, "We couldn't load the calendar. Please try again."));
       })
       .finally(() => {
-        if (sequence === requestSequence.current) setLoading(false);
+        if (!controller.signal.aborted && sequence === requestSequence.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiPath, includeAvailability, period.end, period.start, retryKey]);
+  }, [apiPath, includeAvailability, period.end, period.start, retryKey, personalCalendar, includeInactive, includeFinalized, revision]);
+
+  useEffect(() => {
+    if (!personalCalendar) return undefined;
+    const refresh = () => setRetryKey(value => value + 1);
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 60000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [personalCalendar]);
 
   const eventsByDate = useMemo(() => {
     const grouped = new Map();
     for (const event of events) {
-      const key = manilaDateKey(new Date(event.start));
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(event);
+      if (!Number.isFinite(+new Date(event.start)) || !Number.isFinite(+new Date(event.end)) || +new Date(event.end) <= +new Date(event.start)) continue;
+      let key = manilaDateKey(new Date(event.start));
+      const last = personalCalendar ? manilaDateKey(new Date(+new Date(event.end) - 1)) : key;
+      if (personalCalendar && key < period.start) key = period.start;
+      while (key <= last && (!personalCalendar || key <= period.end)) {
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(event);
+        key = addDays(key, 1);
+      }
     }
     return grouped;
-  }, [events]);
+  }, [events, personalCalendar, period.start, period.end]);
 
   const navigate = (direction) => {
     const next =
@@ -220,6 +240,11 @@ export default function ConsultationCalendar({
         </p>
       </div>
 
+      {personalCalendar && <div className="flex flex-wrap gap-4 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={includeInactive} onChange={event => setIncludeInactive(event.target.checked)} />Show inactive / unavailable slots</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={includeFinalized} onChange={event => setIncludeFinalized(event.target.checked)} />Show past finalized consultations</label>
+      </div>}
+      {error && personalCalendar && <CalendarToolbar heading={heading} view={view} loading={false} onPrevious={() => navigate(-1)} onNext={() => navigate(1)} onToday={goToday} onView={changeView} />}
       {error ? (
         <CalendarError
           message={error}
@@ -276,7 +301,7 @@ export default function ConsultationCalendar({
                     {emptyMessage || `No consultations are scheduled in this ${view}.`}
                   </p>
                 )}
-                <CalendarLegend includeAvailability={includeAvailability} />
+                <CalendarLegend includeAvailability={includeAvailability} personalCalendar={personalCalendar} includeFinalized={includeFinalized} />
               </>
             )}
           </section>
@@ -698,10 +723,10 @@ function CalendarStatus({ event, compact = false }) {
     : <StatusBadge appointment status={event.status} compact={compact} allowWrap />;
 }
 
-function CalendarLegend({ includeAvailability }) {
+function CalendarLegend({ includeAvailability, personalCalendar, includeFinalized }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-200 px-4 py-3 text-xs text-slate-600">
-      {Object.entries(STATUS_STYLES).filter(([status]) => includeAvailability || !["Available", "Pending", "Inactive"].includes(status)).map(([status, style]) => (
+      {Object.entries({ ...STATUS_STYLES, ...(personalCalendar && includeFinalized ? FINALIZED_STYLES : {}) }).filter(([status]) => (includeAvailability || !["Available", "Pending", "Inactive"].includes(status)) && (!personalCalendar || includeFinalized || status !== "Completed")).map(([status, style]) => (
         <span key={status} className="inline-flex items-center gap-1.5">
           <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
           {includeAvailability && status === "Pending" ? "Pending request" : includeAvailability && status === "Confirmed" ? "Confirmed consultation" : status === "Inactive" ? "Inactive / unavailable" : status}

@@ -19,10 +19,11 @@ async function harness(role = "faculty") {
     Link: ({ to, children }) => React.createElement("a", { href: to }, children),
     Loading: () => React.createElement("p", null, "Loading"), ErrorState: ({ message, onRetry }) => React.createElement("button", { onClick: onRetry }, message), EmptyState: ({ title }) => React.createElement("p", null, title),
     StatusBadge: ({ status }) => React.createElement("span", null, status), consultationTime: v => v || "Not scheduled",
+    DetailLoadingDialog: ({ children }) => React.createElement("section", null, children),
     FacultyAppointmentDetailsModal: ({ children }) => React.createElement("section", null, children), FacultyRescheduleModal: () => null, ConfirmDialog: () => null,
   };
   const Component = new Function("React", ...Object.keys(imports), `${compiled.code};return FacultyConsultationsView;`)(React, ...Object.values(imports));
-  return { state, effects, pending, render: () => { slot = 0; refSlot = 0; effects.length = 0; return Component(); }, html: renderToStaticMarkup };
+  return { state, effects, pending, render: (props) => { slot = 0; refSlot = 0; effects.length = 0; return Component(props); }, html: renderToStaticMarkup };
 }
 const result = { appointments: [{ _id: "first", student: { name: "Student <script>" }, subject: "<img>" }], pagination: { totalPages: 2 } };
 test("personal list escapes text, paginates, exposes required sections and loads fresh abortable details", async () => {
@@ -83,4 +84,28 @@ test("cancellation validates reasons, guards synchronous duplicates and refreshe
     assert.match(h.html(tree), /Review the latest/); assert.doesNotMatch(h.html(tree), /private server error/);
     assert.equal(h.pending.length, 2);
   }
+});
+
+for (const role of ["faculty", "dean"]) test(role + " calendar reuses fresh details and actions, refreshing calendar and details after success", async () => {
+  const h = await harness(role); let changed = 0, closed = 0;
+  const selection = { id: "calendar-appointment", opener: { focus() {} } };
+  const props = { detailOnly: true, selection, onChanged: () => changed++, onDetailClose: () => closed++ };
+  h.render(props); assert.equal(h.effects[0](), undefined); h.effects[2]();
+  assert.equal(h.pending.length, 1); assert.equal(h.pending[0].path, "/appointments/consultations/calendar-appointment");
+  assert.equal(h.pending[0].options.cache, "no-store");
+  h.pending[0].resolve({ appointment: { _id: selection.id, status: "Confirmed", __v: 3, actions: { propose: true, cancel: true } } }); await settle();
+  let tree = h.render(props); assert.doesNotMatch(h.html(tree), /My Consultations|Consultation sections/);
+  button(tree, "Propose reschedule").props.onClick(); tree = h.render(props);
+  const proposal = elements(tree).find(el => el.props?.onSuccess && el.props?.onConflict);
+  const proposing = proposal.props.onSuccess(); assert.equal(h.pending[1].path, "/appointments/consultations/calendar-appointment");
+  h.pending[1].resolve({ appointment: { _id: selection.id, status: "Confirmed", __v: 4, actions: { cancel: true } } }); await proposing;
+  assert.equal(changed, 1);
+  tree = h.render(props); button(tree, "Cancel consultation").props.onClick();
+  let dialog = elements(h.render(props)).find(el => el.props?.title === "Cancel consultation"); dialog.props.onInputChange("Unavailable");
+  dialog = elements(h.render(props)).find(el => el.props?.title === "Cancel consultation"); const cancelling = dialog.props.onConfirm();
+  assert.equal(JSON.parse(h.pending[2].options.body).expectedVersion, 4);
+  h.pending[2].resolve({}); await settle(); assert.equal(changed, 2);
+  h.pending[3].resolve({ appointment: { _id: selection.id, status: "Cancelled", actions: {} } }); await cancelling;
+  tree = h.render(props); assert.equal(button(tree, "Cancel consultation"), undefined);
+  elements(tree).find(el => el.props?.personal).props.onClose(); assert.equal(closed, 1);
 });
