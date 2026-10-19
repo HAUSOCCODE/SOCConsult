@@ -16,6 +16,7 @@ export default function FacultyConsultationsView() {
   const [list, setList] = useState({ loading: true }), [detail, setDetail] = useState(null), [selected, setSelected] = useState("");
   const [proposing, setProposing] = useState(false), [cancelling, setCancelling] = useState(false), [reason, setReason] = useState(""), [busy, setBusy] = useState(false), [actionError, setActionError] = useState("");
   const listRequest = useRef(null), detailRequest = useRef(null), busyRef = useRef(false), opener = useRef(null);
+  const [reasonError, setReasonError] = useState("");
   useEffect(() => {
     const load = async () => {
       listRequest.current?.abort(); const c = new AbortController(); listRequest.current = c;
@@ -43,12 +44,16 @@ export default function FacultyConsultationsView() {
     catch { if (!c.signal.aborted) setDetail({ error: "Unable to load this consultation. It may no longer be available." }); }
   };
   const cancel = async () => {
-    if (busyRef.current || !reason.trim() || !Number.isInteger(detail?.appointment?.__v)) return;
+    if (busyRef.current) return;
+    if (!reason.trim() || reason.trim().length > 500) {
+      setReasonError("Enter a cancellation reason between 1 and 500 characters."); return;
+    }
+    if (!detail?.appointment?.actions?.cancel || !Number.isInteger(detail?.appointment?.__v)) return;
     busyRef.current = true; setBusy(true); setActionError("");
     try {
       await api(`/appointments/${selected}/status`, { method: "PUT", body: JSON.stringify({ status: "Cancelled", reason: reason.trim(), expectedVersion: detail.appointment.__v }) });
       setCancelling(false); setReason(""); setRevision(v => v + 1); await open(selected);
-    } catch { setCancelling(false); await open(selected); setActionError("Unable to cancel. Review the latest consultation details before trying again."); }
+    } catch { setCancelling(false); setRevision(v => v + 1); await open(selected); setActionError("Unable to cancel. Review the latest consultation details before trying again."); }
     finally { busyRef.current = false; setBusy(false); }
   };
   const a = detail?.appointment;
@@ -68,10 +73,10 @@ export default function FacultyConsultationsView() {
       <div className="flex flex-wrap gap-3">
         {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <Link className="btn-secondary" to={`${base}/requests`}>Review request decisions</Link>}
         {a.status === "Confirmed" && a.actions.propose && <button type="button" className="btn-secondary" onClick={() => setProposing(true)}>Propose reschedule</button>}
-        {a.actions.cancel && <button type="button" className="btn-secondary" onClick={() => { setReason(""); setCancelling(true); }}>Cancel consultation</button>}
+        {a.actions.cancel && <button type="button" className="btn-secondary" onClick={() => { setReason(""); setReasonError(""); setCancelling(true); }}>Cancel consultation</button>}
       </div>{actionError && <p role="alert">{actionError}</p>}
     </FacultyAppointmentDetailsModal>}
     {proposing && a && <FacultyRescheduleModal appointment={a} opener={opener.current} onClose={() => setProposing(false)} onConflict={async () => { setProposing(false); await open(selected); setRevision(v => v + 1); }} onSuccess={async () => { setProposing(false); await open(selected); setRevision(v => v + 1); }} />}
-    <ConfirmDialog open={cancelling} title="Cancel consultation" message="Cancel this consultation?" inputLabel="Cancellation reason (required, up to 500 characters)" inputRequired inputMaxLength={500} inputValue={reason} onInputChange={setReason} confirmLabel="Cancel consultation" loading={busy} onCancel={() => !busy && setCancelling(false)} onConfirm={cancel} />
+    <ConfirmDialog open={cancelling} title="Cancel consultation" message="Cancel this consultation?" inputLabel="Cancellation reason (required, up to 500 characters)" inputRequired inputError={reasonError} inputMaxLength={500} inputValue={reason} onInputChange={value => { setReason(value); setReasonError(""); }} confirmLabel="Cancel consultation" loadingLabel="Cancelling..." loading={busy} onCancel={() => !busyRef.current && setCancelling(false)} onConfirm={cancel} />
   </div>;
 }

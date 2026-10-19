@@ -60,3 +60,27 @@ test("details use opt-in personal mode, owner eligibility and safe errors; share
   assert.match(detail, /role="dialog"/); assert.match(detail, /aria-modal="true"/); assert.match(detail, /useDialogFocus/); assert.match(detail, /personalConsultation/);
   assert.doesNotMatch(detail, /student\?\.(email|studentId|program|yearLevel)|\.notes|attendanceSummary|StudentAttendanceResponseForm/);
 });
+
+test("cancellation validates reasons, guards synchronous duplicates and refreshes list/details on conflict", async () => {
+  for (const role of ["faculty", "dean"]) {
+    const h = await harness(role); h.render();
+    h.state[4] = { appointment: { _id: "a", status: "Confirmed", __v: 2, actions: { cancel: true } } }; h.state[5] = "a";
+    let tree = h.render(); button(tree, "Cancel consultation").props.onClick();
+    const dialog = () => elements(h.render()).find(el => el.props?.title === "Cancel consultation");
+    for (const reason of ["   ", "x".repeat(501)]) {
+      dialog().props.onInputChange(reason); await dialog().props.onConfirm();
+      assert.match(dialog().props.inputError, /between 1 and 500/); assert.equal(h.pending.length, 0);
+    }
+    dialog().props.onInputChange("  Unavailable  ");
+    const confirm = dialog().props.onConfirm;
+    const work = confirm(); void confirm();
+    assert.equal(h.pending.length, 1);
+    assert.deepEqual(JSON.parse(h.pending[0].options.body), { status: "Cancelled", reason: "Unavailable", expectedVersion: 2 });
+    h.pending[0].reject(new Error("private server error")); await settle();
+    assert.equal(h.state[2], 1); assert.equal(h.pending[1].path, "/appointments/consultations/a");
+    h.pending[1].resolve({ appointment: { _id: "a", status: "Cancelled", actions: { cancel: false } } }); await work;
+    tree = h.render(); assert.equal(button(tree, "Cancel consultation"), undefined);
+    assert.match(h.html(tree), /Review the latest/); assert.doesNotMatch(h.html(tree), /private server error/);
+    assert.equal(h.pending.length, 2);
+  }
+});
