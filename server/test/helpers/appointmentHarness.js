@@ -161,6 +161,9 @@ export function appointmentHarness() {
   });
   for (const [model, key] of [[AuditLog, "audits"], [Notification, "notifications"]]) patch(model, "create", async (records) => {
     failure(key); for (const record of records) { await new model(record).validate(); }
+    if (key === "notifications") for (const record of records) {
+      if (record.deduplicationKey && state.notifications.some(old => same(old.recipient, record.recipient) && old.deduplicationKey === record.deduplicationKey)) throw Object.assign(new Error("Duplicate notification"), { code: 11000 });
+    }
     state[key].push(...clone(records)); return clone(records);
   });
   return { state, lockCalls, fail: (name) => { failAt = name; }, retry: () => { retryOnce = true; }, restore: () => restores.reverse().forEach((restore) => restore()) };

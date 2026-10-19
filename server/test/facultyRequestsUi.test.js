@@ -1,3 +1,4 @@
+import { safeStudentError } from "../../client/src/utils/studentUiErrors.js";
 ﻿import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -13,6 +14,7 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
   const compiled = await transform(raw.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
   const state = [], refs = [], effects = [], pending = [], listeners = {}; let slot = 0, refSlot = 0;
   const imports = {
+    safeStudentError, useMemo: fn => fn(),
     useState: initial => { const i = slot++; if (!(i in state)) state[i] = initial; return [state[i], value => state[i] = typeof value === "function" ? value(state[i]) : value]; },
     useRef: initial => { const i = refSlot++; return refs[i] ||= { current: initial }; }, useEffect: fn => effects.push(fn), useDialogFocus() {},
     createPortal: tree => tree, document: { body: {} }, window: { document: { body: {} }, addEventListener: (key, fn) => listeners[key] = fn, removeEventListener: key => delete listeners[key] },
@@ -22,7 +24,7 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
     AppointmentRequestDetailsModal: ({ appointment, actions }) => React.createElement("div", null, appointment.reason, actions),
     OneTimeScheduleRequests: () => null, ...overrides,
   };
-  const name = file.includes("AppointmentRequestDetailsModal") ? "AppointmentRequestDetailsModal" : file.includes("SupportingDocumentViewer") ? "ProtectedRequestDocuments" : file.includes("OneTimeScheduleRequests") ? "OneTimeScheduleRequests" : "AppointmentRequests";
+  const name = file.includes("FacultyRescheduleModal") ? "FacultyRescheduleModal" : file.includes("AppointmentRequestDetailsModal") ? "AppointmentRequestDetailsModal" : file.includes("SupportingDocumentViewer") ? "ProtectedRequestDocuments" : file.includes("OneTimeScheduleRequests") ? "OneTimeScheduleRequests" : "AppointmentRequests";
   const Component = new Function("React", ...Object.keys(imports), `${compiled.code};return ${name};`)(React, ...Object.values(imports));
   return { state, effects, pending, listeners, render: props => { slot = 0; refSlot = 0; effects.length = 0; return Component(props || {}); }, html: renderToStaticMarkup };
 }
@@ -33,13 +35,17 @@ test("request list renders escaped separate text, schedule fallback, server page
   const cleanup = h.effects[0](); assert.equal(h.pending[0].path, "/appointments/requests?status=Pending&page=1");
   h.pending[0].resolve(result()); await settle(); let tree = h.render(), html = h.html(tree);
   assert.match(html, /&lt;img/); assert.match(html, /Student &lt;script&gt;/); assert.match(html, /Separate concern/); assert.match(html, /Not scheduled/); assert.match(html, /Supporting document attached/);
-  assert.equal(button(tree, "Approve"), undefined); assert.equal(button(tree, "Reject"), undefined);
+  assert.equal(button(tree, "Confirm"), undefined); assert.equal(button(tree, "Reject"), undefined);
   button(tree, "View Details").props.onClick(); assert.equal(h.pending[1].path, "/appointments/requests/first");
   tree = h.render(); assert.match(h.html(tree), /Loading request details/); assert.equal(button(tree, "Reject"), undefined);
   h.pending[1].resolve({ appointment: { ...record, startAt: "2026-10-20T00:00:00Z", endAt: "2026-10-20T01:00:00Z" } }); await settle();
   tree = h.render(); const modal = elements(tree).find(el => el.props?.personalRequest);
-  assert.ok(modal); assert.ok(button(modal.props.actions, "Approve"));
-  button(modal.props.actions, "Approve").props.onClick();
+  assert.ok(modal); assert.ok(button(modal.props.actions, "Confirm"));
+  assert.ok(button(modal.props.actions, "Propose Schedule"));
+  button(modal.props.actions, "Confirm").props.onClick();
+  assert.equal(h.pending.length,2);
+  const confirmedModal = elements(h.render()).find(el => el.props?.personalRequest);
+  const confirm = button(confirmedModal.props.actions, "Confirm appointment"); confirm.props.onClick(); confirm.props.onClick();
   assert.equal(h.pending[2].path, "/appointments/first/status"); assert.deepEqual(JSON.parse(h.pending[2].options.body), { status: "Confirmed", note: "", expectedVersion: 4 });
   h.pending[2].resolve({ appointment: { meetingLink: "PRIVATE" } }); await settle(); assert.doesNotMatch(h.html(h.render()), /PRIVATE/);
   button(h.render(), "Next").props.onClick(); h.render(); assert.equal(h.state[1], 2);
@@ -110,13 +116,36 @@ test("legacy rejection preserves its payload, blocks repeat decisions and refres
   let modal = elements(h.render()).find(el => el.props?.personalRequest);
   button(modal.props.actions, "Reject").props.onClick();
   modal = elements(h.render()).find(el => el.props?.personalRequest);
+  elements(modal.props.actions).find(el => el.type === "textarea").props.onChange({ target: { value: "Unavailable" } });
+  modal = elements(h.render()).find(el => el.props?.personalRequest);
   const reject = button(modal.props.actions, "Confirm rejection"); reject.props.onClick(); reject.props.onClick();
   assert.equal(h.pending.length, 3); assert.equal(h.pending[2].path, "/schedule-requests/first/reject");
-  assert.deepEqual(JSON.parse(h.pending[2].options.body), { note: "", expectedVersion: 4 });
+  assert.deepEqual(JSON.parse(h.pending[2].options.body), { note: "Unavailable", expectedVersion: 4 });
   h.pending[2].reject(Error("PRIVATE CONFLICT")); await settle();
   assert.equal(h.pending[3].path, "/appointments/requests/first");
   assert.doesNotMatch(h.html(h.render()), /PRIVATE CONFLICT/);
   h.pending[3].resolve({ appointment: { ...record, status: "Confirmed", __v: 5 } }); await settle();
   modal = elements(h.render()).find(el => el.props?.personalRequest); assert.equal(modal.props.actions, false);
   cleanup();
+});
+
+
+test("FAC-06 unscheduled proposal reviews before sending, requires a version, guards same-tick submits and refreshes conflicts safely", async () => {
+  let refreshed = 0;
+  const h = await harness("components/appointments/FacultyRescheduleModal.jsx", { X: () => null, formatPersonName: value => value });
+  const props = { appointment: { ...record, _id: "request", student: { name: "Student" }, startAt: null, endAt: null }, onClose() {}, onSuccess() {}, onConflict() { refreshed++; } };
+  let tree = h.render(props); assert.match(h.html(tree), /Not scheduled/); assert.doesNotMatch(h.html(tree), /NaN/);
+  const change = (type,value) => { tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.type === type).props.onChange({target:{value}}); };
+  change("date","2099-02-01"); change("time","10:00");
+  tree = h.render(props); const inputs = elements(tree).filter(el => el.type === "input");
+  inputs.find(el => el.props.maxLength === 100).props.onChange({ target:{value:"Teams"} });
+  tree = h.render(props); elements(tree).find(el => el.type === "textarea").props.onChange({target:{value:"Change schedule"}});
+  const submit = () => elements(h.render(props)).find(el => el.type === "form").props.onSubmit;
+  const event = {preventDefault(){}};
+  await submit()(event); assert.equal(h.pending.length,0); assert.match(h.html(h.render(props)),/Send proposal/);
+  const send = submit(); const first = send(event); await send(event); assert.equal(h.pending.length,1);
+  assert.equal(JSON.parse(h.pending[0].options.body).expectedVersion,4);
+  h.pending[0].reject(Object.assign(Error("PRIVATE"),{status:409})); await first;
+  assert.equal(refreshed,1); assert.doesNotMatch(h.html(h.render(props)),/PRIVATE/);
+  props.appointment.__v = undefined; await submit()(event); assert.equal(h.pending.length,1); assert.match(h.html(h.render(props)),/Reload these details/);
 });

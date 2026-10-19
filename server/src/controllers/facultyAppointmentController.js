@@ -1,3 +1,4 @@
+import { safeReason } from "../services/appointmentHistoryService.js";
 import { transitionAppointment } from "../services/appointmentTransitionService.js";
 
 const ACTIVE_STATUSES = ["Pending", "Confirmed"];
@@ -76,7 +77,7 @@ const validateInput = (body, now = new Date()) => {
   const location = String(body.location || "").trim();
   const meetingPlatform = String(body.meetingPlatform || "").trim();
   const meetingLink = String(body.meetingLink || "").trim();
-  const reason = String(body.reason || "").trim();
+  const reason = safeReason(body.reason ?? "");
   const startAt = parseManilaDateTime(consultationDate, startTime);
   if (!startAt || startAt <= now)
     return { error: "Choose a valid future date and time in Asia/Manila." };

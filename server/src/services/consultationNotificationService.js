@@ -28,14 +28,14 @@ export function consultationEmailUrl(path) {
   if (!env.clientUrl || !/^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i.test(path)) return undefined;
   return new URL(path, `${env.clientUrl.replace(/\/$/, "")}/`).toString();
 }
-export async function createStudentConsultationNotification({ student, appointmentId, event, session }) {
+export async function createStudentConsultationNotification({ student, appointmentId, event, session, transitionVersion }) {
   const definition = STUDENT_CONSULTATION_EVENTS[event];
   if (!definition) throw new Error("Unsupported consultation notification event.");
   const [title, message, historical] = definition;
   const relatedEntityId = appointmentId?._id || appointmentId;
   const actionUrl = studentConsultationPath(relatedEntityId, historical);
   const data = { recipient: student, type: event, category: event.startsWith("attendance_") || event === "finalized" ? "Attendance" : "Consultation",
-    title, message, relatedEntityId, actionUrl, deduplicationKey: `${event}:${id(relatedEntityId)}` };
+    title, message, relatedEntityId, actionUrl, deduplicationKey: `${event}:${id(relatedEntityId)}${transitionVersion == null ? "" : `:v${transitionVersion}`}` };
   return Notification.create([data], { session });
 }
 export async function sendStudentConsultationEmail({ student, appointmentId, event }) {

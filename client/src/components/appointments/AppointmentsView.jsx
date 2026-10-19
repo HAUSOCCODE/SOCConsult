@@ -407,6 +407,7 @@ export default function AppointmentsPage({ filter }) {
           appointment={facultyReschedule.appointment}
           opener={facultyReschedule.opener}
           onClose={() => setFacultyReschedule(null)}
+          onConflict={async () => { setFacultyReschedule(null); await load(); }}
           onSuccess={(data) => {
             toast.success(data.message);
             setItems((current) =>

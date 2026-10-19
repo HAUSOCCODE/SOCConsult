@@ -1,3 +1,4 @@
+import { safeStudentError } from "../../utils/studentUiErrors";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,6 +8,7 @@ import { formatPersonName } from "../../utils/formatPersonName";
 
 const TIMEZONE = "Asia/Manila";
 const parts = (value) => {
+  if (!value || !Number.isFinite(new Date(value).getTime())) return { date: "", time: "" };
   const entries = new Intl.DateTimeFormat("en-CA", {
     timeZone: TIMEZONE,
     year: "numeric",
@@ -22,7 +24,7 @@ const parts = (value) => {
     time: `${get("hour")}:${get("minute")}`,
   };
 };
-const formatDate = (value) =>
+const formatDate = (value) => !value ? "Not scheduled" :
   new Intl.DateTimeFormat("en-PH", {
     timeZone: TIMEZONE,
     weekday: "long",
@@ -30,7 +32,7 @@ const formatDate = (value) =>
     month: "long",
     day: "numeric",
   }).format(new Date(value));
-const formatTime = (value) =>
+const formatTime = (value) => !value ? "Not scheduled" :
   new Intl.DateTimeFormat("en-PH", {
     timeZone: TIMEZONE,
     hour: "numeric",
@@ -43,6 +45,7 @@ export default function FacultyRescheduleModal({
   opener,
   onClose,
   onSuccess,
+  onConflict,
 }) {
   const dialogRef = useRef(null);
   const firstFieldRef = useRef(null);
@@ -58,6 +61,7 @@ export default function FacultyRescheduleModal({
     meetingLink: appointment.meetingLink || "",
     reason: "",
   });
+  const [reviewed, setReviewed] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const duration = Number(form.duration);
@@ -76,12 +80,15 @@ export default function FacultyRescheduleModal({
       ...currentForm,
       [name]: event.target.value,
     }));
-    setError("");
+    setError(""); setReviewed(false);
   };
   const close = () => !submittingRef.current && onClose();
   const submit = async (event) => {
     event.preventDefault();
     if (submittingRef.current) return;
+    if (!Number.isInteger(appointment.__v)) { setError("Reload these details before proposing."); return; }
+    const start = new Date(`${form.consultationDate}T${form.startTime}:00+08:00`);
+    if (!Number.isFinite(start.getTime()) || start <= new Date()) { setError("Choose a valid future time in Asia/Manila."); return; }
     const reason = form.reason.trim();
     if (reason.length < 5) {
       setError("Please provide a meaningful reason of at least 5 characters.");
@@ -95,6 +102,7 @@ export default function FacultyRescheduleModal({
       setError("Meeting platform is required for an online consultation.");
       return;
     }
+    if (!reviewed) { setReviewed(true); return; }
     setSubmitting(true);
     submittingRef.current = true;
     try {
@@ -116,8 +124,9 @@ export default function FacultyRescheduleModal({
       onSuccess(data);
     } catch (requestError) {
       setError(
-        requestError.message || "Unable to reschedule the consultation.",
+        safeStudentError(requestError, "Unable to propose this schedule. Check the fields and try again."),
       );
+      if (requestError.status === 409 || requestError.status === 404) await onConflict?.();
     } finally {
       setSubmitting(false);
       submittingRef.current = false;
@@ -143,10 +152,10 @@ export default function FacultyRescheduleModal({
               id="faculty-reschedule-title"
               className="text-xl font-bold text-maroon-900"
             >
-              Reschedule Consultation
+              Propose Schedule
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Choose a new schedule and explain the change to the student.
+              Times use Asia/Manila. The current schedule stays reserved until the Student accepts.
             </p>
           </div>
           <button
@@ -182,7 +191,7 @@ export default function FacultyRescheduleModal({
                 />
                 <Detail
                   label="Duration"
-                  value={`${appointment.estimatedDurationMinutes || Math.round((new Date(appointment.endAt) - new Date(appointment.startAt)) / 60000)} minutes`}
+                  value={appointment.estimatedDurationMinutes ? `${appointment.estimatedDurationMinutes} minutes` : "Not provided"}
                 />
                 <Detail label="Mode" value={appointment.consultationMode} />
                 <Detail
@@ -302,6 +311,7 @@ export default function FacultyRescheduleModal({
                 </span>
               </Field>
             </div>
+            {reviewed && <p role="status">Review the proposed schedule above, then send it to the Student for acceptance.</p>}
             {error && (
               <p
                 id="faculty-reschedule-error" role="alert"
@@ -326,7 +336,7 @@ export default function FacultyRescheduleModal({
               disabled={submitting}
               className="btn-primary whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Rescheduling..." : "Confirm Reschedule"}
+              {submitting ? "Sending..." : reviewed ? "Send proposal" : "Review proposal"}
             </button>
           </footer>
         </form>

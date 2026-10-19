@@ -1,3 +1,4 @@
+import FacultyRescheduleModal from "../../components/appointments/FacultyRescheduleModal";
 import { createPortal } from "react-dom";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +24,9 @@ export default function AppointmentRequests() {
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
   const [legacyReview, setLegacyReview] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [proposing, setProposing] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
   const listRequest = useRef(null);
   const detailRequest = useRef(null);
   const busyRef = useRef(false);
@@ -47,12 +51,12 @@ export default function AppointmentRequests() {
   }, [status, page, revision]);
   const close = () => {
     if (busyRef.current) return;
-    detailRequest.current?.abort(); setSelectedId(""); setDetail({}); setRejecting(false); setNote("");
+    detailRequest.current?.abort(); setSelectedId(""); setDetail({}); setRejecting(false); setNote(""); setConfirming(false); setProposing(false); setDecisionError("");
   };
   const open = async id => {
     detailRequest.current?.abort();
     const controller = new AbortController(); detailRequest.current = controller;
-    setSelectedId(id); setDetail({ loading: true }); setRejecting(false); setNote("");
+    setSelectedId(id); setDetail({ loading: true }); setRejecting(false); setNote(""); setConfirming(false); setProposing(false); setDecisionError("");
     try {
       const data = await api(`/appointments/requests/${id}`, { signal: controller.signal, cache: "no-store" });
       if (!controller.signal.aborted) setDetail({ appointment: data.appointment });
@@ -61,6 +65,8 @@ export default function AppointmentRequests() {
   useEffect(() => () => { listRequest.current?.abort(); detailRequest.current?.abort(); }, []);
   const decide = async decision => {
     if (busyRef.current || !detail.appointment) return;
+    if (!Number.isInteger(detail.appointment.__v)) { setDecisionError("Reload these details before deciding."); return; }
+    if (decision === "Rejected" && !note.trim()) { setDecisionError("A rejection reason is required (up to 500 characters)."); return; }
     busyRef.current = true; setBusy(true);
     const appointment = detail.appointment;
     try {
@@ -108,12 +114,17 @@ export default function AppointmentRequests() {
       </nav>
     </>}
     {selectedId && !appointment && <RequestLoadingDialog loading={detail.loading} onClose={close} onRetry={() => void open(selectedId)} />}
-    {appointment && !legacyReview && <AppointmentRequestDetailsModal appointment={appointment} personalRequest onClose={close} actions={pending && <>
-      {rejecting ? <label className="w-full text-sm">Rejection reason (optional)<textarea className="field" maxLength={500} value={note} disabled={busy} onChange={event => setNote(event.target.value)} /></label> : null}
-      {!rejecting && appointment.bookingMethod === "schedule_request" ? <button className="btn-primary" disabled={busy} onClick={() => setLegacyReview(appointment)}>Review legacy schedule request</button> : !rejecting && appointment.startAt && appointment.endAt ? <button className="btn-primary" disabled={busy} onClick={() => void decide("Confirmed")}>Approve</button> : null}
+    {appointment && !legacyReview && !proposing && <AppointmentRequestDetailsModal appointment={appointment} personalRequest onClose={close} actions={pending && <>
+      {decisionError && <p role="alert" className="w-full text-red-700">{decisionError}</p>}
+      {!rejecting && !confirming && <button className="btn-secondary" disabled={busy} onClick={() => setProposing(true)}>Propose Schedule</button>}
+      {confirming && <p role="status" className="w-full">Confirm this request at its current schedule?</p>}
+      {(confirming || rejecting) && <button className="btn-secondary" disabled={busy} onClick={() => { setConfirming(false); setRejecting(false); setDecisionError(""); }}>Back</button>}
+      {rejecting ? <label className="w-full text-sm">Rejection reason (required)<textarea required className="field" maxLength={500} value={note} disabled={busy} onChange={event => setNote(event.target.value)} /></label> : null}
+      {!rejecting && appointment.bookingMethod === "schedule_request" ? <button className="btn-primary" disabled={busy} onClick={() => setLegacyReview(appointment)}>Review legacy schedule request</button> : !rejecting && appointment.startAt && appointment.endAt ? <button className="btn-primary" disabled={busy} onClick={() => confirming ? void decide("Confirmed") : setConfirming(true)}>{confirming ? "Confirm appointment" : "Confirm"}</button> : null}
       <button className="btn-secondary" disabled={busy} onClick={() => rejecting ? void decide("Rejected") : setRejecting(true)}>{busy ? "Saving..." : rejecting ? "Confirm rejection" : "Reject"}</button>
     </>} />}
-    {legacyReview && <OneTimeScheduleRequests key={legacyReview._id} reviewRequest={legacyReview} onClose={() => setLegacyReview(null)} onDecided={() => { close(); setRevision(value => value + 1); }} />}
+    {proposing && appointment && <FacultyRescheduleModal appointment={appointment} onClose={() => setProposing(false)} onConflict={async () => { setProposing(false); await open(appointment._id); }} onSuccess={() => { close(); setRevision(value => value + 1); toast.success("Schedule proposal sent."); }} />}
+    {legacyReview && <OneTimeScheduleRequests key={legacyReview._id} reviewRequest={legacyReview} onClose={() => setLegacyReview(null)} onConflict={async () => { setLegacyReview(null); await open(appointment._id); }} onDecided={() => { close(); setRevision(value => value + 1); }} />}
   </div>;
 }
 
