@@ -87,7 +87,8 @@ test("acceptance exchanges reservations or creates custom holds and rejects dupl
       if (published) {
         record.proposedAvailability = newId();
         h.state.slots.push({ _id: record.proposedAvailability, faculty: record.faculty, isActive: true,
-          startAt: record.proposedStartAt, endAt: record.proposedEndAt, mode: record.proposedConsultationMode });
+          startAt: record.proposedStartAt, endAt: record.proposedEndAt, mode: record.proposedConsultationMode, location: record.proposedLocation,
+          meetingPlatform: record.proposedMeetingPlatform, meetingLink: record.proposedMeetingLink });
       }
       const command = { id: record._id, actor: actor(record, "student"), action: "accept_proposal", expectedProposalAt: record.proposedAt, now };
       const results = await Promise.allSettled([transitionAppointment(command), transitionAppointment(command)]);

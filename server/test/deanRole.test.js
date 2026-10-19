@@ -84,12 +84,6 @@ test("HTTP Dean management is read-only while personal Faculty actions remain ow
 
 test("Dean publishes without an optional link, Student books, and management never broadens personal ownership", async () => {
   const h = await appointmentHttp(), restores = [];
-  patch(Availability, "create", async input => {
-    const model = new Availability(input);
-    await model.validate();
-    h.state.slots.push({ ...model.toObject(), _id: model.id, id: model.id, faculty: String(model.faculty) });
-    return model;
-  }, restores);
   patch(StudentAvailability, "find", () => chain([]), restores);
   patch(Availability, "findOneAndDelete", async filter => {
     assert.equal(filter.faculty, h.users.dean.id, "deletion must bind the authenticated Dean");
@@ -109,7 +103,7 @@ test("Dean publishes without an optional link, Student books, and management nev
     h.state.appointments.push(foreign); addSlot(h, foreign);
     const body = { startAt: "2099-02-01T02:00:00Z", endAt: "2099-02-01T02:30:00Z",
       mode: "Online", meetingPlatform: "Teams", faculty: h.users.faculty.id, owner: h.users.faculty.id,
-      facultyId: h.users.faculty.id, isActive: false };
+      facultyId: h.users.faculty.id };
     const created = await h.request("/availability", "dean", "POST", body);
     assert.equal(created.status, 201);
     const slot = (await created.json()).availability;
