@@ -68,7 +68,7 @@ test("provisioned and legacy accounts use identical login and session eligibilit
             const allowed = accountStatus === "Active" && (registrationStatus == null || registrationStatus === "Approved");
             const result = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
             await login({ params: { role }, body: { identifier: "test@example.test", password } }, result);
-            assert.equal(result.statusCode, allowed ? 200 : 403, `${role}/${accountSource}/${registrationStatus}/${accountStatus}`);
+            assert.equal(result.statusCode, allowed ? 200 : role === "faculty" ? 401 : 403, `${role}/${accountSource}/${registrationStatus}/${accountStatus}`);
             const session = await fetch(`${base}/me`, { headers: { Connection: "close", Authorization: `Bearer ${jwt.sign({ sub: current.id }, env.jwtSecret)}` } });
             assert.equal(session.status, allowed ? 200 : 403);
             if (allowed) {

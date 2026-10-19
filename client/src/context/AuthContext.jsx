@@ -4,18 +4,27 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recommendPasswordChange, setRecommendPasswordChange] = useState(false);
+  const clearPasswordRecommendation = () => {
+    sessionStorage.removeItem("socconsult_password_recommendation");
+    setRecommendPasswordChange(false);
+  };
   useEffect(() => {
     // Remove the legacy persistent ConsultIO token without touching unrelated storage.
     localStorage.removeItem("consultio_token");
     const token = sessionStorage.getItem("consultio_token");
     const storedUser = sessionStorage.getItem("consultio_user");
     if (!token) {
+      clearPasswordRecommendation();
       setUser(null);
       setLoading(false);
       return;
     }
     api("/auth/me")
-      .then(({ user }) => setUser(user))
+      .then(({ user }) => {
+        setUser(user);
+        setRecommendPasswordChange(user.role === "faculty" && sessionStorage.getItem("socconsult_password_recommendation") === user.id);
+      })
       .catch((error) => {
         if (error.status === 401 && storedUser) {
           try {
@@ -30,12 +39,13 @@ export function AuthProvider({ children }) {
         }
         sessionStorage.removeItem("consultio_token");
         sessionStorage.removeItem("consultio_user");
+        clearPasswordRecommendation();
         setUser(null);
       })
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
-    const expire = () => setUser(null);
+    const expire = () => { clearPasswordRecommendation(); setUser(null); };
     window.addEventListener("auth:session-expired", expire);
     return () => window.removeEventListener("auth:session-expired", expire);
   }, []);
@@ -46,6 +56,11 @@ export function AuthProvider({ children }) {
     });
     sessionStorage.setItem("consultio_token", data.token);
     sessionStorage.setItem("consultio_user", JSON.stringify(data.user));
+    clearPasswordRecommendation();
+    if (data.user.role === "faculty" && data.recommendPasswordChange === true) {
+      sessionStorage.setItem("socconsult_password_recommendation", data.user.id);
+      setRecommendPasswordChange(true);
+    }
     setUser(data.user);
     return data.user;
   };
@@ -60,6 +75,7 @@ export function AuthProvider({ children }) {
       clearTimeout(timeout);
       sessionStorage.removeItem("consultio_token");
       sessionStorage.removeItem("consultio_user");
+      clearPasswordRecommendation();
       setUser(null);
     }
   };
@@ -68,7 +84,7 @@ export function AuthProvider({ children }) {
     setUser(nextUser);
   };
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, recommendPasswordChange, clearPasswordRecommendation }}>
       {children}
     </AuthContext.Provider>
   );

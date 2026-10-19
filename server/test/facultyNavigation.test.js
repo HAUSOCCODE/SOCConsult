@@ -35,7 +35,7 @@ test("Faculty sidebar has exactly eight canonical entries and the calendar alias
     useLocation: () => ({ pathname: "/faculty/calendar" }),
     RoleLayout: () => null,
   });
-  const navigation = Component().props.children.props.navigation;
+  const navigation = React.Children.toArray(Component().props.children).find(child => child.props?.navigation).props.navigation;
   const labels = [
     "Dashboard",
     "Consultation Requests",

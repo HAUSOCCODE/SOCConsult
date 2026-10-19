@@ -1,3 +1,4 @@
+import { recommendInitialPasswordChange } from "../services/facultyPasswordRecommendation.js";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -60,7 +61,7 @@ export async function login(req, res) {
   if (!["student", "faculty", "dean"].includes(requestedRole))
     return res.status(404).json({ message: "Unknown role." });
   const fail = async (user) => {
-    if (requestedRole === "dean") {
+    if (["dean", "faculty"].includes(requestedRole)) {
       await recordAuditEvent({
         subjectUser: user?.id,
         actorRole: "system",
@@ -70,7 +71,7 @@ export async function login(req, res) {
         metadata: { role: requestedRole },
       });
     }
-    return res.status(401).json({ message: "Invalid credentials." });
+    return res.status(401).json({ ...(requestedRole === "faculty" && { code: "INVALID_CREDENTIALS" }), message: "Invalid credentials." });
   };
   const password = req.body?.password;
   const rawIdentifier = req.body?.identifier ?? req.body?.email ?? req.body?.username;
@@ -98,6 +99,7 @@ export async function login(req, res) {
   if (requestedRole === "dean" &&
       (user.role !== "dean" || user.accountStatus !== "Active"))
     return fail(user);
+  if (requestedRole === "faculty" && (user.role !== "faculty" || user.accountStatus !== "Active" || !eligibleRegistrationState(user))) return fail(user);
   // The stored database role—not the selected frontend role—is authoritative.
   if (user.role !== requestedRole)
     return res
@@ -112,7 +114,9 @@ export async function login(req, res) {
     });
   if (user.role === "dean") { try { await recordAuthenticationAudit(user, "login"); } catch { return res.status(503).json({ message: "Sign-in temporarily unavailable." }); }
   } else await logActivity("login", user.id, "User", user.id, { role: user.role });
-  res.json({ token: tokenFor(user), user: publicUser(user) });
+  res.json({ token: tokenFor(user), user: publicUser(user),
+    ...(user.role === "faculty" && { recommendPasswordChange: await recommendInitialPasswordChange(user) }),
+  });
 }
 
 // Logout records activity; JWT expiry remains the existing session boundary.

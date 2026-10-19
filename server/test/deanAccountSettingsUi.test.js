@@ -26,10 +26,10 @@ test("password form's actual submission handler suppresses same-tick repeats and
   const end = code.indexOf("\n  };", begin);
   const body = code.slice(begin + "  const submit = async (event) => {".length, end);
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const run = new AsyncFunction("event", "pending", "passwords", "setValidationError", "setSubmitting", "api", "clear", "toast", "onPasswordChanged", "mounted", body);
+  const run = new AsyncFunction("event", "pending", "passwords", "setValidationError", "setSubmitting", "api", "clear", "toast", "onPasswordChanged", "mounted", "user", body);
   let release; const wait = new Promise(resolve => { release = resolve; }); let calls = 0, cleared = 0;
   const pending = { current: false }, passwords = { currentPassword: "OldPassword1", newPassword: "NewPassword2", confirmPassword: "NewPassword2" };
-  const args = [{ preventDefault() {} }, pending, passwords, () => {}, () => {}, async () => { calls++; await wait; return {}; }, () => { cleared++; }, { success() {}, error() {} }, undefined, { current: true }];
+  const args = [{ preventDefault() {} }, pending, passwords, () => {}, () => {}, async () => { calls++; await wait; return {}; }, () => { cleared++; }, { success() {}, error() {} }, undefined, { current: true }, { role: "dean" }];
   const first = run(...args); await run(...args); assert.equal(calls, 1); release(); await first;
   assert.equal(cleared, 1); assert.equal(pending.current, false);
 });

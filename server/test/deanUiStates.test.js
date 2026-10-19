@@ -202,13 +202,18 @@ test("notification detail dialog traps Tab, handles Escape and restores the keyb
 
 test("shared password form guards repeats, announces progress and hides provider errors for all roles", async () => {
   for (const role of ["dean", "student", "faculty"]) {
-    const h = await harness("components/profile/ProfileForm.jsx", "SecuritySettings", { useAuth: () => ({ user: { role } }), FACULTY_POSITIONS: [], OTHER_POSITION: "Other" });
+    let recommendationCleared = 0;
+    const h = await harness("components/profile/ProfileForm.jsx", "SecuritySettings", { useAuth: () => ({ user: { role }, clearPasswordRecommendation: () => recommendationCleared++ }), FACULTY_POSITIONS: [], OTHER_POSITION: "Other" });
     let tree = h.render(); const fields = find(tree, "input");
     for (const [i, value] of ["OldPassword1", "NewPassword2", "NewPassword2"].entries()) fields[i].props.onChange({ target: { value } });
     tree = h.render(); const pending = find(tree, "form")[0].props.onSubmit({ preventDefault() {} }); await find(tree, "form")[0].props.onSubmit({ preventDefault() {} });
     assert.equal(h.requests.length, 1); assert.match(text(h.render()), /Changing password/);
     h.requests[0].reject({ code: "PASSWORD_CHANGE_UNCERTAIN", message: "SECRET provider" }); await pending;
     assert.match(h.toasts.join(), /sign in before/); assert.doesNotMatch(h.toasts.join(), /SECRET|provider/);
+    assert.equal(recommendationCleared, 0);
+    const success = find(h.render(), "form")[0].props.onSubmit({ preventDefault() {} });
+    h.requests[1].resolve({}); await success;
+    assert.equal(recommendationCleared, role === "faculty" ? 1 : 0);
   }
 });
 

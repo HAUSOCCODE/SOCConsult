@@ -129,8 +129,8 @@ test("client logout clears its session after success, server failure, or timeout
       if (mode === "failure") throw new Error("Server unavailable");
       if (mode === "timeout") await new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("Aborted")), { once: true }));
     };
-    const run = new AsyncFunction("api", "sessionStorage", "setUser", "AbortController", "setTimeout", "clearTimeout", functionBody);
-    await run(api, { removeItem: key => storage.delete(key) }, value => { currentUser = value; }, AbortController, (callback, delay) => { assert.equal(delay, 5000); return setTimeout(callback, 5); }, clearTimeout);
+    const run = new AsyncFunction("api", "sessionStorage", "setUser", "AbortController", "setTimeout", "clearTimeout", "clearPasswordRecommendation", functionBody);
+    await run(api, { removeItem: key => storage.delete(key) }, value => { currentUser = value; }, AbortController, (callback, delay) => { assert.equal(delay, 5000); return setTimeout(callback, 5); }, clearTimeout, () => {});
     assert.ok(called);
     assert.equal(storage.size, 0);
     assert.equal(currentUser, null);
