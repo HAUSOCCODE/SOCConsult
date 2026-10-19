@@ -7,9 +7,9 @@ import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { StatusBadge } from "../UI";
 
 export const consultationTime = value => value && Number.isFinite(+new Date(value)) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
-export default function PersonalConsultationDetails({ appointment: a, onClose, children }) {
+export default function PersonalConsultationDetails({ appointment: a, onClose, children, opener }) {
   const ref = useRef(null);
-  useDialogFocus(ref, { onClose });
+  useDialogFocus(ref, { onClose, restoreTarget: opener });
   const attendance = a.attendance;
   return createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="personal-consultation-title" className="max-h-[90dvh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-5 shadow-xl">
@@ -18,9 +18,9 @@ export default function PersonalConsultationDetails({ appointment: a, onClose, c
         <StatusBadge appointment status={a.status} />
         <dl className="space-y-3"><Field label="Student" value={a.student?.name} /><Field label="Subject / Course" value={a.subject} /><Field label="Consultation Concern" value={a.reason} /></dl>
         <section className="rounded border p-4"><h3 className="font-bold">{a.confirmedSchedule ? "Confirmed schedule" : "Current schedule"}</h3><Schedule start={a.startAt} end={a.endAt} mode={a.consultationMode} location={a.location} platform={a.meetingPlatform} /></section>
-        {(a.proposedStartAt || a.status === "Reschedule Proposed") && <section className="rounded border p-4"><h3 className="font-bold">Proposed schedule — awaiting Student response</h3><Schedule start={a.proposedStartAt} end={a.proposedEndAt} mode={a.proposedConsultationMode} location={a.proposedLocation} platform={a.proposedMeetingPlatform} /></section>}
+        {(a.proposedStartAt || a.status === "Reschedule Proposed") && <section className="rounded border p-4"><h3 className="font-bold">Proposed schedule - awaiting Student response; proposed time is not reserved</h3><Schedule start={a.proposedStartAt} end={a.proposedEndAt} mode={a.proposedConsultationMode} location={a.proposedLocation} platform={a.proposedMeetingPlatform} /></section>}
         <OnlineMeetingDetails appointment={a} allowLink={Boolean(a.meetingLink)} />
-        <section><h3 className="font-bold">Status history</h3>{!a.statusHistory?.length ? <p>No recorded status history.</p> : <ol className="mt-2 space-y-3">{a.statusHistory.map((event, index) => <li key={index} className="rounded border p-3"><p>{event.previousStatus} ? {event.newStatus}</p><p className="text-sm">{consultationTime(event.changedAt)} · {event.changedByRole}</p>{event.reason && <p className="whitespace-pre-wrap break-words">{event.reason}</p>}</li>)}</ol>}</section>
+        <section><h3 className="font-bold">Status history</h3>{!a.statusHistory?.length ? <p>No recorded status history.</p> : <ol className="mt-2 space-y-3">{a.statusHistory.map((event, index) => <li key={index} className="rounded border p-3"><p>{event.previousStatus} ? {event.newStatus}</p><p className="text-sm">{consultationTime(event.changedAt)} - {event.changedByRole}</p>{event.reason && <p className="whitespace-pre-wrap break-words">{event.reason}</p>}</li>)}</ol>}</section>
         <section><h3 className="font-bold">Attendance</h3>{attendance?.enrolled ? <dl className="mt-2 space-y-2"><Field label="Opens" value={consultationTime(attendance.attendanceOpensAt)} /><Field label="Deadline" value={consultationTime(attendance.responseDeadlineAt)} />{attendance.ownResponse && <><Field label="Your response" value={attendance.ownResponse.outcome} /><Field label="Your reason" value={attendance.ownResponse.reason} /></>}{attendance.outcomes && <><Field label="Student response" value={attendance.outcomes.student} /><Field label="Faculty response" value={attendance.outcomes.faculty} /></>}{attendance.finalOutcome && <Field label="Final outcome" value={attendance.finalOutcome} />}</dl> : <p>Historical attendance is not verified through the two-party workflow.</p>}
           {attendance?.waiting && <p>Your response is recorded. Awaiting completion of the attendance workflow.</p>}
           {attendance?.eligible && <p className="mt-2 rounded bg-amber-50 p-3">Faculty attendance submission is pending FAC-11.</p>}

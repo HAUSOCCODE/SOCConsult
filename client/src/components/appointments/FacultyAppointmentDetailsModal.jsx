@@ -26,13 +26,14 @@ export default function FacultyAppointmentDetailsModal({
   showFacultyInfo = false,
   personal = false,
   children,
+  opener,
 }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, { onClose });
 
 
 
-  if (personal) return <PersonalConsultationDetails appointment={appointment} onClose={onClose}>{children}</PersonalConsultationDetails>;
+  if (personal) return <PersonalConsultationDetails appointment={appointment} opener={opener} onClose={onClose}>{children}</PersonalConsultationDetails>;
 
   return createPortal(
     <div

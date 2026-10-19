@@ -8,7 +8,7 @@ const titles = {
   "/dean/faculty": "My Faculty Dashboard | SOCConsult",
   "/dean/faculty/dashboard": "My Faculty Dashboard | SOCConsult",
   "/dean/faculty/requests": "My Appointment Requests | SOCConsult",
-  "/dean/faculty/availability": "My Availability | SOCConsult",
+  "/dean/faculty/availability": "Availability & Calendar | SOCConsult",
   "/dean/faculty/consultations": "My Consultations | SOCConsult",
   "/dean/faculty/history": "My Consultation History | SOCConsult",
   "/dean/faculty/reports": "My Faculty PDF Reports | SOCConsult",

@@ -117,3 +117,18 @@ test("combined calendar renders explicit labels/colors while Student legend and 
   const upcoming = renderToStaticMarkup(React.createElement(UpcomingPanel, { items: [], loading: false, consultationsPath: "/dean/faculty/consultations" }));
   assert.match(upcoming, /href="\/dean\/faculty\/consultations"/);
 });
+
+for (const action of ["activate", "remove"]) test(action + " availability refreshes the integrated calendar after success", async () => {
+  const h = await management(); let changed = 0; const props = { onChanged: () => changed++ };
+  h.render(props); h.effects[1]();
+  const slot = { _id: "slot", isActive: false, startAt: "2099-01-01T02:00:00Z", endAt: "2099-01-01T02:30:00Z", __v: 2 };
+  h.pending[0].resolve({ availability: [slot] }); await settle();
+  let tree = h.render(props); const card = elements(tree).find(el => el.props?.item?._id === "slot");
+  let work;
+  if (action === "activate") card.props.onToggle(slot);
+  else { card.props.onRemove("slot"); tree = h.render(props); work = elements(tree).find(el => el.props?.title === "Remove Consultation Availability").props.onConfirm(); }
+  assert.equal(h.pending[1].options.method, action === "activate" ? "PUT" : "DELETE");
+  h.pending[1].resolve({ message: "Updated" }); await settle();
+  h.pending[2].resolve({ availability: [] }); await settle(); if (work) await work;
+  assert.equal(changed, 1);
+});

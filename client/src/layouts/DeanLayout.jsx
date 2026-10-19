@@ -43,7 +43,7 @@ const personal = [
   },
   {
     icon: CalendarClock,
-    label: "Manage Availability",
+    label: "Availability & Calendar",
     path: "/dean/faculty/availability",
   },
   {
