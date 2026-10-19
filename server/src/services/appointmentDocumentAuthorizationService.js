@@ -8,9 +8,16 @@ export function canReadAppointmentDocument(appointment, user, management = false
   return (management === true && user?.role === "dean") ||
     String(appointment.student) === String(user?.id) || String(appointment.faculty) === String(user?.id);
 }
-export async function authorizedDocument({ id, documentId, user, management = false }) {
+export async function authorizedDocument({ id, documentId, user, management = false, personalFaculty = false }) {
   if (!validId(id) || (documentId !== undefined && !validId(documentId))) fail(400, "Invalid document reference.");
-  const appointment = await Appointment.findById(id).select("student faculty supportingDocuments supportingDocument.name supportingDocument.mimeType supportingDocument.size +supportingDocument.data").maxTimeMS(10000);
+  // Personal Faculty reads must establish ownership before selecting file data.
+  if (personalFaculty) {
+    if (!["faculty", "dean"].includes(user?.role)) fail(404, "Document not found.");
+    const owned = await Appointment.exists({ _id: id, faculty: user.id }).maxTimeMS(10000);
+    if (!owned) fail(404, "Document not found.");
+  }
+  const selection = "student faculty supportingDocuments supportingDocument.name supportingDocument.mimeType supportingDocument.size +supportingDocument.data";
+  const appointment = await (personalFaculty ? Appointment.findOne({ _id: id, faculty: user.id }) : Appointment.findById(id)).select(selection).maxTimeMS(10000);
   if (!appointment || !canReadAppointmentDocument(appointment, user, management)) fail(404, "Document not found.");
   if (documentId === undefined) {
     if (!appointment.supportingDocument?.data) fail(404, "Document not found.");

@@ -21,6 +21,8 @@ const time = (value) =>
 export default function AppointmentRequestDetailsModal({
   appointment,
   onClose,
+  personalRequest = false,
+  actions,
 }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, { onClose });
@@ -68,6 +70,7 @@ export default function AppointmentRequestDetailsModal({
                 label="Full Name"
                 value={formatPersonName(appointment.student?.name)}
               />
+              {!personalRequest && <>
               <Detail
                 label="Official Student Email"
                 value={appointment.student?.email}
@@ -82,9 +85,10 @@ export default function AppointmentRequestDetailsModal({
                 label="Year Level"
                 value={appointment.yearLevel || appointment.student?.yearLevel}
               />
+              </>}
             </DetailSection>
             <DetailSection title="Consultation Information">
-              <Detail label="Subject / Topic" value={appointment.subject} />
+              <Detail label={personalRequest ? "Subject / Course" : "Subject / Topic"} value={appointment.subject} />
               <Detail
                 label="Requested Date"
                 value={
@@ -115,7 +119,7 @@ export default function AppointmentRequestDetailsModal({
                 }
               />
               <Detail
-                label="Reason for Consultation"
+                label={personalRequest ? "Consultation Concern" : "Reason for Consultation"}
                 value={appointment.reason}
                 wide
                 breakAnywhere
@@ -143,22 +147,24 @@ export default function AppointmentRequestDetailsModal({
             </DetailSection>
           </div>
 
-          <OnlineMeetingDetails
+          {!personalRequest && <OnlineMeetingDetails
             appointment={appointment}
             allowLink
             emptyLinkText="Meeting link not provided."
-          />
+          />}
 
           <DetailSection title="Supporting Documents">
             <div className="sm:col-span-2">
               <SupportingDocumentViewer
                 appointment={appointment}
+                personalRequest={personalRequest}
                 wrapFileNames
               />
             </div>
           </DetailSection>
         </div>
-        <footer className="sticky bottom-0 flex justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+        <footer className="sticky bottom-0 flex flex-wrap gap-3 justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+          {actions}
           <button
             type="button"
             onClick={onClose}

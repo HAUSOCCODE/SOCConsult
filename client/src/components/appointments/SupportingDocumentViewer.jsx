@@ -68,6 +68,7 @@ const metadataFor = (appointment, management) =>
 
 export default function SupportingDocumentViewer({
   appointment,
+  personalRequest = false,
   emptyMessage = "No supporting documents were provided.",
   wrapFileNames = false,
 }) {
@@ -136,6 +137,7 @@ export default function SupportingDocumentViewer({
     setPreviewError("");
   };
 
+  if (personalRequest) return <ProtectedRequestDocuments key={appointment._id} appointment={appointment} />;
   if (!documents.length)
     return <p className="text-sm text-slate-600">{emptyMessage}</p>;
   return (
@@ -355,4 +357,46 @@ function PreviewContent({ kind, document }) {
     }
   }
   return null;
+}
+
+function ProtectedRequestDocuments({ appointment }) {
+  const [state, setState] = useState({});
+  const active = useRef(null);
+  const objectUrl = useRef(null);
+  const clearUrl = () => { if (objectUrl.current) URL.revokeObjectURL(objectUrl.current); objectUrl.current = null; };
+  useEffect(() => {
+    setState({});
+    return () => { active.current?.abort(); clearUrl(); };
+  }, [appointment._id]);
+  const documents = [
+    ...(appointment.supportingDocuments || []).map(doc => ({ id: doc._id, name: doc.originalName, mimeType: doc.mimeType, size: doc.size })),
+    ...(appointment.supportingDocument?.name ? [appointment.supportingDocument] : []),
+  ];
+  const load = async doc => {
+    active.current?.abort(); clearUrl();
+    const controller = new AbortController(); active.current = controller;
+    setState({ loading: true });
+    try {
+      const suffix = doc.id ? `documents/${doc.id}` : "document";
+      const { blob } = await api.download(`/appointments/requests/${appointment._id}/${suffix}`, { signal: controller.signal, cache: "no-store" });
+      if (controller.signal.aborted) return;
+      const text = blob.type === "text/plain" ? await blob.text() : null;
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(blob); objectUrl.current = url;
+      setState({ url, name: doc.name, mimeType: blob.type, text });
+    } catch { if (!controller.signal.aborted) setState({ error: "Unable to load this document. It may no longer be available." }); }
+  };
+  return <div className="space-y-3">
+    {!documents.length && <p>No supporting documents were provided.</p>}
+    {documents.map((doc, i) => <div key={doc.id || i} className="flex flex-wrap items-center gap-3 rounded border p-3">
+      <span className="min-w-0 break-all">{doc.name} ({formatSize(doc.size)})</span>
+      <button type="button" className="btn-secondary" onClick={() => load(doc)}>View document</button>
+    </div>)}
+    {state.loading && <p role="status">Loading document...</p>}
+    {state.error && <p role="alert">{state.error}</p>}
+    {state.url && state.mimeType?.startsWith("image/") && <img src={state.url} alt={state.name} className="max-h-96 max-w-full object-contain" />}
+    {state.url && state.mimeType === "application/pdf" && <iframe sandbox="" referrerPolicy="no-referrer" title={state.name} src={state.url} className="h-96 w-full" />}
+    {state.text != null && <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words">{state.text}</pre>}
+    {state.url && <a className="btn-secondary inline-block" href={state.url} download={state.name}>Download {state.name}</a>}
+  </div>;
 }
