@@ -155,3 +155,10 @@ Recent consultations are the five latest updated records requested within the
 period. Recent imports are the five latest completed batches across all dates.
 Both lists expose only explicit summary fields, without credentials, uploaded
 rows/documents, meeting links, private availability, or preview metadata.
+
+
+### Personal consultation calendar downloads (FAC-10)
+
+The existing `GET /api/appointments/:appointmentId/calendar.ics` endpoint serves active, authenticated participants only: the owning Student or assigned Faculty (including an assigned Dean in the personal workspace). Dean management access alone grants no export permission. Downloads require exact Confirmed status, valid canonical start/end instants, and current time strictly before the end. Upcoming and ongoing consultations qualify; elapsed Confirmed records awaiting attendance processing do not. Export never changes appointment status.
+
+The in-memory ICS uses the shared existing generator, UTC instants, a Manila-date filename, and an appointment-based UID shared across participants. It contains only calendar details and a validated current Online appointment meeting link, never proposed or availability links. No ICS package or permanent storage is used. The file is a one-way snapshot: importing or editing it in an external calendar does not update SOCConsult, and later SOCConsult changes are not synchronized. Manual import/display checks in Google Calendar, Outlook, and Apple Calendar remain deferred.

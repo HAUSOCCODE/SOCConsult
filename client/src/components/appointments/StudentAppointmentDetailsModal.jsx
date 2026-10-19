@@ -1,4 +1,5 @@
-import { CalendarPlus, X } from "lucide-react";
+import CalendarDownload from "./CalendarDownload";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { StatusBadge } from "../UI";
@@ -30,22 +31,6 @@ const safeDate = (value, options) => {
 };
 const clock = (value) =>
   safeDate(value, { hour: "numeric", minute: "2-digit" });
-const manilaFilename = (value) => {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "SOCConsult-Consultation.ics";
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
-      .formatToParts(date)
-      .filter(({ type }) => type !== "literal")
-      .map(({ type, value: part }) => [type, part]),
-  );
-  return `SOCConsult-Consultation-${parts.year}-${parts.month}-${parts.day}.ics`;
-};
 export default function StudentAppointmentDetailsModal({
   appointment,
   onClose,
@@ -56,14 +41,10 @@ export default function StudentAppointmentDetailsModal({
   historyMode = false,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
-  const [downloadingCalendar, setDownloadingCalendar] = useState(false);
-  const [calendarMessage, setCalendarMessage] = useState("");
   const [attendance, setAttendance] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
   const appointmentId = appointment?._id || appointment?.id;
-  const canDownloadCalendar =
-    !historyMode && appointment?.status === "Confirmed" && Boolean(appointmentId);
   const shouldLoadAttendance =
     Boolean(appointmentId) && ATTENDANCE_STATUSES.has(appointment?.status);
   const appointmentEnd = new Date(appointment?.endAt);
@@ -115,32 +96,6 @@ export default function StudentAppointmentDetailsModal({
     if (!refreshed)
       setAttendanceError("Your response was submitted, but the latest attendance status could not be refreshed.");
     await onAttendanceUpdated?.();
-  };
-  const downloadCalendar = async () => {
-    if (!canDownloadCalendar || downloadingCalendar) return;
-    setDownloadingCalendar(true);
-    setCalendarMessage("");
-    try {
-      const { blob, filename } = await api.download(
-        `/appointments/${appointmentId}/calendar.ics`,
-      );
-      const objectUrl = URL.createObjectURL(blob);
-      try {
-        const anchor = document.createElement("a");
-        anchor.href = objectUrl;
-        anchor.download = filename || manilaFilename(appointment.startAt);
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
-      setCalendarMessage("Calendar file downloaded.");
-    } catch (error) {
-      setCalendarMessage(safeStudentError(error, "Unable to download the calendar file."));
-    } finally {
-      setDownloadingCalendar(false);
-    }
   };
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -284,32 +239,7 @@ export default function StudentAppointmentDetailsModal({
             actionLabel="Join Meeting"
           />
 
-          {canDownloadCalendar && (
-            <section className="min-w-0 rounded-xl border border-gold-300 bg-gold-50 p-4">
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-maroon-900">Add to Calendar</h3>
-                  <p className="mt-1 break-words text-sm leading-6 text-slate-700">
-                    This file adds a copy of the consultation to a compatible calendar. Changes made in the external calendar will not update SOCConsult.
-                  </p>
-                  {calendarMessage && (
-                    <p className="mt-2 break-words text-sm font-semibold text-slate-700" role="status">
-                      {calendarMessage}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={downloadCalendar}
-                  disabled={downloadingCalendar}
-                  className="btn-primary inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                >
-                  <CalendarPlus size={17} aria-hidden="true" />
-                  {downloadingCalendar ? "Downloading..." : "Download .ics"}
-                </button>
-              </div>
-            </section>
-          )}
+          {!historyMode && <CalendarDownload key={appointmentId} appointment={appointment} />}
 
           {appointment.status === "Rejected" && appointment.responseNote && (
             <Section title="Status Details">

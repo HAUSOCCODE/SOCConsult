@@ -39,18 +39,19 @@ describe("Student iCalendar download", () => {
       appointment,
       new Date("2026-12-01T00:00:00.000Z"),
     );
-    assert.match(calendar, /^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\n/);
-    assert.match(calendar, /BEGIN:VEVENT\r\n/);
-    assert.match(calendar, /UID:appointment-stable-id@socconsult\r\n/);
-    assert.match(calendar, /DTSTAMP:20261201T000000Z\r\n/);
-    assert.match(calendar, /DTSTART:20261215T020000Z\r\n/);
-    assert.match(calendar, /DTEND:20261215T030000Z\r\n/);
+    const unfolded = calendar.replace(/\r\n /g, "");
+    assert.match(unfolded, /^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\n/);
+    assert.match(unfolded, /BEGIN:VEVENT\r\n/);
+    assert.match(unfolded, /UID:appointment-stable-id@socconsult\r\n/);
+    assert.match(unfolded, /DTSTAMP:20261201T000000Z\r\n/);
+    assert.match(unfolded, /DTSTART:20261215T020000Z\r\n/);
+    assert.match(unfolded, /DTEND:20261215T030000Z\r\n/);
     assert.match(
-      calendar,
+      unfolded,
       /SUMMARY:SOCConsult Consultation — Web\\, Development\\; Lab\\\\Review\\nPart 2\r\n/,
     );
-    assert.match(calendar, /LOCATION:Room 3\\, Main\\; Wing\\\\A\\nFloor 2\r\n/);
-    assert.match(calendar, /STATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n$/);
+    assert.match(unfolded, /LOCATION:Room 3\\, Main\\; Wing\\\\A\\nFloor 2\r\n/);
+    assert.match(unfolded, /STATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n$/);
     assert.equal(/(?<!\r)\n/.test(calendar), false);
     for (const privateValue of [
       "never-export-this",
@@ -104,6 +105,7 @@ describe("Student iCalendar download", () => {
         storedStatus === query.status
           ? {
               _id: appointmentId,
+              status: storedStatus,
               faculty: { _id: facultyUser, name: "Dean Provider" },
               subject: "Web Development",
               startAt: new Date("2026-12-14T16:30:00.000Z"),
@@ -117,6 +119,7 @@ describe("Student iCalendar download", () => {
       const chain = {
         select: () => chain,
         populate: () => chain,
+        maxTimeMS: () => chain,
         lean: async () => record,
       };
       return chain;
@@ -129,7 +132,7 @@ describe("Student iCalendar download", () => {
       });
     try {
       assert.equal((await request()).status, 401);
-      assert.equal((await request(facultyUser)).status, 403);
+      assert.equal((await request(facultyUser)).status, 404);
       assert.equal((await request(studentB)).status, 404);
       const response = await request(studentA);
       assert.equal(response.status, 200);
@@ -138,7 +141,7 @@ describe("Student iCalendar download", () => {
         response.headers.get("content-disposition"),
         'attachment; filename="SOCConsult-Consultation-2026-12-15.ics"',
       );
-      const body = await response.text();
+      const body = (await response.text()).replace(/\r\n /g, "");
       assert.match(body, /BEGIN:VCALENDAR/);
       assert.match(body, /BEGIN:VEVENT/);
       assert.match(body, /DTSTART:20261214T163000Z/);
@@ -146,7 +149,7 @@ describe("Student iCalendar download", () => {
       assert.match(body, /Provider: Dean Provider/);
       assert.match(body, /LOCATION:Microsoft Teams/);
       assert.equal(body.includes("meetingLink"), false);
-      assert.equal(body.includes("private.example.test"), false);
+      assert.equal(body.includes("private.example.test"), true);
       assert.equal(body.includes("private-reservation"), false);
       assert.equal(
         queries.every((query) => query.status === "Confirmed"),
