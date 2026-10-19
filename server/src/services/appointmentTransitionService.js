@@ -32,6 +32,7 @@ export function assertTransition({ appointment, action, actor, now = new Date(),
   if (!(rule.actor === "system" ? actor.role === "system" && !actor.id
     : rule.actor === "student" ? student : rule.actor === "faculty" ? faculty : student || faculty))
     fail("Unauthorized for this appointment action.", 403);
+  if (["reject", "propose"].includes(action) && !safeReason(reason)) fail("A decision reason is required.", 400);
   if (action === "cancel") {
     if (faculty && !safeReason(reason)) fail("A cancellation reason is required.", 400);
     const unscheduled = appointment.bookingMethod === "schedule_request" && appointment.status === "Pending" && appointment.startAt == null;
@@ -98,8 +99,8 @@ async function reserve(appointment, schedule, session) {
   if (schedule.availability) {
     if (await Appointment.exists({ availability: schedule.availability, _id: { $ne: appointment._id },
       status: { $in: BLOCKING_STATUSES } }).session(session)) fail("This slot already has an active consultation request.");
-    const token = crypto.randomUUID();
     const owned = idOf(schedule.availability) === idOf(appointment.availability) && appointment.reservationToken;
+    const token = owned || crypto.randomUUID();
     const slot = await Availability.findOneAndUpdate({ _id: schedule.availability, faculty: appointment.faculty,
       isActive: true, startAt: schedule.startAt, endAt: schedule.endAt,
       ...(owned ? { reservationToken: appointment.reservationToken } : { reservationToken: { $exists: false } }),
@@ -119,7 +120,7 @@ export const safeAppointment = (record, role) => {
   return result;
 };
 
-async function events({ appointment, from, to, actor, action, reason, now, session }) {
+async function events({ appointment, from, to, actor, action, reason, now, session, transitionVersion }) {
   await AuditLog.create([{
     subjectUser: appointment.student, subjectRole: "student",
     subjectUsers: [appointment.student, appointment.faculty],
@@ -138,7 +139,7 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
       actionUrl: targetUser?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" }], { session });
   }
   const event = appointmentEvent(action);
-  if (event) await createStudentConsultationNotification({ student: appointment.student, appointmentId: appointment._id, event, session });
+  if (event) await createStudentConsultationNotification({ student: appointment.student, appointmentId: appointment._id, event, session, transitionVersion });
 }
 
 export async function transitionAppointment({ id, actor, action, reason = "", schedule: inputSchedule, availabilityId,
@@ -267,7 +268,7 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
       { new: true, runValidators: true, session });
       if (!result) fail("This appointment changed. Refresh and try again.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
       await events({ appointment, from: appointment.status, to, actor, action,
-        reason: action === "expire" ? "faculty_response_deadline_passed" : reason, now: changedAt, session });
+        reason: action === "expire" ? "faculty_response_deadline_passed" : reason, now: changedAt, session, transitionVersion: result.__v });
     });
   } catch (error) {
     if (error.code === 11000) fail("The schedule conflicts with another active request.");
@@ -308,7 +309,7 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
       }
       record.statusHistory = [statusHistoryEntry({ from: "Created", to: "Pending", actor, action: "request", now })];
       [appointment] = await Appointment.create([record], { session });
-      await events({ appointment, from: "Created", to: "Pending", actor, action: "request", now, session });
+      await events({ appointment, from: "Created", to: "Pending", actor, action: "request", now, session, transitionVersion: 0 });
     });
   } catch (error) {
     if (error.code === 11000) fail("An active consultation request already exists.");

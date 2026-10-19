@@ -163,7 +163,7 @@ test("all appointment transition paths share the provider lock; retries preserve
     await command({ actor: student, action: "cancel" });
     for (const action of ["reject", "expire"]) {
       const pending = fixture({ faculty: faculty.id, student: student.id }); h.state.appointments.push(pending); addSlot(h, pending);
-      await transitionAppointment({ id: pending._id, actor: action === "expire" ? { role: "system" } : faculty, action,
+      await transitionAppointment({ id: pending._id, actor: action === "expire" ? { role: "system" } : faculty, action, reason: "Unavailable",
         ...(action === "expire" && { now: pending.startAt }) });
       assert.equal(h.lockCalls.length, ++expected);
     }

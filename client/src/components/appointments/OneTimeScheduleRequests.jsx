@@ -1,3 +1,4 @@
+import { safeStudentError } from "../../utils/studentUiErrors";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -17,7 +18,7 @@ const initial = {
   meetingLink: "",
 };
 
-export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDecided } = {}) {
+export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDecided, onConflict } = {}) {
   const toast = useToast();
   const [requests, setRequests] = useState([]);
   const [selected, setSelected] = useState(reviewRequest || null);
@@ -55,6 +56,8 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     busyRef.current = true;
     setBusy(true);
     try {
+      if (!Number.isInteger(selected.__v)) throw new Error("Reload request details.");
+      if (decision === "reject" && !rejectNote.trim()) throw new Error("A rejection reason is required.");
       let body = { note: rejectNote };
       if (decision === "approve") {
         if (!form.date || !form.time)
@@ -78,7 +81,8 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
       if (reviewRequest) onDecided?.();
       else await load();
     } catch (error) {
-      toast.error(error.message || "Unable to decide this request.");
+      toast.error(safeStudentError(error, "Unable to decide this request. Check the schedule and required reason."));
+      if (error.status === 409) onConflict?.();
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -279,7 +283,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                 </div>
                 <div className="mt-5 border-t border-slate-200 pt-4">
                   <label className="text-sm font-semibold">
-                    Rejection reason (optional)
+                    Rejection reason (required)
                     <textarea disabled={busy}
                       className="field mt-1 min-h-20 resize-y"
                       maxLength="500"
