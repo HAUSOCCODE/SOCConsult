@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
+import AttendanceResponse from "../models/AttendanceResponse.js";
 import { APPOINTMENT_STATUSES, TERMINAL_STATUSES } from "../config/appointmentStatus.js";
 import { facultyRequestDetails } from "./facultyRequestService.js";
 import { readAttendance } from "./attendanceService.js";
@@ -59,13 +60,13 @@ export async function listFacultyConsultations({ faculty, input, now = new Date(
   const total = result?.count?.[0]?.total || 0;
   return { appointments: rows.map(personalRecord), section, asOf: now, pagination: { page, limit: 20, total, totalPages: bounded ? Math.min(1, Math.ceil(total / 20)) : Math.ceil(total / 20) } };
 }
-export function detailRecord(row, actor, now) {
+export function detailRecord(row, actor, now, hasAttendanceResponse = false) {
   const lifecycle = ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(row.status);
   const history = (row.statusHistory || []).filter(event => Number.isFinite(stamp(event.changedAt))).slice().sort((a, b) => stamp(a.changedAt) - stamp(b.changedAt));
   const owned = String(row.faculty?._id || row.faculty) === String(actor.id) && ["faculty", "dean"].includes(actor.role) && !actor.management;
   const actions = {};
   for (const action of ["confirm", "reject", "propose", "cancel"]) {
-    try { assertTransition({ appointment: row, actor, action, now, reason: "Eligibility check" }); actions[action] = Number.isInteger(row.__v); }
+    try { assertTransition({ appointment: row, actor, action, now, reason: "Eligibility check", hasAttendanceResponse }); actions[action] = Number.isInteger(row.__v); }
     catch { actions[action] = false; }
   }
   return { ...personalRecord(row), estimatedDurationMinutes: validSchedule(row) ? Math.round((stamp(row.endAt) - stamp(row.startAt)) / 60000) : undefined, reason: row.reason, __v: row.__v, bookingMethod: row.bookingMethod,
@@ -85,7 +86,8 @@ export async function facultyConsultationDetails({ faculty, id, input = {}, now 
   const row = await Appointment.findOne({ _id: id, faculty }).select("student faculty subject reason status startAt endAt consultationMode location meetingPlatform +meetingLink createdAt __v bookingMethod statusHistory proposedStartAt proposedEndAt proposedConsultationMode proposedLocation proposedMeetingPlatform +attendance").populate("student", "name").maxTimeMS(10000).lean();
   if (!row) fail(404);
   const metadata = await facultyRequestDetails({ faculty, id });
-  const appointment = detailRecord(row, actor, now);
+  const hasAttendanceResponse = Boolean(await AttendanceResponse.exists({ appointment: row._id }).maxTimeMS(10000));
+  const appointment = detailRecord(row, actor, now, hasAttendanceResponse);
   appointment.supportingDocuments = metadata.appointment.supportingDocuments;
   appointment.supportingDocument = metadata.appointment.supportingDocument;
   appointment.attendance = await readAttendance({ id, actor, now });

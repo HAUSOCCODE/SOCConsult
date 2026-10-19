@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import crypto from "node:crypto";
 import Appointment from "../models/Appointment.js";
+import AttendanceResponse from "../models/AttendanceResponse.js";
 import Availability from "../models/Availability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
@@ -19,7 +20,7 @@ const idOf = (value) => String(value?._id || value?.id || value || "");
 const date = (value) => value == null ? NaN : new Date(value).getTime();
 const proposalFields = ["proposedAvailability", "proposedStartAt", "proposedEndAt", "proposedConsultationMode", "proposedLocation", "proposedMeetingPlatform", "proposedMeetingLink", "proposalNote", "proposedAt", "proposedBy"];
 
-export function assertTransition({ appointment, action, actor, now = new Date(), reason = "", expectedProposalAt }) {
+export function assertTransition({ appointment, action, actor, now = new Date(), reason = "", expectedProposalAt, hasAttendanceResponse = false }) {
   const rule = TRANSITION_RULES[action];
   if (!rule || !rule.from.includes(appointment.status)) fail("This status transition is not allowed.");
   if (actor.management) fail("Dean management access is read-only.", 403);
@@ -34,6 +35,9 @@ export function assertTransition({ appointment, action, actor, now = new Date(),
     fail("Unauthorized for this appointment action.", 403);
   if (["reject", "propose"].includes(action) && !safeReason(reason)) fail("A decision reason is required.", 400);
   if (action === "cancel") {
+    if (hasAttendanceResponse || appointment.attendance?.studentResponded || appointment.attendance?.facultyResponded ||
+      date(now) >= date(appointment.attendance?.attendanceOpensAt))
+      fail("Attendance has opened or a response exists; this consultation cannot be cancelled.");
     if (faculty && !safeReason(reason)) fail("A cancellation reason is required.", 400);
     const unscheduled = appointment.bookingMethod === "schedule_request" && appointment.status === "Pending" && appointment.startAt == null;
     if (!unscheduled && !(date(appointment.startAt) > date(now))) fail("This consultation has already started or has no valid schedule.");
@@ -164,7 +168,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
       if (bookingMethod && appointment.bookingMethod !== bookingMethod) fail("Appointment not found.", 404);
       if (expectedVersion != null && expectedVersion !== appointment.__v) fail("This appointment changed. Refresh and try again.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
       if (expectedUpdatedAt != null && date(expectedUpdatedAt) !== date(appointment.updatedAt)) fail("This appointment changed. Refresh and try again.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
-      const to = assertTransition({ appointment, actor, action, reason, expectedProposalAt, now });
+      const hasAttendanceResponse = action === "cancel" && Boolean(await AttendanceResponse.exists({ appointment: appointment._id }).session(session));
+      const to = assertTransition({ appointment, actor, action, reason, expectedProposalAt, now, hasAttendanceResponse });
       const last = appointment.statusHistory?.at(-1);
       if (last && !Number.isFinite(date(last.changedAt))) fail("Appointment history requires manual review.");
       const changedAt = new Date(Math.max(date(now), Number.isFinite(date(last?.changedAt)) ? date(last.changedAt) + 1 : 0));
