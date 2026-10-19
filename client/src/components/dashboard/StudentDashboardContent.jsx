@@ -12,6 +12,7 @@ import { api } from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { EmptyState, ErrorState, Loading } from "../UI";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
@@ -69,6 +70,7 @@ export default function StudentDashboardContent() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [retry, setRetry] = useState(0);
   const load = useCallback(() => {
     let active = true;
@@ -78,10 +80,11 @@ export default function StudentDashboardContent() {
         setData(response);
         setError("");
       })
-      .catch(() => {
+      .catch((requestError) => {
         if (!active) return;
         setData(null);
-        setError("Unable to load your dashboard right now.");
+        setErrorRetryable(isRecoverableStudentError(requestError));
+        setError(safeStudentError(requestError, "Unable to load your dashboard right now."));
       });
     return () => {
       active = false;
@@ -107,6 +110,7 @@ export default function StudentDashboardContent() {
       <ErrorState
         message={error}
         onRetry={() => setRetry((value) => value + 1)}
+        retryable={errorRetryable}
       />
     );
   if (!data) return <Loading />;

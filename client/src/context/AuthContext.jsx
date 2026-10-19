@@ -34,6 +34,11 @@ export function AuthProvider({ children }) {
       })
       .finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+    const expire = () => setUser(null);
+    window.addEventListener("auth:session-expired", expire);
+    return () => window.removeEventListener("auth:session-expired", expire);
+  }, []);
   const login = async (role, credentials) => {
     const data = await api(`/auth/login/${role}`, {
       method: "POST",

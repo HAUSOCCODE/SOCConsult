@@ -6,6 +6,7 @@ import StudentAppointmentDetailsModal from "../../components/appointments/Studen
 import Pagination from "../../components/Pagination";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const HISTORY_STATUSES = ["Completed", "Rejected", "Cancelled", "Expired", "Attendance Review"];
 const MODES = ["Online", "Face-to-Face"];
@@ -25,6 +26,7 @@ export default function StudentConsultationHistory() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [selected, setSelected] = useState(null);
   const [retry, setRetry] = useState(0);
   const requestSequence = useRef(0);
@@ -50,7 +52,8 @@ export default function StudentConsultationHistory() {
       })
       .catch(requestError => {
         if (requestError.name !== "AbortError" && sequence === requestSequence.current) {
-          setError(requestError.message || "Unable to load consultation history.");
+          setErrorRetryable(isRecoverableStudentError(requestError));
+          setError(safeStudentError(requestError, "We couldn't load your consultation history. Please try again."));
           setLoading(false);
         }
       });
@@ -100,7 +103,7 @@ export default function StudentConsultationHistory() {
         {dateError && <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{dateError}</p>}
       </section>
 
-      {dateError ? null : loading ? <Loading /> : error ? <ErrorState message={error} onRetry={() => setRetry(value => value + 1)} /> : (
+      {dateError ? <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Correct the date range to view consultation history.</p> : loading ? <Loading /> : error ? <ErrorState message={error} onRetry={() => setRetry(value => value + 1)} retryable={errorRetryable} /> : (
         <section aria-live="polite">
           {consultations.length === 0 ? <EmptyState title={filtered ? "No historical consultations match the selected filters." : "No consultation history yet."} /> : <HistoryResults consultations={consultations} onView={setSelected} />}
           {data?.pagination?.total > 0 && <div className="mt-4 overflow-hidden rounded-xl border border-slate-200"><Pagination currentPage={data.pagination.page} totalItems={data.pagination.total} itemsPerPage={data.pagination.pageSize} itemLabel="consultation records" onPageChange={setPage} /></div>}

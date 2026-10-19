@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import ConfirmDialog from "../ConfirmDialog";
+import { safeStudentError } from "../../utils/studentUiErrors";
 
 const OUTCOMES = [
   { value: "Completed", description: "The consultation took place as scheduled." },
@@ -38,7 +39,7 @@ export default function StudentAttendanceResponseForm({ onSubmit }) {
       setConfirming(false);
     } catch (requestError) {
       setConfirming(false);
-      setError(requestError.message || "Unable to submit your attendance response.");
+      setError(safeStudentError(requestError, "Unable to submit your attendance response. Refresh the consultation before trying again."));
     } finally {
       submissionGuard.current = false;
       setSubmitting(false);

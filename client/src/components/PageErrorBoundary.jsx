@@ -11,6 +11,8 @@ export default class PageErrorBoundary extends Component {
     console.error("SOCConsult page render failed:", error);
   }
 
+  retry = () => this.setState({ failed: false });
+
   render() {
     if (this.state.failed) {
       return (
@@ -24,9 +26,12 @@ export default class PageErrorBoundary extends Component {
           <button
             type="button"
             className="btn-primary mt-6"
-            onClick={() => window.location.reload()}
+            onClick={this.retry}
           >
-            Reload page
+            Try Again
+          </button>
+          <button type="button" className="btn-secondary ml-3 mt-3 sm:mt-6" onClick={() => window.location.reload()}>
+            Reload Page
           </button>
         </section>
       );

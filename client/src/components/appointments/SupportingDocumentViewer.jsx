@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
+import { safeStudentError } from "../../utils/studentUiErrors";
 
 const extension = (name = "") => name.split(".").pop()?.toLowerCase() || "";
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
@@ -99,7 +100,11 @@ export default function SupportingDocumentViewer({
     } catch (error) {
       if (error.message === "Document is no longer available.")
         toast.error("Document is no longer available.");
-      setPreviewError(error.message || "Unable to preview this file.");
+      setPreviewError(
+        error.message === "Document is no longer available."
+          ? "Document is no longer available."
+          : safeStudentError(error, "Unable to preview this file."),
+      );
     } finally {
       setPreviewLoading(false);
     }

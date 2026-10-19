@@ -26,6 +26,7 @@ import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../ConfirmDialog";
 import { formatPersonNameInNotification } from "../../utils/formatPersonName";
 import { useNavigate } from "react-router-dom";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const ITEMS_PER_PAGE = 6;
 
@@ -65,6 +66,7 @@ function NotificationsPageContent({
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [filter, setFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [selected, setSelected] = useState(null);
@@ -86,7 +88,11 @@ function NotificationsPageContent({
         );
         setUnreadCount(Number(data?.unreadCount) || 0);
       })
-      .catch(() => { if (request === requestVersion.current) setError("Unable to load notifications. Please try again."); })
+      .catch((requestError) => {
+        if (request !== requestVersion.current) return;
+        setErrorRetryable(isRecoverableStudentError(requestError));
+        setError(safeStudentError(requestError, "Unable to load notifications. Please try again."));
+      })
       .finally(() => { if (request === requestVersion.current) setLoading(false); });
   };
   const latestLoad = useRef(load);
@@ -237,7 +243,7 @@ function NotificationsPageContent({
   };
 
   if (error && notifications.length === 0)
-    return <ErrorState message={error} onRetry={() => load()} />;
+    return <ErrorState message={error} onRetry={() => load()} retryable={errorRetryable} />;
   if (compact)
     return (
       <>
@@ -319,7 +325,7 @@ function NotificationsPageContent({
       </div>
       {error && (
         <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error} <button type="button" className="underline" onClick={retry}>Retry</button>
+          {error} {errorRetryable && <button type="button" className="underline" onClick={retry}>Retry</button>}
         </p>
       )}
       {loading ? (

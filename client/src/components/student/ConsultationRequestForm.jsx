@@ -2,6 +2,7 @@ import { FileText, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { consultationSlotUnavailable, safeStudentError } from "../../utils/studentUiErrors";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
@@ -25,6 +26,7 @@ export default function ConsultationRequestForm({
   slot,
   onCancel,
   onSuccess,
+  onSlotUnavailable,
 }) {
   const submittingRef = useRef(false);
   const [subject, setSubject] = useState("");
@@ -79,7 +81,12 @@ export default function ConsultationRequestForm({
       const data = await api("/appointments", { method: "POST", body: request });
       await onSuccess(data);
     } catch (requestError) {
-      setError(requestError.message || "Unable to submit the consultation request.");
+      if (consultationSlotUnavailable(requestError)) {
+        setError("This consultation slot is no longer available. Please choose another time.");
+        onSlotUnavailable?.();
+      } else {
+        setError(safeStudentError(requestError, "Unable to submit the consultation request. Please review the form and try again."));
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);

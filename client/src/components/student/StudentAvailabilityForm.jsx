@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
+import { safeStudentError } from "../../utils/studentUiErrors";
 
 const emptyForm = { startAt: "", endAt: "", isActive: true };
 
@@ -24,6 +25,7 @@ export default function StudentAvailabilityForm({ editing, onCancel, onSaved }) 
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
 
   useEffect(() => {
     setForm(
@@ -40,6 +42,7 @@ export default function StudentAvailabilityForm({ editing, onCancel, onSaved }) 
 
   const submit = async (event) => {
     event.preventDefault();
+    if (pending.current) return;
     setError("");
     const startAt = new Date(toManilaTimestamp(form.startAt));
     const endAt = new Date(toManilaTimestamp(form.endAt));
@@ -55,6 +58,7 @@ export default function StudentAvailabilityForm({ editing, onCancel, onSaved }) 
       setError("Start date/time must be in the future.");
       return;
     }
+    pending.current = true;
     setSaving(true);
     try {
       const data = await api(editing ? `/student-availability/${editing._id}` : "/student-availability", {
@@ -68,8 +72,9 @@ export default function StudentAvailabilityForm({ editing, onCancel, onSaved }) 
       setForm(emptyForm);
       await onSaved(data.message);
     } catch (requestError) {
-      setError(requestError.message || "Unable to save availability.");
+      setError(safeStudentError(requestError, "Unable to save availability. Check the dates and try again."));
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   };

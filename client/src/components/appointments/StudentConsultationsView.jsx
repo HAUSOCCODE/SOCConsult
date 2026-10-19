@@ -13,14 +13,15 @@ import {
   getAppointmentDisplayStatus,
 } from "../../utils/appointmentStatus";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../UI";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 import ConfirmDialog from "../ConfirmDialog";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import StudentRescheduleResponseModal from "./StudentRescheduleResponseModal";
 
 const TABS = [
-  { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultation requests." },
-  { id: "attendance", label: "Attendance Required", statuses: ATTENDANCE_REQUIRED_STATUSES, empty: "No consultations currently require your attendance response." },
-  { id: "review", label: "Under Review", statuses: UNDER_REVIEW_STATUSES, empty: "No attendance records are currently under review." },
+  { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultations." },
+  { id: "attendance", label: "Attendance Required", statuses: ATTENDANCE_REQUIRED_STATUSES, empty: "No attendance update required." },
+  { id: "review", label: "Under Review", statuses: UNDER_REVIEW_STATUSES, empty: "No consultations are currently under review." },
   { id: "legacy", label: "Legacy", statuses: LEGACY_APPOINTMENT_STATUSES, empty: "No legacy consultations." },
 ];
 const validDate = (value) => {
@@ -41,6 +42,7 @@ export default function StudentConsultationsView() {
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [tab, setTab] = useState("active");
   const [details, setDetails] = useState(null);
   const [proposalTarget, setProposalTarget] = useState(null);
@@ -51,7 +53,10 @@ export default function StudentConsultationsView() {
     setError("");
     return api("/appointments/mine")
       .then((data) => setItems(Array.isArray(data?.appointments) ? data.appointments : []))
-      .catch(() => setError("Unable to load consultations. Please try again."));
+      .catch((requestError) => {
+        setErrorRetryable(isRecoverableStudentError(requestError));
+        setError(safeStudentError(requestError, "Unable to load consultations. Please try again."));
+      });
   };
   useEffect(() => { void load(); }, []);
   useEffect(() => {
@@ -93,12 +98,12 @@ export default function StudentConsultationsView() {
       setCancellationReason("");
       await load();
     } catch (requestError) {
-      toast.error(requestError.message || "Unable to cancel the consultation request.");
+      toast.error(safeStudentError(requestError, "Unable to cancel the consultation. Refresh before trying again."));
     } finally {
       setCancelling(false);
     }
   };
-  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (error) return <ErrorState message={error} onRetry={load} retryable={errorRetryable} />;
   if (!items) return <Loading />;
 
   return (

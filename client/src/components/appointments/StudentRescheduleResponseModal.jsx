@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../ConfirmDialog";
+import { safeStudentError } from "../../utils/studentUiErrors";
 
 const validDate = (value) => {
   const date = new Date(value);
@@ -71,7 +72,7 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
       toast.success(data.message || "Proposal response saved.");
       await onSuccess(data.appointment);
     } catch (error) {
-      toast.error(error.message || "Unable to respond to the proposal.");
+      toast.error(safeStudentError(error, "Unable to respond to the proposal. Refresh the consultation before trying again."));
       setSubmitting("");
       setConfirmDecision("");
     }

@@ -12,6 +12,7 @@ import { formatPersonName } from "../../utils/formatPersonName";
 import { api } from "../../api/apiClient";
 import StudentAttendanceResponseForm from "../attendance/StudentAttendanceResponseForm";
 import AttendanceResponseSummary from "../attendance/AttendanceResponseSummary";
+import { safeStudentError } from "../../utils/studentUiErrors";
 
 const ATTENDANCE_STATUSES = new Set([
   "Awaiting Attendance Update",
@@ -77,7 +78,7 @@ export default function StudentAppointmentDetailsModal({
       setAttendance(data.attendance || null);
       return data.attendance || null;
     } catch (error) {
-      setAttendanceError(error.message || "Unable to load attendance information.");
+      setAttendanceError(safeStudentError(error, "Unable to load attendance information. Please try again."));
       return null;
     } finally {
       setAttendanceLoading(false);
@@ -136,9 +137,7 @@ export default function StudentAppointmentDetailsModal({
       }
       setCalendarMessage("Calendar file downloaded.");
     } catch (error) {
-      setCalendarMessage(
-        error.message || "Unable to download the calendar file.",
-      );
+      setCalendarMessage(safeStudentError(error, "Unable to download the calendar file."));
     } finally {
       setDownloadingCalendar(false);
     }
