@@ -129,8 +129,10 @@ test("Dean publishes without an optional link, Student books, and management nev
     assert.deepEqual((await management.json()).consultations.map(row => row.recordId).sort(), [foreign._id, consultation._id].sort());
     const forged = `faculty=${h.users.faculty.id}&facultyId=${h.users.faculty.id}&owner=${h.users.faculty.id}`;
     const personal = await h.request(`/appointments/mine?${forged}`, "dean");
-    assert.equal(personal.status, 200);
-    assert.deepEqual((await personal.json()).appointments.map(row => row._id), [consultation._id]);
+    assert.equal(personal.status, 400);
+    const ownedPersonal = await h.request("/appointments/mine", "dean");
+    assert.equal(ownedPersonal.status, 200);
+    assert.deepEqual((await ownedPersonal.json()).appointments.map(row => row._id), [consultation._id]);
     const mine = await h.request(`/availability/mine?${forged}`, "dean");
     assert.equal(mine.status, 200);
     assert.deepEqual((await mine.json()).availability.map(row => row._id), [slot._id]);

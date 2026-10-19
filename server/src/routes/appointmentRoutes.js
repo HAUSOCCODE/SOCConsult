@@ -1,3 +1,4 @@
+import { listFacultyConsultations, facultyConsultationDetails } from "../services/facultyConsultationService.js";
 import { canReadAppointmentDocument } from "../services/appointmentDocumentAuthorizationService.js";
 import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import { Router } from "express";
@@ -51,6 +52,16 @@ const requestDocument = requestRead(async (req, res) => {
 router.get("/requests/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
 router.get("/requests/:id/document", authorize("faculty", "dean"), requestDocument);
 
+// Static personal consultation routes precede dynamic appointment routes.
+router.get("/consultations", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyConsultations({ faculty: req.user.id, input: req.query, now: new Date() }));
+}));
+router.get("/consultations/:id", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await facultyConsultationDetails({ faculty: req.user.id, id: req.params.id, input: req.query, now: new Date(), actor: req.user }));
+}));
+router.get("/consultations/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
+router.get("/consultations/:id/document", authorize("faculty", "dean"), requestDocument);
+
 const documentSize = (data = "") => {
   const encoded = data.split(",")[1] || "";
   return Buffer.from(encoded, "base64").length;
@@ -97,6 +108,7 @@ const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
 
 router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) => {
+  if (req.user.role !== "student" && Object.keys(req.query).length) return res.status(400).json({ message: "Invalid personal consultation filters." });
   const query =
     req.user.role === "student"
       ? { student: req.user.id }
@@ -131,8 +143,9 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
       appointment.meetingPlatform =
         appointment.meetingPlatform || platformFor(availability);
       const canAccessLink =
-        ["faculty", "dean"].includes(req.user.role) ||
-        ["Confirmed", "Completed"].includes(appointment.status);
+        req.user.role === "student" ? ["Confirmed", "Completed"].includes(appointment.status) :
+        ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(appointment.status) &&
+        appointment.consultationMode === "Online" && appointment.startAt != null && appointment.endAt > appointment.startAt;
       if (
         canAccessLink &&
         availability?.meetingLink &&
