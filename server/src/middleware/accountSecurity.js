@@ -1,6 +1,6 @@
 import rateLimit from "express-rate-limit";
 
-export const accountPaths = /^\/api\/auth\/(?:me|change-password)(?:\/|\?|$)/i;
+export const accountPaths = /^\/api\/auth\/(?:me|change-password|login\/faculty|logout)(?:\/|\?|$)/i;
 export const accountNoStore = (req, res, next) => {
   if (accountPaths.test(req.originalUrl || "")) res.set("Cache-Control", "no-store");
   next();

@@ -8,7 +8,7 @@ import {
   UserRound,
   FileBarChart,
 } from "lucide-react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { legacyFacultyDestination } from "../utils/deanWorkspace";
 import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
@@ -36,7 +36,7 @@ const navigation = [
   { icon: UserRound, label: "Account Settings", path: "/faculty/account" },
 ];
 export default function FacultyLayout() {
-  const { user } = useAuth();
+  const { user, recommendPasswordChange } = useAuth();
   const location = useLocation();
   if (user?.role === "dean")
     return (
@@ -51,6 +51,9 @@ export default function FacultyLayout() {
     );
   return (
     <>
+      {recommendPasswordChange && <div role="status" className="bg-amber-50 p-3 text-sm text-amber-900 lg:ml-72">
+        We recommend changing your initial password. <Link to="/faculty/account" className="font-semibold underline">Account Settings</Link>
+      </div>}
       <RoleLayout role="faculty" navigation={navigation} />
     </>
   );

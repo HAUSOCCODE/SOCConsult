@@ -300,6 +300,7 @@ export default function ProfilePage() {
 }
 
 export function SecuritySettings({ onPasswordChanged } = {}) {
+  const { user, clearPasswordRecommendation } = useAuth();
   const toast = useToast();
   const empty = { currentPassword: "", newPassword: "", confirmPassword: "" };
   const [passwords, setPasswords] = useState(empty);
@@ -359,6 +360,7 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
           confirmNewPassword: passwords.confirmPassword,
         }),
       });
+      if (user?.role === "faculty") clearPasswordRecommendation?.();
       if (!mounted.current) return;
       clear();
       onPasswordChanged?.();

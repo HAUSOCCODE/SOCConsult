@@ -49,7 +49,7 @@ test("Dean login uses username and the stored role remains authoritative", async
     assert.equal("password" in res.body.user, false);
     res = response();
     await login({ params: { role: "faculty" }, body: { email: "management", password } }, res);
-    assert.equal(res.statusCode, 403);
+    assert.equal(res.statusCode, 401);
   } finally { restores.reverse().forEach(fn => fn()); }
 });
 

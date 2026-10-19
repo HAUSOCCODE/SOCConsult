@@ -108,7 +108,9 @@ test("Student and Faculty mapping, optional middle name, password safety, and im
       const res = response();
       await login({ params: { role }, body: { identifier: user.email, password: "000123" } }, res);
       assert.equal(res.statusCode, 200); assert.ok(res.body.token); assert.equal(res.body.user.role, role);
-      assert.doesNotMatch(JSON.stringify(res.body), /password|\$2[aby]\$/i);
+      const { recommendPasswordChange, ...credentialsFreeBody } = res.body;
+      assert.equal(recommendPasswordChange, role === "faculty" ? true : undefined);
+      assert.doesNotMatch(JSON.stringify(credentialsFreeBody), /password|\$2[aby]\$/i);
     } finally { h.restore(); }
   }
 });

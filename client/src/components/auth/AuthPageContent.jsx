@@ -1,5 +1,5 @@
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import Brand from "../Brand";
 import { useAuth } from "../../context/AuthContext";
@@ -21,7 +21,8 @@ export default function AuthPageContent({ role: fixedRole }) {
   const { role: routeRole } = useParams();
   const role = fixedRole || routeRole;
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, loading } = useAuth();
+  const pending = useRef(false);
   const [form, setForm] = useState({ identifier: "", password: "" });
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
@@ -40,6 +41,8 @@ export default function AuthPageContent({ role: fixedRole }) {
   const domain = role === "student" ? "student.hau.edu.ph" : "hau.edu.ph";
   const submit = async (e) => {
     e.preventDefault();
+    if (pending.current || (role === "faculty" && loading)) return;
+    pending.current = true;
     setError("");
     setBusy(true);
     try {
@@ -51,6 +54,7 @@ export default function AuthPageContent({ role: fixedRole }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
@@ -151,7 +155,7 @@ export default function AuthPageContent({ role: fixedRole }) {
                 </Field>
               </div>
               <button
-                disabled={busy}
+                disabled={busy || (role === "faculty" && loading)}
                 className="btn-primary mt-6 w-full disabled:opacity-50"
               >
                 {busy ? "Please wait..." : "Log In"}
