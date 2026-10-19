@@ -14,6 +14,7 @@ import FacultyCard from "../../components/student/FacultyCard";
 import ConsultationRequestForm from "../../components/student/ConsultationRequestForm";
 import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const time = (value) =>
   new Date(value).toLocaleTimeString("en-PH", {
@@ -31,6 +32,9 @@ export default function FindFaculty() {
   const [selected, setSelected] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const [facultyRetryable, setFacultyRetryable] = useState(true);
+  const [scheduleRetryable, setScheduleRetryable] = useState(true);
   const [hasActiveStudentAvailability, setHasActiveStudentAvailability] =
     useState(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
@@ -45,9 +49,10 @@ export default function FindFaculty() {
       .then((data) =>
         setFaculty(Array.isArray(data?.faculty) ? data.faculty : []),
       )
-      .catch(() =>
-        setError("Unable to load consultation information. Please try again."),
-      );
+      .catch((requestError) => {
+        setFacultyRetryable(isRecoverableStudentError(requestError));
+        setError(safeStudentError(requestError, "Unable to load consultation information. Please try again."));
+      });
   };
   useEffect(() => {
     void loadFaculty();
@@ -84,6 +89,8 @@ export default function FindFaculty() {
       return;
     }
     setSchedules([]);
+    setScheduleError("");
+    setScheduleRetryable(true);
     setHasActiveStudentAvailability(null);
     setScheduleLoading(true);
     try {
@@ -97,14 +104,16 @@ export default function FindFaculty() {
           ),
         };
         scheduleCache.current.set(String(member._id), cacheEntry);
-        setSchedules(validSchedules);
+        setSchedules(loaded);
         setHasActiveStudentAvailability(
           cacheEntry.hasActiveStudentAvailability,
         );
       }
-    } catch {
-      if (requestId === availabilityRequest.current)
-        toast.error("Unable to load available schedules. Please try again.");
+    } catch (requestError) {
+      if (requestId === availabilityRequest.current) {
+        setScheduleRetryable(isRecoverableStudentError(requestError));
+        setScheduleError(safeStudentError(requestError, "Unable to load available schedules. Please try again."));
+      }
     } finally {
       if (requestId === availabilityRequest.current) setScheduleLoading(false);
     }
@@ -119,7 +128,7 @@ export default function FindFaculty() {
     );
   }, [faculty, search]);
 
-  if (error) return <ErrorState message={error} onRetry={loadFaculty} />;
+  if (error) return <ErrorState message={error} onRetry={loadFaculty} retryable={facultyRetryable} />;
   return (
     <div className="w-full min-w-0 max-w-full space-y-4 pb-16 sm:space-y-5 md:pb-0">
       <section className="relative min-w-0 overflow-hidden rounded-xl border border-maroon-100 bg-white p-4 shadow-sm sm:p-5">
@@ -184,7 +193,7 @@ export default function FindFaculty() {
         <EmptyState
           title={
             search.trim()
-              ? "No Faculty Members found"
+              ? "No Faculty found."
               : "No approved Faculty Members are currently available."
           }
           text={
@@ -322,9 +331,11 @@ export default function FindFaculty() {
                   <p className="py-10 text-center text-sm font-semibold text-maroon-800">
                     Loading consultation schedules...
                   </p>
+                ) : scheduleError ? (
+                  <ErrorState message={scheduleError} onRetry={() => void viewAvailability(selected)} retryable={scheduleRetryable} />
                 ) : schedules.length === 0 ? (
                   <EmptyState
-                    title="No compatible schedules are currently available."
+                    title="No available consultation slots."
                     text={
                       hasActiveStudentAvailability
                         ? "You may adjust My Availability or check another Faculty provider."
@@ -410,6 +421,12 @@ export default function FindFaculty() {
               provider={selected}
               slot={chosenSchedule}
               onCancel={() => setChosenSchedule(null)}
+              onSlotUnavailable={() => {
+                setChosenSchedule(null);
+                scheduleCache.current.delete(String(selected._id));
+                setAvailabilityOpen(true);
+                void viewAvailability(selected);
+              }}
               onSuccess={(data) => {
                 setChosenSchedule(null);
                 scheduleCache.current.delete(String(selected._id));

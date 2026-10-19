@@ -39,7 +39,7 @@ export default function StudentAvailabilityList({ availability, busyId, onEdit, 
       </div>
       {visible.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-center">
-          <p className="text-sm font-semibold text-slate-700">{availability.length ? `No ${filter} availability periods.` : "No preferred availability yet."}</p>
+          <p className="text-sm font-semibold text-slate-700">{availability.length ? `No ${filter} availability periods.` : "No private availability entered."}</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">Adding availability is optional and is not required to book a Faculty slot.</p>
         </div>
       ) : (

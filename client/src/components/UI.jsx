@@ -34,25 +34,31 @@ export const StatusBadge = ({ status, compact = false, allowWrap = false, appoin
 export const EmptyState = ({
   title = "Nothing here yet",
   text = "New records will appear here.",
+  action,
 }) => (
   <div role="status" aria-live="polite" className="w-full min-w-0 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center shadow-sm sm:px-6 sm:py-14">
     <span className="mx-auto mb-4 block h-12 w-12 rounded-2xl bg-maroon-100 ring-4 ring-maroon-50" />
     <p className="font-bold text-slate-700">{title}</p>
     <p className="mt-1 text-sm text-slate-500">{text}</p>
+    {action && <div className="mt-5 flex justify-center">{action}</div>}
   </div>
 );
-export const Loading = () => (
+export const Loading = ({ message = "Loading current data..." }) => (
   <div role="status" aria-live="polite" aria-busy="true" className="grid min-h-48 place-items-center">
     <div className="flex items-center gap-3 text-sm font-semibold text-maroon-800">
       <span aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-2 border-maroon-200 border-t-maroon-800" />
-      Loading current data...
+      {message}
     </div>
   </div>
 );
-export const ErrorState = ({ message, onRetry }) => (
+export const ErrorState = ({
+  message = "We couldn't load this content.",
+  onRetry,
+  retryable = Boolean(onRetry),
+}) => (
   <div role="alert" className="rounded-2xl border border-red-200 bg-white px-6 py-10 text-center shadow-sm">
     <p className="font-bold text-red-700">{message}</p>
-    {onRetry && (
+    {retryable && onRetry && (
       <button type="button" onClick={onRetry} className="btn-secondary mt-5">
         Try again
       </button>

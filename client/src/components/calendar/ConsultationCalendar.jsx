@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api } from "../../api/apiClient";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 import { StatusBadge } from "../../components/UI";
 import { formatPersonName } from "../../utils/formatPersonName";
 
@@ -117,6 +118,7 @@ export default function ConsultationCalendar({
   const [upcoming, setUpcoming] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [expandedDay, setExpandedDay] = useState(null);
@@ -145,7 +147,8 @@ export default function ConsultationCalendar({
         if (sequence !== requestSequence.current) return;
         setEvents([]);
         setUpcoming([]);
-        setError(requestError.message || "Unable to load the calendar.");
+        setErrorRetryable(isRecoverableStudentError(requestError));
+        setError(safeStudentError(requestError, "We couldn't load the calendar. Please try again."));
       })
       .finally(() => {
         if (sequence === requestSequence.current) setLoading(false);
@@ -217,6 +220,7 @@ export default function ConsultationCalendar({
         <CalendarError
           message={error}
           onRetry={() => setRetryKey((value) => value + 1)}
+          retryable={errorRetryable}
         />
       ) : (
         <div className={`${showUpcoming ? "faculty-calendar-layout" : ""} grid min-w-0 gap-4 xl:gap-5`}>
@@ -709,14 +713,12 @@ function CalendarSkeleton() {
   );
 }
 
-function CalendarError({ message, onRetry }) {
+function CalendarError({ message, onRetry, retryable }) {
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
       <p className="font-bold text-red-800">Unable to load the calendar</p>
       <p className="mt-1 text-sm text-red-700">{message}</p>
-      <button type="button" onClick={onRetry} className="btn-secondary mt-4">
-        Retry
-      </button>
+      {retryable && <button type="button" onClick={onRetry} className="btn-secondary mt-4">Retry</button>}
     </div>
   );
 }

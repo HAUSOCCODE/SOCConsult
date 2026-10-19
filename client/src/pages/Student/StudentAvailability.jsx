@@ -4,11 +4,13 @@ import StudentAvailabilityForm from "../../components/student/StudentAvailabilit
 import StudentAvailabilityList from "../../components/student/StudentAvailabilityList";
 import { ErrorState, Loading } from "../../components/UI";
 import { useToast } from "../../context/ToastContext";
+import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 export default function StudentAvailability() {
   const toast = useToast();
   const [availability, setAvailability] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const [loadRetryable, setLoadRetryable] = useState(true);
   const [editing, setEditing] = useState(null);
   const [busyId, setBusyId] = useState("");
 
@@ -17,9 +19,10 @@ export default function StudentAvailability() {
       const data = await api("/student-availability");
       setAvailability(Array.isArray(data?.availability) ? data.availability : []);
       setLoadError("");
-    } catch {
+    } catch (requestError) {
       setAvailability([]);
-      setLoadError("Unable to load your availability. Please try again.");
+      setLoadRetryable(isRecoverableStudentError(requestError));
+      setLoadError(safeStudentError(requestError, "Unable to load your availability. Please try again."));
     }
   }, []);
 
@@ -37,7 +40,7 @@ export default function StudentAvailability() {
       toast.success(data.message);
       await load();
     } catch (error) {
-      toast.error(error.message || "Unable to update availability.");
+      toast.error(safeStudentError(error, "Unable to update availability. Refresh before trying again."));
     } finally {
       setBusyId("");
     }
@@ -53,7 +56,7 @@ export default function StudentAvailability() {
       toast.success(data.message);
       await load();
     } catch (error) {
-      toast.error(error.message || "Unable to delete availability.");
+      toast.error(safeStudentError(error, "Unable to delete availability. Refresh before trying again."));
     } finally {
       setBusyId("");
     }
@@ -83,7 +86,7 @@ export default function StudentAvailability() {
         {availability === null ? (
           <Loading />
         ) : loadError ? (
-          <ErrorState message={loadError} onRetry={load} />
+          <ErrorState message={loadError} onRetry={load} retryable={loadRetryable} />
         ) : (
           <StudentAvailabilityList
             availability={availability}
