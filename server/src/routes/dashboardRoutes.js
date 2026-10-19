@@ -1,13 +1,13 @@
-import { attendanceCounts, verifiedCompletedFilter } from "../services/attendanceReportingService.js";
+import { attendanceCounts } from "../services/attendanceReportingService.js";
 import { Router } from "express";
-import { getDateRangeFilter } from "../services/calendarRangeService.js";
+import { getFacultyDashboard } from "../controllers/facultyDashboardController.js";
 import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
-import Availability from "../models/Availability.js";
+
 import { authenticate, authorize } from "../middleware/auth.js";
 import { getDeanDashboard } from "../controllers/deanDashboardController.js";
 const router = Router();
-router.use("/dean", (_req, res, next) => {
+router.use(["/dean", "/faculty"], (_req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
@@ -91,50 +91,5 @@ export async function getStudentDashboard(req, res) {
   });
 }
 router.get("/student", authorize("student"), getStudentDashboard);
-router.get("/faculty", authorize("faculty", "dean"), async (req, res) => {
-  const now = new Date();
-  const { startAt: todayRange } = getDateRangeFilter("today", now);
-  const { startAt: weekRange } = getDateRangeFilter("this_week", now);
-  const [today, pending, weekly, completed, recentRequests, availability] =
-    await Promise.all([
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        status: "Confirmed",
-        startAt: todayRange,
-      }),
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        status: "Pending",
-      }),
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        $or: [{ status: "Confirmed" }, verifiedCompletedFilter],
-        startAt: weekRange,
-      }),
-      Appointment.countDocuments({ faculty: req.user.id, ...verifiedCompletedFilter }),
-      Appointment.find({
-        faculty: req.user.id,
-        status: "Pending",
-      })
-        .populate("student", "name email")
-        .sort({ createdAt: -1 })
-        .limit(5),
-      Availability.countDocuments({
-        faculty: req.user.id,
-        isActive: true,
-        endAt: { $gt: now },
-      }),
-    ]);
-  res.json({
-    stats: {
-      todayAppointments: today,
-      pendingRequests: pending,
-      weeklyConsultations: weekly,
-      completedConsultations: completed,
-      availableSchedules: availability,
-    },
-    recentRequests,
-    attendanceSummary: await attendanceCounts({ faculty: req.user.id }),
-  });
-});
+router.get("/faculty", authorize("faculty", "dean"), getFacultyDashboard);
 export default router;
