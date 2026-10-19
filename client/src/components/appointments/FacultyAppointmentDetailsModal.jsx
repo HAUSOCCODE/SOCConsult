@@ -1,3 +1,4 @@
+import PersonalConsultationDetails from "./PersonalConsultationDetails";
 import { formatManilaDisplay } from "../../utils/formatDateTime";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { X } from "lucide-react";
@@ -23,11 +24,15 @@ export default function FacultyAppointmentDetailsModal({
   appointment,
   onClose,
   showFacultyInfo = false,
+  personal = false,
+  children,
 }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, { onClose });
 
 
+
+  if (personal) return <PersonalConsultationDetails appointment={appointment} onClose={onClose}>{children}</PersonalConsultationDetails>;
 
   return createPortal(
     <div

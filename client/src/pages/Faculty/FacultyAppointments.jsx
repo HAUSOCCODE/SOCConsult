@@ -1,5 +1,3 @@
-import AppointmentsView from "../../components/appointments/AppointmentsView";
+import FacultyConsultationsView from "../../components/appointments/FacultyConsultationsView";
 
-export default function FacultyAppointments() {
-  return <AppointmentsView />;
-}
+export default function FacultyAppointments() { return <FacultyConsultationsView />; }

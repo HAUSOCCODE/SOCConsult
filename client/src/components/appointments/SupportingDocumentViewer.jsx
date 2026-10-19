@@ -69,6 +69,7 @@ const metadataFor = (appointment, management) =>
 export default function SupportingDocumentViewer({
   appointment,
   personalRequest = false,
+  personalConsultation = false,
   emptyMessage = "No supporting documents were provided.",
   wrapFileNames = false,
 }) {
@@ -137,6 +138,7 @@ export default function SupportingDocumentViewer({
     setPreviewError("");
   };
 
+  if (personalConsultation) return <ProtectedRequestDocuments key={appointment._id} appointment={appointment} route="consultations" />;
   if (personalRequest) return <ProtectedRequestDocuments key={appointment._id} appointment={appointment} />;
   if (!documents.length)
     return <p className="text-sm text-slate-600">{emptyMessage}</p>;
@@ -359,7 +361,7 @@ function PreviewContent({ kind, document }) {
   return null;
 }
 
-function ProtectedRequestDocuments({ appointment }) {
+function ProtectedRequestDocuments({ appointment, route = "requests" }) {
   const [state, setState] = useState({});
   const active = useRef(null);
   const objectUrl = useRef(null);
@@ -378,7 +380,7 @@ function ProtectedRequestDocuments({ appointment }) {
     setState({ loading: true });
     try {
       const suffix = doc.id ? `documents/${doc.id}` : "document";
-      const { blob } = await api.download(`/appointments/requests/${appointment._id}/${suffix}`, { signal: controller.signal, cache: "no-store" });
+      const { blob } = await api.download(`/appointments/${route}/${appointment._id}/${suffix}`, { signal: controller.signal, cache: "no-store" });
       if (controller.signal.aborted) return;
       const text = blob.type === "text/plain" ? await blob.text() : null;
       if (controller.signal.aborted) return;
