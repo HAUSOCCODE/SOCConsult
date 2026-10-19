@@ -22,8 +22,34 @@ import {
   generateConsultationIcs,
 } from "../services/icsService.js";
 import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
+import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
+import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 const router = Router();
 router.use(authenticate);
+
+const requestRead = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 404].includes(error.statusCode) ? error.statusCode : 503;
+    res.status(status).json({ message: status === 400 ? "Invalid request filters or reference." : status === 404 ? "Request or document not found or unavailable." : "Requests are temporarily unavailable. Please try again." });
+  }
+};
+// Static personal request routes precede all dynamic appointment routes.
+router.get("/requests", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyRequests({ faculty: req.user.id, input: req.query }));
+}));
+router.get("/requests/:id", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await facultyRequestDetails({ faculty: req.user.id, id: req.params.id, input: req.query }));
+}));
+const requestDocument = requestRead(async (req, res) => {
+  if (Object.keys(req.query).length) throw Object.assign(new Error(), { statusCode: 400 });
+  const document = await authorizedDocument({ id: req.params.id, documentId: req.params.documentId, user: req.user, personalFaculty: true });
+  const bytes = await documentContent(document);
+  res.set(documentHeaders(document)).send(bytes);
+});
+router.get("/requests/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
+router.get("/requests/:id/document", authorize("faculty", "dean"), requestDocument);
 
 const documentSize = (data = "") => {
   const encoded = data.split(",")[1] || "";

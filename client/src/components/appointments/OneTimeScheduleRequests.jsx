@@ -17,28 +17,30 @@ const initial = {
   meetingLink: "",
 };
 
-export default function OneTimeScheduleRequests() {
+export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDecided } = {}) {
   const toast = useToast();
   const [requests, setRequests] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(reviewRequest || null);
   const [details, setDetails] = useState(null);
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState({ ...initial, durationMinutes: String(reviewRequest?.estimatedDurationMinutes || "") });
   const [rejectNote, setRejectNote] = useState("");
   const [busy, setBusy] = useState(false);
   const reviewButtonRef = useRef(null);
   const reviewDialogRef = useRef(null);
   const busyRef = useRef(false);
   busyRef.current = busy;
+  const closeReview = () => { setSelected(null); onClose?.(); };
   const load = () =>
     api("/schedule-requests/mine")
       .then((data) => setRequests(data.requests || []))
       .catch(() => toast.error("Unable to load schedule requests."));
   useEffect(() => {
+    if (reviewRequest) return;
     void load();
     const timer = window.setInterval(load, 20000);
     return () => window.clearInterval(timer);
   }, []);
-  useDialogFocus(reviewDialogRef, { open: Boolean(selected), busy, onClose: () => { if (!busyRef.current) setSelected(null); }, restoreTarget: reviewButtonRef.current });
+  useDialogFocus(reviewDialogRef, { open: Boolean(selected), busy, onClose: () => { if (!busyRef.current) closeReview(); }, restoreTarget: reviewButtonRef.current });
   const choose = (request, opener) => {
     reviewButtonRef.current = opener;
     setSelected(request);
@@ -72,8 +74,9 @@ export default function OneTimeScheduleRequests() {
         body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
       });
       toast.success(data.message);
-      setSelected(null);
-      await load();
+      closeReview();
+      if (reviewRequest) onDecided?.();
+      else await load();
     } catch (error) {
       toast.error(error.message || "Unable to decide this request.");
     } finally {
@@ -84,6 +87,7 @@ export default function OneTimeScheduleRequests() {
 
   return (
     <section className="w-full max-w-none space-y-3">
+      {!reviewRequest && <>
       <div>
         <h2 className="text-lg font-bold text-maroon-900">
           Requests for a Schedule
@@ -139,6 +143,7 @@ export default function OneTimeScheduleRequests() {
           ))
         )}
       </div>
+      </>}
       {selected &&
         createPortal(
           <div
@@ -146,7 +151,7 @@ export default function OneTimeScheduleRequests() {
             role="presentation"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget && !busy) {
-                setSelected(null);
+                closeReview();
               }
             }}
           >
@@ -289,7 +294,7 @@ export default function OneTimeScheduleRequests() {
                   type="button"
                   className="btn-secondary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={() => setSelected(null)}
+                  onClick={closeReview}
                 >
                   Close
                 </button>
