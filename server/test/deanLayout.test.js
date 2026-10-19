@@ -126,6 +126,7 @@ test("URL workspace selection survives refresh and validates shared-page context
     legacyFacultyDestination("/faculty/calendar"),
     "/dean/faculty/calendar",
   );
+  assert.equal(legacyFacultyDestination("/faculty/account", "?tab=profile&workspace=management", "#details"), "/dean/account?tab=profile&workspace=faculty#details");
   assert.equal(legacyFacultyDestination("/faculty"), "/dean/faculty/dashboard");
   assert.equal(
     legacyFacultyDestination("/faculty/profile", "?x=1", "#profile"),
@@ -158,6 +159,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
       "LayoutDashboard",
       "UserRound",
       "LockKeyhole",
+      "FileBarChart",
     ].map((name) => [name, () => null]),
   );
   components.FacultyLayout = await loadComponent("layouts/FacultyLayout.jsx", {
@@ -204,6 +206,9 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     for (const path of ["/admin/dashboard", "/admin/registrations"]) assert.match(render(path), /NotFoundPage/);
     assert.match(render(`/${role}/register`), /NotFoundPage/);
     if (role === "dean") assert.match(render("/dean/registrations"), /NotFoundPage/);
+    for (const [page, component] of Object.entries({ dashboard: "FacultyDashboard", requests: "AppointmentRequests", availability: "FacultyAvailabilityCalendar", consultations: "FacultyAppointments", history: "FacultyHistory", reports: "DeferredFeaturePage", notifications: "FacultyNotifications", account: "FacultyAccountSettings", calendar: "FacultyConsultationCalendar" })) {
+      assert.equal(render(`/faculty/${page}`).includes(component), role === "faculty", `${role}: ${page}`);
+    }
     const html = render("/faculty/dashboard");
     assert.equal(html.includes("FacultyDashboard"), role === "faculty");
   }
@@ -225,6 +230,7 @@ test("actual legacy Faculty layout redirects Dean only and preserves URL details
       "LayoutDashboard",
       "UserRound",
       "LockKeyhole",
+      "FileBarChart",
     ].map((name) => [name, () => null]),
   );
   const FacultyLayout = await loadComponent("layouts/FacultyLayout.jsx", {

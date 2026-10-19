@@ -140,3 +140,8 @@ test("active source excludes removed features with explicit compatibility except
   assert.match(source("../src/services/deanAccountMigrationService.js"), /"admin"/);
   assert.match(source("../src/controllers/auditController.js"), /role === "admin"/);
 });
+
+test("public role selection and titles contain no registration destinations", () => {
+  assert.doesNotMatch(source("../../client/src/pages/Public/RoleSelectionPage.jsx"), /register|Create.*account/);
+  assert.doesNotMatch(source("../../client/src/components/RouteDocumentTitle.jsx"), /\/register/);
+});

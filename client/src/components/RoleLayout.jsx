@@ -88,7 +88,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
     );
   const navigate = useNavigate();
   const currentPage =
-    navigation.find(({ path }) => location.pathname === path.split("?")[0])?.label ||
+    navigation.find(({ path, activePaths = [] }) => location.pathname === path.split("?")[0] || activePaths.includes(location.pathname))?.label ||
     ({ "/dean/appointments": "Appointments Management", "/dean/audit-logs": "Audit Logs", "/dean/faculty/calendar": "Consultation Calendar" }[location.pathname] || "Dashboard");
   const displayName =
     user.role === "dean" && ["ConsultIO Administrator", "SOCConsult Administrator", "ConsultIO Dean"].includes(user.name)
@@ -215,13 +215,14 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
           </div>
         </SidebarTooltip>
         <nav className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-y-auto p-4">
-          {navigation.map(({ icon: Icon, label, path }) => (
+          {navigation.map(({ icon: Icon, label, path, activePaths = [] }) => (
             <SidebarTooltip key={path} label={label} enabled={sidebarCollapsed}>
               <NavLink
                 to={path}
+                aria-current={activePaths.includes(location.pathname) ? "page" : undefined}
                 aria-label={label === "Notifications" ? `${label}, ${unread} unread` : label}
                 className={({ isActive }) =>
-                  `relative flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gold-400 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : ""} ${isActive ? "bg-[#FFF9F7] text-[#6E1423] shadow-sm" : "text-white hover:bg-[#8A2436]"}`
+                  `relative flex min-h-12 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gold-400 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : ""} ${isActive || activePaths.includes(location.pathname) ? "bg-[#FFF9F7] text-[#6E1423] shadow-sm" : "text-white hover:bg-[#8A2436]"}`
                 }
               >
                 <Icon size={19} aria-hidden="true" className="shrink-0" />

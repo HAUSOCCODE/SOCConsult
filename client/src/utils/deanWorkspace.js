@@ -18,6 +18,7 @@ export function legacyFacultyDestination(pathname, search = "", hash = "") {
   const page = pathname.replace(/^\/faculty\/?/, "").replace(/\/+$/, "");
   const shared = {
     notifications: "notifications",
+    account: "account",
     profile: "account",
     security: "account",
   };

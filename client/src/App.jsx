@@ -23,8 +23,8 @@ import AppointmentRequests from "./pages/Faculty/AppointmentRequests";
 import FacultyHistory from "./pages/Faculty/FacultyConsultationHistory";
 import ManageAvailability from "./pages/Faculty/ManageAvailability";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
-import FacultyProfile from "./pages/Faculty/FacultyProfile";
-import FacultySecuritySettings from "./pages/Faculty/FacultySecuritySettings";
+import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
+import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
 import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
 import CsvImport from "./pages/Dean/CsvImport";
 import DeanLayout from "./layouts/DeanLayout";
@@ -81,14 +81,17 @@ export default function App() {
           <Route path="faculty" element={<FacultyLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<FacultyDashboard />} />
-            <Route path="appointments" element={<FacultyAppointments />} />
+            <Route path="consultations" element={<FacultyAppointments />} />
+            <Route path="appointments" element={<DeanRouteRedirect to="/faculty/consultations" />} />
             <Route path="calendar" element={<FacultyConsultationCalendar />} />
             <Route path="requests" element={<AppointmentRequests />} />
             <Route path="history" element={<FacultyHistory />} />
-            <Route path="availability" element={<ManageAvailability />} />
+            <Route path="availability" element={<FacultyAvailabilityCalendar />} />
+            <Route path="reports" element={<DeferredFeaturePage title="Reports" dashboard="/faculty/dashboard" dashboardLabel="Faculty Dashboard" />} />
+            <Route path="account" element={<FacultyAccountSettings />} />
             <Route path="notifications" element={<FacultyNotifications />} />
-            <Route path="profile" element={<FacultyProfile />} />
-            <Route path="security" element={<FacultySecuritySettings />} />
+            <Route path="profile" element={<DeanRouteRedirect to="/faculty/account" />} />
+            <Route path="security" element={<DeanRouteRedirect to="/faculty/account" />} />
             <Route
               path="*"
               element={<NotFoundPage dashboard="/faculty/dashboard" />}

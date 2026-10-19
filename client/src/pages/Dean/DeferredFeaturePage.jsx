@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-export default function DeferredFeaturePage({ title, personal = false }) {
+export default function DeferredFeaturePage({ title, personal = false, dashboard, dashboardLabel }) {
   return (
     <section className="rounded-2xl border bg-white p-4 sm:p-6">
       <h2 className="text-xl font-bold text-maroon-900">{title}</h2>
@@ -9,9 +9,9 @@ export default function DeferredFeaturePage({ title, personal = false }) {
       </p>
       <Link
         className="btn-secondary mt-5 inline-flex"
-        to={personal ? "/dean/faculty/dashboard" : "/dean/dashboard"}
+        to={dashboard || (personal ? "/dean/faculty/dashboard" : "/dean/dashboard")}
       >
-        Back to {personal ? "My Faculty Workspace" : "Dean Management"}
+        Back to {dashboardLabel || (personal ? "My Faculty Workspace" : "Dean Management")}
       </Link>
     </section>
   );

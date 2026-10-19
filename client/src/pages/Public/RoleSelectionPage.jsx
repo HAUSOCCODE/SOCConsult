@@ -20,7 +20,6 @@ const roles = [
     text: "Manage consultation availability, review appointment requests, and handle consultation records.",
     base: "/faculty",
     button: "Continue as Faculty",
-    register: true,
   },
   {
     name: "Dean",
@@ -49,7 +48,7 @@ export default function GetStartedPage() {
             </p>
           </div>
           <div className="mx-auto mt-8 grid max-w-6xl items-stretch gap-5 sm:mt-12 md:grid-cols-2 lg:grid-cols-3">
-            {roles.map(({ name, icon: Icon, text, base, button, register }) => (
+            {roles.map(({ name, icon: Icon, text, base, button }) => (
               <article
                 key={name}
                 className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-soft transition-colors duration-200 hover:border-maroon-300 sm:p-8"
@@ -74,19 +73,6 @@ export default function GetStartedPage() {
                     {button}
                     <ArrowRight size={17} />
                   </Link>
-                  <div className="mt-3 flex h-6 items-center justify-center">
-                    {register ? (
-                      <Link
-                        to={`${base}/register`}
-                        className="text-center text-sm font-semibold text-maroon-800 transition-colors duration-200 hover:text-maroon-600 hover:underline"
-                      >
-                        Create {name === "Student" ? "student" : "faculty"}{" "}
-                        account
-                      </Link>
-                    ) : (
-                      <span aria-hidden="true" />
-                    )}
-                  </div>
                 </div>
               </article>
             ))}
