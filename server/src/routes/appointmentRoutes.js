@@ -19,6 +19,7 @@ import {
 import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
 import { destroyAsset } from "../services/cloudinaryStorage.js";
 import {
+  canExportCalendar,
   consultationIcsFilename,
   generateConsultationIcs,
 } from "../services/icsService.js";
@@ -26,6 +27,9 @@ import { listStudentConsultationHistory } from "../services/studentConsultationH
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 const router = Router();
+router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
+  res.set("Cache-Control", "no-store"); next();
+});
 router.use(authenticate);
 
 const requestRead = work => async (req, res) => {
@@ -180,43 +184,29 @@ router.get("/student-history", authorize("student"), async (req, res) => {
   }));
 });
 
-router.get(
-  "/:appointmentId/calendar.ics",
-  authorize("student"),
-  async (req, res) => {
-    if (!mongoose.isValidObjectId(req.params.appointmentId))
-      return res.status(400).json({ message: "Invalid appointment ID." });
-
+// One shared participant endpoint; never runs attendance processing or writes state.
+router.get("/:appointmentId/calendar.ics", authorize("student", "faculty", "dean"), async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.appointmentId) || Object.keys(req.query).length || (req.body && Object.keys(req.body).length))
+    return res.status(400).json({ message: "Invalid calendar request." });
+  try {
     const appointment = await Appointment.findOne({
       _id: req.params.appointmentId,
-      student: req.user.id,
+      [req.user.role === "student" ? "student" : "faculty"]: req.user.id,
       status: "Confirmed",
-    })
-      .select(
-        "faculty startAt endAt subject consultationMode location meetingPlatform status",
-      )
-      .populate("faculty", "name")
-      .lean();
-    if (!appointment)
-      return res.status(404).json({
-        message: "Confirmed consultation not found or no longer available.",
-      });
-
-    let calendar;
-    let filename;
-    try {
-      calendar = generateConsultationIcs(appointment);
-      filename = consultationIcsFilename(appointment.startAt);
-    } catch {
-      return res.status(409).json({
-        message: "This consultation does not have a valid calendar schedule.",
-      });
-    }
+    }).select("faculty startAt endAt subject consultationMode location meetingPlatform status +meetingLink")
+      .populate("faculty", "name").maxTimeMS(10000).lean();
+    if (!appointment) return res.status(404).json({ message: "Confirmed consultation not found or no longer available." });
+    const now = new Date();
+    if (!canExportCalendar(appointment, now)) return res.status(409).json({ message: "Calendar export requires a valid Confirmed consultation that has not ended." });
+    const calendar = generateConsultationIcs(appointment, now);
+    const filename = consultationIcsFilename(appointment.startAt);
     res.set("Content-Type", "text/calendar; charset=utf-8");
-    res.set("Content-Disposition", `attachment; filename="${filename}"`);
+    res.set("Content-Disposition", 'attachment; filename="' + filename + '"');
     return res.send(calendar);
-  },
-);
+  } catch {
+    return res.status(503).json({ message: "Calendar download is temporarily unavailable. Please try again." });
+  }
+});
 router.post(
   "/",
   authorize("student"),

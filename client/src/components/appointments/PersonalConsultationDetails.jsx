@@ -1,3 +1,4 @@
+import CalendarDownload from "./CalendarDownload";
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import useDialogFocus from "../../hooks/useDialogFocus";
@@ -26,6 +27,7 @@ export default function PersonalConsultationDetails({ appointment: a, onClose, c
           {attendance?.eligible && <p className="mt-2 rounded bg-amber-50 p-3">Faculty attendance submission is pending FAC-11.</p>}
         </section>
         <section><h3 className="mb-2 font-bold">Supporting Documents</h3><SupportingDocumentViewer appointment={a} personalConsultation /></section>
+        <CalendarDownload key={a._id} appointment={a} />
         {children}
       </div>
     </section>
