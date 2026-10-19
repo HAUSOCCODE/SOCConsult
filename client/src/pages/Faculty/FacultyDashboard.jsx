@@ -1,6 +1,6 @@
 import DashboardOverview from "../../components/dashboard/DashboardOverview";
 
-export default function FacultyDashboard({ routeBase = "/faculty", consultationsPath = `${routeBase}/appointments` }) {
+export default function FacultyDashboard({ routeBase = "/faculty", consultationsPath = `${routeBase}/consultations` }) {
   return (
     <DashboardOverview
       endpoint="/dashboard/faculty"
