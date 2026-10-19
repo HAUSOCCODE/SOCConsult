@@ -11,6 +11,9 @@ import { formatPersonName } from "../../utils/formatPersonName";
 const TIMEZONE = "Asia/Manila";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const STATUS_STYLES = {
+  Available: { dot: "bg-emerald-600", event: "border-emerald-200 bg-emerald-50 text-emerald-900" },
+  Pending: { dot: "bg-amber-600", event: "border-amber-200 bg-amber-50 text-amber-900" },
+  Inactive: { dot: "bg-slate-500", event: "border-slate-300 bg-slate-100 text-slate-700" },
   Confirmed: {
     dot: "bg-maroon-700",
     event: "border-maroon-200 bg-maroon-50 text-maroon-900",
@@ -103,6 +106,7 @@ const eventParticipantName = (event) =>
 
 export default function ConsultationCalendar({
   apiPath = "/faculty/calendar",
+  includeAvailability = false,
   consultationsPath = "/faculty/appointments",
   title = "Consultation Calendar",
   description = "View your confirmed and rescheduled faculty-student consultations by date.",
@@ -134,7 +138,7 @@ export default function ConsultationCalendar({
     const sequence = ++requestSequence.current;
     setLoading(true);
     setError("");
-    api(`${apiPath}?start=${period.start}&end=${period.end}`, {
+    api(`${apiPath}?start=${period.start}&end=${period.end}${includeAvailability ? "&includeAvailability=true" : ""}`, {
       signal: controller.signal,
     })
       .then((data) => {
@@ -154,7 +158,7 @@ export default function ConsultationCalendar({
         if (sequence === requestSequence.current) setLoading(false);
       });
     return () => controller.abort();
-  }, [apiPath, period.end, period.start, retryKey]);
+  }, [apiPath, includeAvailability, period.end, period.start, retryKey]);
 
   const eventsByDate = useMemo(() => {
     const grouped = new Map();
@@ -272,13 +276,14 @@ export default function ConsultationCalendar({
                     {emptyMessage || `No consultations are scheduled in this ${view}.`}
                   </p>
                 )}
-                <CalendarLegend />
+                <CalendarLegend includeAvailability={includeAvailability} />
               </>
             )}
           </section>
 
           {showUpcoming && (
             <UpcomingPanel
+              consultationsPath={consultationsPath}
               items={upcoming}
               loading={loading}
               onOpenEvent={openEvent}
@@ -448,14 +453,14 @@ function CalendarEventPill({ event, onOpen }) {
     <button
       type="button"
       onClick={(clickEvent) => onOpen(event, clickEvent.currentTarget)}
-      aria-label={`${event.status} consultation with ${eventParticipantName(event)} about ${event.topic || "Consultation"} at ${timeLabel(event.start)}`}
+      aria-label={`${event.displayStatus || event.status} consultation with ${eventParticipantName(event)} about ${event.topic || "Consultation"} at ${timeLabel(event.start)}`}
       className={`block w-full min-w-0 overflow-hidden rounded-md border px-1.5 py-1 text-left text-[10px] leading-3 transition hover:brightness-95 ${style.event}`}
     >
       <span className="flex min-w-0 items-center gap-1 font-bold">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
         <span className="truncate">{timeLabel(event.start)}</span>
       </span>
-      <span className="block break-words font-semibold">{event.status}</span>
+      <span className="block break-words font-semibold">{event.displayStatus || event.status}</span>
       <span className="mt-0.5 block truncate font-semibold">
         {eventParticipantName(event)} · {event.topic}
       </span>
@@ -514,7 +519,7 @@ function WeekEvent({ event, onOpen }) {
       type="button"
       onClick={(clickEvent) => onOpen(event, clickEvent.currentTarget)}
       className={`w-full min-w-0 rounded-lg border p-1.5 text-left text-[10px] leading-4 transition hover:brightness-95 ${style.event}`}
-      aria-label={`Open ${event.status} consultation with ${eventParticipantName(event)}`}
+      aria-label={`Open ${event.displayStatus || event.status} consultation with ${eventParticipantName(event)}`}
     >
       <span className="block break-words font-bold">
         {timeLabel(event.start)}–{timeLabel(event.end)}
@@ -523,7 +528,7 @@ function WeekEvent({ event, onOpen }) {
         {eventParticipantName(event)}
       </span>
       <span className="block break-words opacity-80">{event.topic}</span>
-      <span className="block break-words font-semibold">{event.status}</span>
+      <span className="block break-words font-semibold">{event.displayStatus || event.status}</span>
     </button>
   );
 }
@@ -592,7 +597,7 @@ function AgendaCard({ event, onOpen }) {
         <span className="font-bold">
           {timeLabel(event.start)} – {timeLabel(event.end)}
         </span>
-        <span className="text-xs font-bold">{event.status}</span>
+        <span className="text-xs font-bold">{event.displayStatus || event.status}</span>
       </span>
       <span className="mt-1 block break-words text-sm font-semibold">
         {eventParticipantName(event)}
@@ -604,7 +609,7 @@ function AgendaCard({ event, onOpen }) {
   );
 }
 
-function UpcomingPanel({ items, loading, onOpenEvent }) {
+function UpcomingPanel({ items, loading, onOpenEvent, consultationsPath }) {
   return (
     <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-bold text-maroon-900 sm:text-xl">
@@ -651,7 +656,7 @@ function UpcomingPanel({ items, loading, onOpenEvent }) {
                   <span className="min-w-0 break-words text-sm font-bold text-slate-900">
                     {eventParticipantName(event)}
                   </span>
-                  <StatusBadge appointment status={event.status} compact allowWrap />
+                  <CalendarStatus event={event} compact />
                 </span>
                 <span className="mt-1 block text-xs font-semibold text-slate-600">
                   {timeLabel(event.start)} – {timeLabel(event.end)}
@@ -688,13 +693,18 @@ function UpcomingPanel({ items, loading, onOpenEvent }) {
   );
 }
 
-function CalendarLegend() {
+function CalendarStatus({ event, compact = false }) {
+  return event.displayStatus ? <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${eventStyle(event.status).event}`}>{event.displayStatus}</span>
+    : <StatusBadge appointment status={event.status} compact={compact} allowWrap />;
+}
+
+function CalendarLegend({ includeAvailability }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-200 px-4 py-3 text-xs text-slate-600">
-      {Object.entries(STATUS_STYLES).map(([status, style]) => (
+      {Object.entries(STATUS_STYLES).filter(([status]) => includeAvailability || !["Available", "Pending", "Inactive"].includes(status)).map(([status, style]) => (
         <span key={status} className="inline-flex items-center gap-1.5">
           <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
-          {status}
+          {includeAvailability && status === "Pending" ? "Pending request" : includeAvailability && status === "Confirmed" ? "Confirmed consultation" : status === "Inactive" ? "Inactive / unavailable" : status}
         </span>
       ))}
     </div>
@@ -746,6 +756,17 @@ function DayEventsModal({ dateKey, events, opener, onClose, onOpenEvent }) {
 }
 
 function CalendarEventModal({ event, opener, onClose }) {
+  if (event.kind === "availability") return (
+    <ModalShell title={event.status === "Available" ? "Available slot" : "Inactive / unavailable slot"} labelledBy="availability-event-title" opener={opener} onClose={onClose}>
+      <dl className="grid gap-4 p-5 sm:grid-cols-2">
+        <ModalDetail label="Date" value={fullDateLabel(event.start)} />
+        <ModalDetail label="Time (Asia/Manila)" value={timeLabel(event.start) + " – " + timeLabel(event.end)} />
+        <ModalDetail label="Status" value={event.status === "Inactive" ? "Inactive / unavailable" : "Available"} />
+        <ModalDetail label="Mode" value={event.mode} />
+        <ModalDetail label={event.mode === "Online" ? "Meeting platform" : "Location"} value={event.mode === "Online" ? event.meetingPlatform : event.location} />
+      </dl>
+    </ModalShell>
+  );
   return (
     <ModalShell
       title="Consultation Details"
@@ -763,7 +784,7 @@ function CalendarEventModal({ event, opener, onClose }) {
               {eventParticipantName(event)}
             </p>
           </div>
-          <StatusBadge appointment status={event.status} allowWrap />
+          <CalendarStatus event={event} />
         </div>
         <dl className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
           <ModalDetail label="Date" value={fullDateLabel(event.start)} />
@@ -805,7 +826,7 @@ function CalendarEventModal({ event, opener, onClose }) {
               />
             </>
           )}
-          <ModalDetail label="Status" value={event.status} />
+          <ModalDetail label="Status" value={event.displayStatus || event.status} />
           <ModalDetail label="Reason / notes" value={event.reason} wide />
           {event.responseNote && (
             <ModalDetail

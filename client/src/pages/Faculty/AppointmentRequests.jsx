@@ -102,7 +102,6 @@ export default function AppointmentRequests() {
               ? "Appointment approved successfully."
               : data.message,
           );
-      const minutes = appointment.estimatedDurationMinutes || 0;
       setDetails((current) =>
         current
           ? {
@@ -139,18 +138,7 @@ export default function AppointmentRequests() {
                 rejectedCount:
                   (schedule.rejectedCount || 0) +
                   (status === "Rejected" ? 1 : 0),
-                pendingEstimatedMinutes: Math.max(
-                  0,
-                  (schedule.pendingEstimatedMinutes || 0) - minutes,
-                ),
-                approvedEstimatedMinutes:
-                  (schedule.approvedEstimatedMinutes || 0) +
-                  (status === "Confirmed" ? minutes : 0),
-                totalEstimatedMinutes: Math.max(
-                  0,
-                  (schedule.totalEstimatedMinutes || 0) -
-                    (status === "Rejected" ? minutes : 0),
-                ),
+
               }
             : schedule,
         ),
@@ -244,29 +232,7 @@ export default function AppointmentRequests() {
                     />
                   </dl>
                 </div>
-                <div className="appointment-schedule-time min-w-0 border-b border-slate-200 px-3 py-2.5 sm:px-4">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    Time
-                  </p>
-                  <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200">
-                    <Metric
-                      label="Capacity"
-                      value={`${schedule.capacityMinutes || 0} min`}
-                    />
-                    <Metric
-                      label="Pending Time"
-                      value={`${schedule.pendingEstimatedMinutes || 0} min`}
-                    />
-                    <Metric
-                      label="Confirmed Time"
-                      value={`${schedule.approvedEstimatedMinutes || 0} min`}
-                    />
-                    <Metric
-                      label="Total Time"
-                      value={`${schedule.totalEstimatedMinutes || 0} min`}
-                    />
-                  </dl>
-                </div>
+
               </div>
               <footer className="appointment-schedule-action flex w-full min-w-0 items-center justify-center bg-white p-2.5 sm:p-3">
                 <button
@@ -301,22 +267,6 @@ export default function AppointmentRequests() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function Metric({ label, value }) {
-  return (
-    <div className="min-w-0 bg-slate-50 px-2.5 py-2 sm:px-3">
-      <dt
-        className="min-w-0 break-words text-[9px] font-bold uppercase leading-3 tracking-wide text-slate-500"
-        title={label}
-      >
-        {label}
-      </dt>
-      <dd className="mt-0.5 whitespace-nowrap text-sm font-bold text-slate-900">
-        {value}
-      </dd>
     </div>
   );
 }

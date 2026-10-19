@@ -155,7 +155,7 @@ test("status badges retain full visible text and calendar events expose status w
   const calendar = await source("components/calendar/ConsultationCalendar.jsx");
   for (const name of ["CalendarEventPill", "WeekEvent"]) {
     const body = calendar.slice(calendar.indexOf(`function ${name}`)).split("\nfunction ")[0];
-    assert.match(body, />\{event.status\}<\/span>/);
+    assert.match(body, />\{event.displayStatus \|\| event.status\}<\/span>/);
   }
   const { code: calendarCode } = await transform(calendar.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
   const Pill = new Function("React", `${calendarCode}; return CalendarEventPill;`)(React);

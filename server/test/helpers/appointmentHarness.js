@@ -58,6 +58,7 @@ const update = (record, changes) => {
 
 export function appointmentHarness() {
   const restores = [];
+  const lockCalls = [];
   const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [], responses: [], reviews: [] };
   let failAt, retryOnce = false, queue = Promise.resolve();
   const patch = (object, key, value) => { const old = object[key]; object[key] = value; restores.push(() => { object[key] = old; }); };
@@ -86,13 +87,32 @@ export function appointmentHarness() {
       update(record, changes); if (key === "appointments") record.updatedAt = new Date();
       return clone(record);
     }));
-    patch(model, "updateOne", async (filter, changes) => {
-      failure(key); const record = state[key].find((item) => matches(item, filter));
+    patch(model, "updateOne", async (filter, changes, options) => {
+      if (key === "users" && changes.$inc?.schedulingRevision) {
+        if (!options?.session) throw new Error("Missing lock transaction");
+        lockCalls.push(String(filter._id));
+      }
+      failure(key);
+      // Transition-only fixtures imply an existing provider; HTTP fixtures seed actual users.
+      if (key === "users" && !state.users.some(row => matches(row, filter)) &&
+        [...state.appointments, ...state.slots].some(row => same(row.faculty, filter._id)))
+        state.users.push({ _id: String(filter._id), role: "faculty", accountStatus: "Active" });
+      const record = state[key].find((item) => matches(item, filter));
       if (!record) return { matchedCount: 0, modifiedCount: 0 };
       update(record, changes); return { matchedCount: 1, modifiedCount: 1 };
     });
+    patch(model, "findOneAndDelete", (filter) => query(() => {
+      failure(key);
+      const index = state[key].findIndex(record => matches(record, filter));
+      return index < 0 ? null : clone(state[key].splice(index, 1)[0]);
+    }));
     patch(model, "deleteMany", async (filter) => { failure(key); state[key] = state[key].filter((record) => !matches(record, filter)); });
   }
+  patch(Availability, "create", async records => records.map(record => {
+    failure("slots");
+    const model = new Availability(record); const error = model.validateSync(); if (error) throw error;
+    const stored = clone({ ...model.toObject(), id: model.id, __v: 0 }); state.slots.push(stored); return clone(stored);
+  }));
   patch(AttendanceResponse.collection, "indexes", async () => [{ key: { appointment: 1, participant: 1 }, unique: true }, { key: { appointment: 1, participantRole: 1 }, unique: true }]);
   patch(AttendanceReview.collection, "indexes", async () => [{ key: { appointment: 1 }, unique: true, partialFilterExpression: { isFinal: true } }]);
   patch(AttendanceReview, "create", async records => {
@@ -143,7 +163,7 @@ export function appointmentHarness() {
     failure(key); for (const record of records) { await new model(record).validate(); }
     state[key].push(...clone(records)); return clone(records);
   });
-  return { state, fail: (name) => { failAt = name; }, retry: () => { retryOnce = true; }, restore: () => restores.reverse().forEach((restore) => restore()) };
+  return { state, lockCalls, fail: (name) => { failAt = name; }, retry: () => { retryOnce = true; }, restore: () => restores.reverse().forEach((restore) => restore()) };
 }
 
 export function fixture(overrides = {}) {

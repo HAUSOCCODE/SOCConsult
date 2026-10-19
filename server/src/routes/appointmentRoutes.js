@@ -69,46 +69,6 @@ const hydrateLegacyDocuments = async (appointments) => {
 };
 const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
-const capacitySummary = async (facultyId) => {
-  const appointments = await Appointment.find({
-    faculty: facultyId,
-    status: { $in: BLOCKING_STATUSES },
-  }).select("availability status estimatedDurationMinutes");
-  const availabilityIds = [
-    ...new Set(
-      appointments
-        .filter((item) => item.availability)
-        .map((item) => String(item.availability)),
-    ),
-  ];
-  const schedules = await Availability.find({
-    _id: { $in: availabilityIds },
-  }).select("startAt endAt");
-  return schedules.map((schedule) => {
-    const related = appointments.filter(
-      (item) => String(item.availability) === schedule.id,
-    );
-    const pending = related.filter((item) => item.status === "Pending");
-    const approved = related.filter((item) =>
-      item.status === "Confirmed",
-    );
-    const sum = (items) =>
-      items.reduce(
-        (total, item) => total + (item.estimatedDurationMinutes || 0),
-        0,
-      );
-    return {
-      availabilityId: schedule.id,
-      startAt: schedule.startAt,
-      endAt: schedule.endAt,
-      capacityMinutes: Math.round((schedule.endAt - schedule.startAt) / 60000),
-      pendingCount: pending.length,
-      pendingEstimatedMinutes: sum(pending),
-      approvedEstimatedMinutes: sum(approved),
-      totalEstimatedMinutes: sum(related),
-    };
-  });
-};
 
 router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) => {
   const query =
@@ -167,7 +127,8 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     appointments: safeAppointments,
     ...(studentViews && { studentViews }),
     ...(["faculty", "dean"].includes(req.user.role) && {
-      availabilityCapacity: await capacitySummary(req.user.id),
+      // Retain the legacy response key without minute-based capacity behavior.
+      availabilityCapacity: [],
     }),
   });
 });
@@ -273,7 +234,7 @@ router.post(
       }),
       Appointment.exists({
         faculty: slot.faculty,
-        status: "Confirmed",
+        status: { $in: BLOCKING_STATUSES },
         startAt: { $lt: requestedEnd },
         endAt: { $gt: requestedStart },
       }),

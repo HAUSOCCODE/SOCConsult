@@ -11,7 +11,8 @@ export default function FacultyConsultationCalendar({
           Back to Availability &amp; Calendar
         </Link>
       )}
-      <ConsultationCalendar consultationsPath={consultationsPath} />
+      <ConsultationCalendar includeAvailability consultationsPath={consultationsPath}
+        description="View your available slots, pending requests, confirmed consultations, and inactive slots in Asia/Manila." />
     </div>
   );
 }

@@ -47,14 +47,11 @@ export default function AppointmentsPage({ filter }) {
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [facultyReschedule, setFacultyReschedule] = useState(null);
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
-  const [availabilityCapacity, setAvailabilityCapacity] = useState([]);
-  const [approvalWarning, setApprovalWarning] = useState(null);
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
   const pendingUpdates = useRef(new Set());
-  const warningRef = useRef(null), rescheduleRef = useRef(null);
-  useDialogFocus(warningRef, { open: Boolean(approvalWarning), onClose: () => setApprovalWarning(null) });
+  const rescheduleRef = useRef(null);
   useDialogFocus(rescheduleRef, { open: Boolean(rescheduleTarget), onClose: () => setRescheduleTarget(null), busy: updatingIds.size > 0 });
   const load = () =>
     api("/appointments/mine")
@@ -66,9 +63,6 @@ export default function AppointmentsPage({ filter }) {
             Array.isArray(d.studentViews.history)
             ? d.studentViews
             : null,
-        );
-        setAvailabilityCapacity(
-          Array.isArray(d?.availabilityCapacity) ? d.availabilityCapacity : [],
         );
         setError("");
       })
@@ -142,23 +136,7 @@ export default function AppointmentsPage({ filter }) {
       toast.error(requestError.message || "Unable to open the document.");
     }
   };
-  const approve = async (appointment) => {
-    const availabilityId =
-      appointment.availability?._id || appointment.availability;
-    const capacity = availabilityCapacity.find(
-      (item) => item.availabilityId === String(availabilityId),
-    );
-    const excess = capacity
-      ? capacity.approvedEstimatedMinutes +
-        (appointment.estimatedDurationMinutes || 0) -
-        capacity.capacityMinutes
-      : 0;
-    if (excess > 0) {
-      setApprovalWarning({ appointment, excess });
-      return;
-    }
-    await update(appointment._id, "Confirmed");
-  };
+  const approve = appointment => update(appointment._id, "Confirmed");
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
   let shown = items;
@@ -406,68 +384,6 @@ export default function AppointmentsPage({ filter }) {
           </label>
         </div>
       )}
-      {["faculty", "dean"].includes(user.role) &&
-        filter === "requests" &&
-        availabilityCapacity.length > 0 && (
-          <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4">
-            {availabilityCapacity.map((capacity) => (
-              <article
-                key={capacity.availabilityId}
-                className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <p className="break-words font-bold text-maroon-900">
-                  {formatManilaDisplay(new Date(capacity.startAt), {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  }, "date")}
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {formatManilaDisplay(new Date(capacity.startAt), {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  }, "time")}{" "}
-                  –{" "}
-                  {formatManilaDisplay(new Date(capacity.endAt), {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  }, "time")}
-                </p>
-                <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                  <Capacity
-                    label="Pending Requests"
-                    value={capacity.pendingCount}
-                  />
-                  <Capacity
-                    label="Availability Capacity"
-                    value={`${capacity.capacityMinutes} min`}
-                  />
-                  <Capacity
-                    label="Pending Estimated"
-                    value={`${capacity.pendingEstimatedMinutes} min`}
-                  />
-                  <Capacity
-                    label="Confirmed Estimated"
-                    value={`${capacity.approvedEstimatedMinutes} min`}
-                  />
-                  <Capacity
-                    label="Total Estimated Time"
-                    value={`${capacity.totalEstimatedMinutes} min`}
-                    wide
-                  />
-                </dl>
-                {capacity.totalEstimatedMinutes > capacity.capacityMinutes && (
-                  <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    Consultation requests exceed this availability by{" "}
-                    {capacity.totalEstimatedMinutes - capacity.capacityMinutes}{" "}
-                    minutes.
-                  </p>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
       {details && filter === "requests" && (
         <AppointmentRequestDetailsModal
           appointment={details}
@@ -506,49 +422,6 @@ export default function AppointmentsPage({ filter }) {
           }}
         />
       )}
-      {approvalWarning &&
-        createPortal(
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-3 sm:p-4">
-            <section ref={warningRef} tabIndex={-1}
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="capacity-warning-title"
-              className="w-full min-w-0 max-w-lg rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="capacity-warning-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                Availability Capacity Warning
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                Approving this request will exceed your published consultation
-                availability by {approvalWarning.excess} minutes.
-              </p>
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setApprovalWarning(null)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const target = approvalWarning.appointment;
-                    setApprovalWarning(null);
-                    await update(target._id, "Confirmed");
-                  }}
-                  className="btn-primary"
-                >
-                  Approve Anyway
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
       {rescheduleTarget && ["faculty", "dean"].includes(user.role) && (
         <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-4">
           <div ref={rescheduleRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="reschedule-slots-title" className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
@@ -1270,17 +1143,6 @@ function FacultyAppointmentActions({
           View Document
         </button>
       )}
-    </div>
-  );
-}
-
-function Capacity({ label, value, wide = false }) {
-  return (
-    <div className={`min-w-0 ${wide ? "sm:col-span-2" : ""}`}>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </dt>
-      <dd className="mt-1 break-words font-bold text-slate-800">{value}</dd>
     </div>
   );
 }

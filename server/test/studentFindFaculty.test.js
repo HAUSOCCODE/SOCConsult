@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import Availability from "../src/models/Availability.js";
 import User from "../src/models/User.js";
+import Appointment from "../src/models/Appointment.js";
 import { getAvailableFaculty } from "../src/controllers/availabilityController.js";
 
 const chain = (value, calls = []) => {
@@ -77,6 +78,7 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
   });
 
   let body;
+  patch(Appointment, "find", () => chain([]));
   try {
     await getAvailableFaculty({}, { json: (value) => (body = value) });
   } finally {

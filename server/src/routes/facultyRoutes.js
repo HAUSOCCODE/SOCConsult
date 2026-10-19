@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth.js";
 import Appointment from "../models/Appointment.js";
+import Availability from "../models/Availability.js";
+import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import { rescheduleFacultyAppointment } from "../controllers/facultyAppointmentController.js";
 
 const router = Router();
@@ -59,9 +61,9 @@ const calendarEvent = (appointment) => {
   };
 };
 
-const calendarQuery = (facultyId, extra = {}) => ({
+const calendarQuery = (facultyId, extra = {}, combined = false) => ({
   faculty: facultyId,
-  status: { $in: CALENDAR_STATUSES },
+  status: { $in: combined ? [...new Set([...CALENDAR_STATUSES, ...BLOCKING_STATUSES])] : CALENDAR_STATUSES },
   startAt: { $type: "date", ...extra },
   endAt: { $type: "date" },
 });
@@ -90,8 +92,9 @@ router.get("/calendar", async (req, res) => {
       message: "Choose a calendar range of up to 62 days.",
     });
 
+  const combined = req.query.includeAvailability === "true";
   const events = await calendarRecords(
-    calendarQuery(req.user.id, { $gte: startAt, $lt: endAt }),
+    calendarQuery(req.user.id, { $gte: startAt, $lt: endAt }, combined),
   );
   const upcoming = await Appointment.find(
     calendarQuery(req.user.id, { $gte: new Date() }),
@@ -105,10 +108,26 @@ router.get("/calendar", async (req, res) => {
     .limit(3)
     .lean();
 
+  let slotEvents = [];
+  if (combined) {
+    const slots = await Availability.find({ faculty: req.user.id, startAt: { $gte: startAt, $lt: endAt },
+      endAt: { $gt: new Date() } }).select("startAt endAt mode location meetingPlatform isActive +reservationToken").lean();
+    const blocking = await Appointment.find({ faculty: req.user.id, status: { $in: BLOCKING_STATUSES },
+      startAt: { $lt: endAt }, endAt: { $gt: startAt } }).select("availability startAt endAt").lean();
+    slotEvents = slots.filter(slot => !blocking.some(item => String(item.availability) === String(slot._id) ||
+      (slot.isActive && item.startAt < slot.endAt && item.endAt > slot.startAt))).map(slot => ({
+      id: `availability-${slot._id}`, availabilityId: String(slot._id), kind: "availability",
+      title: "Consultation slot", topic: "Consultation slot", participantName: "Consultation slot",
+      start: slot.startAt, end: slot.endAt, mode: slot.mode,
+      location: slot.mode === "Face-to-Face" ? slot.location : null,
+      meetingPlatform: slot.mode === "Online" ? slot.meetingPlatform : null,
+      status: slot.isActive && !slot.reservationToken && slot.startAt > new Date() ? "Available" : "Inactive",
+    }));
+  }
   return res.json({
     timezone: "Asia/Manila",
     range: { start: req.query.start, end: req.query.end },
-    events: events.map(calendarEvent),
+    events: [...events.map(item => ({ ...calendarEvent(item), ...(combined && { displayStatus: item.status === "Pending" ? "Pending request" : item.status === "Confirmed" ? "Confirmed consultation" : item.status }) })), ...slotEvents].sort((a, b) => new Date(a.start) - new Date(b.start)),
     upcoming: upcoming.map(calendarEvent),
   });
 });

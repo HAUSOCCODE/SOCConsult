@@ -6,7 +6,7 @@ export default function FacultyAvailabilityCalendar() {
       <Link className="btn-secondary inline-flex" to="/faculty/calendar">
         Open Consultation Calendar
       </Link>
-      <ManageAvailability />
+      <ManageAvailability showCalendarLink={false} />
     </div>
   );
 }

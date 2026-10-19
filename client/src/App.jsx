@@ -139,7 +139,7 @@ export default function App() {
                 }
               />
               <Route path="requests" element={<AppointmentRequests />} />
-              <Route path="availability" element={<ManageAvailability />} />
+              <Route path="availability" element={<ManageAvailability routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
               <Route path="consultations" element={<FacultyAppointments />} />
               <Route path="history" element={<FacultyHistory />} />
               <Route

@@ -33,3 +33,21 @@ export function formatManilaDisplay(value, options, kind = "timestamp", fallback
     kind === "time" ? { hour: "numeric", minute: "2-digit" } : { dateStyle: "medium", timeStyle: "short" };
   return display(value, new Intl.DateTimeFormat("en-PH", { ...(options && Object.keys(options).some(key => key !== "timeZone") ? options : defaults), timeZone: DISPLAY_TIME_ZONE }), fallback);
 }
+
+// Form values are wall time in Manila, independent of the browser's timezone.
+export function manilaInputParts(value) {
+  const parsed = new Date(value);
+  if (!Number.isFinite(+parsed)) return { date: "", time: "" };
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: DISPLAY_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(parsed).map(({ type, value }) => [type, value]));
+  return { date: parts.year + "-" + parts.month + "-" + parts.day, time: parts.hour + ":" + parts.minute };
+}
+export function parseManilaInput(date, time) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const parsed = new Date(date + "T" + time + ":00+08:00");
+  if (!Number.isFinite(+parsed)) return null;
+  const parts = manilaInputParts(parsed);
+  return parts.date === date && parts.time === time ? parsed : null;
+}
