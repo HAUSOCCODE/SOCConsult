@@ -1,4 +1,5 @@
 import { listFacultyConsultations, facultyConsultationDetails } from "../services/facultyConsultationService.js";
+import { listFacultyConsultationHistory } from "../services/facultyConsultationHistoryService.js";
 import { canReadAppointmentDocument } from "../services/appointmentDocumentAuthorizationService.js";
 import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import { Router } from "express";
@@ -58,6 +59,9 @@ router.get("/requests/:id/documents/:documentId", authorize("faculty", "dean"), 
 router.get("/requests/:id/document", authorize("faculty", "dean"), requestDocument);
 
 // Static personal consultation routes precede dynamic appointment routes.
+router.get("/faculty-history", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyConsultationHistory({ faculty: req.user.id, input: req.query }));
+}));
 router.get("/consultations", authorize("faculty", "dean"), requestRead(async (req, res) => {
   res.json(await listFacultyConsultations({ faculty: req.user.id, input: req.query, now: new Date() }));
 }));
