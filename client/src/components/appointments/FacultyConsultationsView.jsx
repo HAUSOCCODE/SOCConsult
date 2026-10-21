@@ -70,14 +70,14 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     <h2 className="text-lg font-bold">{section}</h2>
     {section === "Recently Finalized" && <p>Latest 20 finalized records. <Link className="underline" to={`${base}/history`}>Full Consultation History</Link></p>}
     {section === "Compatibility" && <p>Latest 20 historical or malformed records requiring review. Read-only; retired statuses are historical labels.</p>}
-    {section === "Awaiting Attendance Update" && <p>Faculty attendance submission is pending FAC-11. Consultations awaiting processor updates remain visible here.</p>}
+    {section === "Awaiting Attendance Update" && <p>Submit your attendance response from the consultation details. Responses are accepted once and cannot be edited.</p>}
     {list.loading ? <Loading /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(v => v + 1)} /> : <>
       {!list.data.appointments.length ? <EmptyState title="No consultations in this section" /> : <div className="space-y-3">{list.data.appointments.map(row => <article key={row._id} className="min-w-0 space-y-2 rounded-xl border bg-white p-4"><h3 className="break-words font-bold">{row.student?.name}</h3><StatusBadge appointment status={row.status} /><p className="break-words">{row.subject || "Consultation"}</p><p>{consultationTime(row.startAt)} - {consultationTime(row.endAt)}</p><p>{row.consultationMode}</p><button type="button" className="btn-secondary" onClick={e => open(row._id, e.currentTarget)}>View Details</button></article>)}</div>}
       {!["Recently Finalized", "Compatibility"].includes(section) && <nav className="flex items-center gap-3" aria-label="Consultation pagination"><button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page} of {Math.max(1, list.data.pagination.totalPages)}</span><button type="button" className="btn-secondary" disabled={page >= list.data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Next</button></nav>}
     </>}
     </>}
     {selected && !a && <DetailLoadingDialog onClose={close} opener={opener.current}>{detail?.loading ? "Loading consultation details..." : <><p role="alert">{detail?.error}</p><button type="button" className="btn-secondary" onClick={() => open(selected)}>Retry details</button></>}<button type="button" className="btn-secondary" onClick={close}>Close details</button></DetailLoadingDialog>}
-    {a && <FacultyAppointmentDetailsModal appointment={a} personal opener={opener.current} onClose={close}>
+    {a && <FacultyAppointmentDetailsModal appointment={a} personal opener={opener.current} onClose={close} onAttendanceSubmitted={async () => { setRevision(v => v + 1); onChanged?.(); await open(selected); }}>
       <div className="flex flex-wrap gap-3">
         {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <Link className="btn-secondary" to={`${base}/requests`}>Review request decisions</Link>}
         {a.status === "Confirmed" && a.actions.propose && <button type="button" className="btn-secondary" onClick={() => setProposing(true)}>Propose reschedule</button>}
