@@ -14,6 +14,7 @@ import { api } from "../../api/apiClient";
 import StudentAttendanceResponseForm from "../attendance/StudentAttendanceResponseForm";
 import AttendanceResponseSummary from "../attendance/AttendanceResponseSummary";
 import { safeStudentError } from "../../utils/studentUiErrors";
+import StudentConsultationRecord from "../consultations/StudentConsultationRecord";
 
 const ATTENDANCE_STATUSES = new Set([
   "Awaiting Attendance Update",
@@ -232,6 +233,8 @@ export default function StudentAppointmentDetailsModal({
           {!attendance?.ownResponse && ["Attendance Review", "Completed", "Expired"].includes(appointment.status) && attendance && (
             <AttendanceResponseSummary attendance={attendance} />
           )}
+
+          <StudentConsultationRecord appointmentId={appointmentId} />
 
           <OnlineMeetingDetails
             appointment={appointment}

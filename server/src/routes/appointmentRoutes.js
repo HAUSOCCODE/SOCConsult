@@ -25,6 +25,7 @@ import {
 } from "../services/icsService.js";
 import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
+import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 const router = Router();
 router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
@@ -65,6 +66,27 @@ router.get("/consultations/:id", authorize("faculty", "dean"), requestRead(async
 }));
 router.get("/consultations/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
 router.get("/consultations/:id/document", authorize("faculty", "dean"), requestDocument);
+
+const recordActor = req => ({ id: req.user.id, role: req.user.role, management: Boolean(req.deanManagementAccess) });
+const recordRequest = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 404, 409].includes(error.statusCode) ? error.statusCode : 503;
+    const message = status === 400 ? "Review the consultation record and try again."
+      : status === 404 ? "Consultation record not found or unavailable."
+        : status === 409 ? error.message : "Consultation records are temporarily unavailable. Please try again.";
+    res.status(status).json({ message });
+  }
+};
+router.get("/:id/consultation-record", authorize("student", "faculty", "dean"), recordRequest(async (req, res) => {
+  if (Object.keys(req.query).length || req.body && Object.keys(req.body).length) return res.status(400).json({ message: "Invalid consultation-record request." });
+  res.json(await readConsultationRecord({ appointmentId: req.params.id, actor: recordActor(req) }));
+}));
+router.put("/:id/consultation-record", authorize("faculty", "dean"), recordRequest(async (req, res) => {
+  const result = await saveConsultationRecord({ appointmentId: req.params.id, actor: recordActor(req), input: req.body });
+  res.json({ message: "Consultation record saved.", ...result });
+}));
 
 const documentSize = (data = "") => {
   const encoded = data.split(",")[1] || "";

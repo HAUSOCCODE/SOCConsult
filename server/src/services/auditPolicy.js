@@ -23,6 +23,7 @@ const attendance = "attendance_open attendance_finalize attendance_review attend
 add([...transitions.map(value => "appointment_" + value), ...attendance].join(" "), { source: member([...transitions, ...attendance]) });
 add("profile_updated", { fieldNames: value => Array.isArray(value) && value.length <= 20 && value.every(member(["firstName", "middleName", "lastName", "name", "email", "yearLevel", "program", "position", "specialization", "profilePicture"])) });
 add("profile_picture_updated profile_picture_removed task_assigned task_completed supporting_document_uploaded supporting_document_removed");
+add("consultation_record_created consultation_record_updated");
 add("appointment_created published_schedule_selected schedule_requested schedule_request_cancelled schedule_request_rejected schedule_request_approved appointment_approved appointment_rejected appointment_completed appointment_no_show appointment_cancelled appointment_reschedule_requested appointment_reschedule_approved appointment_reschedule_rejected appointment_reschedule_required appointment_rescheduled consultation_location_updated online_meeting_details_updated", { role, status, previousStatus: status, newStatus: status, documentCount: count });
 export const AUDIT_ACTIONS = Object.freeze(Object.keys(rules));
 // Project only approved paths even before action-specific serialization.

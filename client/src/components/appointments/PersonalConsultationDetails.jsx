@@ -7,6 +7,7 @@ import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { StatusBadge } from "../UI";
 import FacultyAttendanceForm from "../attendance/FacultyAttendanceForm";
+import ConsultationRecordForm from "../consultations/ConsultationRecordForm";
 
 export const consultationTime = value => value && Number.isFinite(+new Date(value)) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
 export default function PersonalConsultationDetails({ appointment: a, onClose, onAttendanceSubmitted, children, opener }) {
@@ -28,6 +29,7 @@ export default function PersonalConsultationDetails({ appointment: a, onClose, o
           {a.status === "Attendance Review" && <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-amber-900">This attendance record requires review. Faculty responses cannot resolve the review.</p>}
         </section>
         {attendance?.eligible && <FacultyAttendanceForm appointmentId={a._id} onSubmitted={onAttendanceSubmitted} />}
+        <ConsultationRecordForm appointmentId={a._id} />
         <section><h3 className="mb-2 font-bold">Supporting Documents</h3><SupportingDocumentViewer appointment={a} personalConsultation /></section>
         <CalendarDownload key={a._id} appointment={a} />
         {children}
