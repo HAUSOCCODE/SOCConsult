@@ -47,7 +47,7 @@ test("bounded sections link to the correct Faculty and Dean history and expose n
     let tree = h.render(), html = h.html(tree);
     assert.match(html, /Latest 20 finalized records/); assert.match(html, new RegExp(role === "dean" ? '/dean/faculty/history' : '/faculty/history'));
     assert.equal(button(tree, "Next"), undefined);
-    h.state[0] = "Awaiting Attendance Update"; html = h.html(h.render()); assert.match(html, /pending FAC-11/); assert.doesNotMatch(html, /Submit Attendance/);
+    h.state[0] = "Awaiting Attendance Update"; html = h.html(h.render()); assert.match(html, /Submit your attendance response/);
     h.state[0] = "Compatibility"; html = h.html(h.render()); assert.match(html, /Read-only/);
   }
 });
