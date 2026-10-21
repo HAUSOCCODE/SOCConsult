@@ -5,19 +5,21 @@ const schema = new mongoose.Schema(
     dean: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required() { return this.reportType === "soc_consultations_pdf"; },
       immutable: true,
     },
+    requestingUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", required() { return this.reportType === "faculty_consultation_report"; }, immutable: true },
+    requestingRole: { type: String, enum: ["faculty", "dean"], required() { return this.reportType === "faculty_consultation_report"; }, immutable: true },
     reportType: {
       type: String,
-      enum: ["soc_consultations_pdf"],
+      enum: ["soc_consultations_pdf", "faculty_consultation_report"],
       required: true,
       immutable: true,
     },
     generatedAt: { type: Date, required: true, immutable: true },
     dateBasis: {
       type: String,
-      enum: ["createdAt"],
+      enum: ["createdAt", "startAt"],
       required: true,
       immutable: true,
     },
@@ -32,6 +34,8 @@ const schema = new mongoose.Schema(
         {
           start: String,
           end: String,
+          startDate: String,
+          endDate: String,
           facultyId: String,
           status: String,
           attendanceOutcome: String,
@@ -59,6 +63,7 @@ const schema = new mongoose.Schema(
   { versionKey: false, strict: "throw" },
 );
 schema.index({ dean: 1, generatedAt: -1 });
+schema.index({ requestingUser: 1, generatedAt: -1 });
 const blocked = () => {
   throw new Error("Report exports are immutable.");
 };

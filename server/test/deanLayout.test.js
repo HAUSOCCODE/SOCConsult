@@ -194,7 +194,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     "faculty/availability": "FacultyAvailabilityCalendar",
     "faculty/consultations": "FacultyAppointments",
     "faculty/history": "FacultyHistory",
-    "faculty/reports": "DeferredFeaturePage",
+    "faculty/reports": "FacultyReports",
   };
   for (const role of ["dean", "faculty", "student"]) {
     auth = { user: { role }, loading: false };
@@ -206,7 +206,7 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     for (const path of ["/admin/dashboard", "/admin/registrations"]) assert.match(render(path), /NotFoundPage/);
     assert.match(render(`/${role}/register`), /NotFoundPage/);
     if (role === "dean") assert.match(render("/dean/registrations"), /NotFoundPage/);
-    for (const [page, component] of Object.entries({ dashboard: "FacultyDashboard", requests: "AppointmentRequests", availability: "FacultyAvailabilityCalendar", consultations: "FacultyAppointments", history: "FacultyHistory", reports: "DeferredFeaturePage", notifications: "FacultyNotifications", account: "FacultyAccountSettings", calendar: "FacultyConsultationCalendar" })) {
+    for (const [page, component] of Object.entries({ dashboard: "FacultyDashboard", requests: "AppointmentRequests", availability: "FacultyAvailabilityCalendar", consultations: "FacultyAppointments", history: "FacultyHistory", reports: "FacultyReports", notifications: "FacultyNotifications", account: "FacultyAccountSettings", calendar: "FacultyConsultationCalendar" })) {
       assert.equal(render(`/faculty/${page}`).includes(component), role === "faculty", `${role}: ${page}`);
     }
     const html = render("/faculty/dashboard");
