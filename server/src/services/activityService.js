@@ -9,6 +9,13 @@ export async function recordReportExportAudit({ actor, report, summary, session 
     metadata: { reportType: "soc_consultations_pdf", total: summary.total, generatedAt: report.generatedAt },
   }], { session });
 }
+export async function recordFacultyReportExportAudit({ actor, role, report, summary, session }) {
+  await AuditLog.create([{ subjectUser: actor, subjectRole: role, actorUser: actor, actorRole: role, actor,
+    action: "report_generated", category: "Consultation", description: "Personal Faculty consultation PDF report generated",
+    relatedEntityType: "ReportExport", relatedEntityId: report._id,
+    metadata: { reportType: "faculty_consultation_report", total: summary.total, generatedAt: report.generatedAt },
+  }], { session });
+}
 import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
 import Task from "../models/Task.js";

@@ -13,7 +13,7 @@ add("dean_password_reset admin_password_reset", { role, context: member(["dean_u
 add("account_created_manually", { role, accountSource: member(["manual"]) });
 add("accounts_imported", { importId: ref, totalRows: count, successfulRows: count, failedRows: count, studentCount: count, facultyCount: count, importedAt: date, status: member(["completed"]) });
 add("accounts_csv_validated", { totalRows: count, validRows: count, invalidRows: count, duplicateRows: count, outcome: member(["valid", "invalid", "rejected"]), code: member(["VALIDATED", "VALIDATION_ERRORS", "CSV_REJECTED"]) });
-add("report_generated", { reportType: member(["soc_consultations_pdf"]), total: count, generatedAt: date });
+add("report_generated", { reportType: member(["soc_consultations_pdf", "faculty_consultation_report"]), total: count, generatedAt: date });
 add("report_narrative_generated report_narrative_reviewed", { timestamp: date });
 add("ai_generation_started", { attemptId: ref });
 add("ai_generation_attempt", { attemptId: ref, outcome: member(["success", "failed", "uncertain"]), stage: member(["provider", "persistence"]), code: member(["GENERATED", "PROVIDER_FAILED", "PROVIDER_UNCERTAIN", "PERSISTENCE_FAILED", "COMMIT_UNCERTAIN"]) });

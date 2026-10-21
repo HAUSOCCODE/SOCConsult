@@ -21,6 +21,7 @@ import FacultyAppointments from "./pages/Faculty/FacultyAppointments";
 import FacultyConsultationCalendar from "./pages/Faculty/FacultyConsultationCalendar";
 import AppointmentRequests from "./pages/Faculty/AppointmentRequests";
 import FacultyHistory from "./pages/Faculty/FacultyConsultationHistory";
+import FacultyReports from "./pages/Faculty/FacultyReports";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
 import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
@@ -86,7 +87,7 @@ export default function App() {
             <Route path="requests" element={<AppointmentRequests />} />
             <Route path="history" element={<FacultyHistory />} />
             <Route path="availability" element={<FacultyAvailabilityCalendar />} />
-            <Route path="reports" element={<DeferredFeaturePage title="Reports" dashboard="/faculty/dashboard" dashboardLabel="Faculty Dashboard" />} />
+            <Route path="reports" element={<FacultyReports />} />
             <Route path="account" element={<FacultyAccountSettings />} />
             <Route path="notifications" element={<FacultyNotifications />} />
             <Route path="profile" element={<DeanRouteRedirect to="/faculty/account" />} />
@@ -141,15 +142,7 @@ export default function App() {
               <Route path="availability" element={<FacultyAvailabilityCalendar routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
               <Route path="consultations" element={<FacultyAppointments />} />
               <Route path="history" element={<FacultyHistory />} />
-              <Route
-                path="reports"
-                element={
-                  <DeferredFeaturePage
-                    title="My Faculty PDF Reports"
-                    personal
-                  />
-                }
-              />
+              <Route path="reports" element={<FacultyReports />} />
               <Route
                 path="calendar"
                 element={
