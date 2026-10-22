@@ -8,6 +8,7 @@ import FacultyRescheduleModal from "./FacultyRescheduleModal";
 import ConfirmDialog from "../ConfirmDialog";
 import DetailLoadingDialog from "./DetailLoadingDialog";
 import { consultationTime } from "./PersonalConsultationDetails";
+import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 
 const sections = ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
 export default function FacultyConsultationsView({ detailOnly = false, selection, onChanged, onDetailClose } = {}) {
@@ -32,7 +33,7 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
           const last = Math.max(1, data.pagination.totalPages);
           if (page > last) setPage(last); else setList({ data });
         }
-      } catch { if (!c.signal.aborted) setList({ error: "Unable to load your consultations. Please try again." }); }
+      } catch (error) { if (!c.signal.aborted) setList({ requestError: error, error: safeUiError(error, "Unable to load your consultations. Please try again.") }); }
     };
     void load(); const refresh = () => { if (!busyRef.current) void load(); };
     window.addEventListener("focus", refresh);
@@ -49,7 +50,7 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     detailRequest.current?.abort(); const c = new AbortController(); detailRequest.current = c;
     setSelected(id); setDetail({ loading: true }); setActionError("");
     try { const data = await api(`/appointments/consultations/${id}`, { signal: c.signal, cache: "no-store" }); if (!c.signal.aborted) setDetail({ appointment: data.appointment }); }
-    catch { if (!c.signal.aborted) setDetail({ error: "Unable to load this consultation. It may no longer be available." }); }
+    catch (error) { if (!c.signal.aborted) setDetail({ error: safeUiError(error, "Unable to load this consultation. Please try again.") }); }
   };
   const cancel = async () => {
     if (busyRef.current) return;
@@ -78,8 +79,8 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     {section === "Recently Finalized" && <p>Latest 20 finalized records. <Link className="underline" to={`${base}/history`}>Full Consultation History</Link></p>}
     {section === "Compatibility" && <p>Latest 20 historical or malformed records requiring review. Read-only; retired statuses are historical labels.</p>}
     {section === "Awaiting Attendance Update" && <p>Submit your attendance response from the consultation details. Responses are accepted once and cannot be edited.</p>}
-    {list.loading ? <Loading /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(v => v + 1)} /> : <>
-      {!list.data.appointments.length ? <EmptyState title="No consultations in this section" /> : <div className="space-y-3">{list.data.appointments.map(row => <article key={row._id} className="min-w-0 space-y-2 rounded-xl border bg-white p-4"><h3 className="break-words font-bold">{row.student?.name}</h3><StatusBadge appointment status={row.status} /><p className="break-words">{row.subject || "Consultation"}</p><p>{consultationTime(row.startAt)} - {consultationTime(row.endAt)}</p><p>{row.consultationMode}</p><button type="button" className="btn-secondary" onClick={e => open(row._id, e.currentTarget)}>View Details</button></article>)}</div>}
+    {list.loading ? <Loading message="Loading your consultations..." /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(v => v + 1)} retryable={isRecoverableUiError(list.requestError)} /> : <>
+      {!list.data.appointments.length ? <EmptyState title={section === "Upcoming" ? "No upcoming consultations." : "No consultations in this section."} /> : <div className="space-y-3">{list.data.appointments.map(row => <article key={row._id} className="min-w-0 space-y-2 rounded-xl border bg-white p-4"><h3 className="break-words font-bold">{row.student?.name}</h3><StatusBadge appointment status={row.status} /><p className="break-words">{row.subject || "Consultation"}</p><p>{consultationTime(row.startAt)} - {consultationTime(row.endAt)}</p><p>{row.consultationMode}</p><button type="button" className="btn-secondary" onClick={e => open(row._id, e.currentTarget)}>View Details</button></article>)}</div>}
       {!["Recently Finalized", "Compatibility"].includes(section) && <nav className="flex items-center gap-3" aria-label="Consultation pagination"><button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page} of {Math.max(1, list.data.pagination.totalPages)}</span><button type="button" className="btn-secondary" disabled={page >= list.data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Next</button></nav>}
     </>}
     </>}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import FacultyReportFilters from "../../components/reports/FacultyReportFilters";
+import { safeUiError } from "../../utils/safeUiErrors";
 
 const manilaDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const initialFilters = () => { const endDate = manilaDate(); return { startDate: `${endDate.slice(0, 7)}-01`, endDate, status: "", attendanceOutcome: "", mode: "" }; };
@@ -9,8 +10,7 @@ const safeError = error => error?.status === 400 ? "Select a valid date range of
     : error?.status === 401 ? "Your session has expired. Please sign in again."
       : error?.status === 403 ? "You don't have permission to generate this report."
         : error?.status === 413 ? "The report is too large. Narrow the selected filters."
-          : error?.status === 0 ? "Network connection interrupted. Check your connection before trying again."
-            : "The report could not be generated. Please try again.";
+          : safeUiError(error, "The report could not be generated. Please try again.");
 
 export default function FacultyReports() {
   const [filters, setFilters] = useState(initialFilters), [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");

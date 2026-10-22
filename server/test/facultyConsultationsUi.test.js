@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { isRecoverableUiError, safeUiError } from "../../client/src/utils/safeUiErrors.js";
 const require = createRequire(new URL("../../client/package.json", import.meta.url));
 const React = require("react"), { renderToStaticMarkup } = require("react-dom/server"), { transform } = require("esbuild");
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -12,6 +13,7 @@ async function harness(role = "faculty") {
   const compiled = await transform(raw.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
   const state = [], refs = [], effects = [], pending = []; let slot = 0, refSlot = 0;
   const imports = {
+    safeUiError, isRecoverableUiError,
     useState: initial => { const i = slot++; if (!(i in state)) state[i] = initial; return [state[i], value => state[i] = typeof value === "function" ? value(state[i]) : value]; },
     useRef: initial => { const i = refSlot++; return refs[i] ||= { current: initial }; }, useEffect: fn => effects.push(fn),
     useAuth: () => ({ user: { role } }), api: (path, options) => new Promise((resolve, reject) => pending.push({ path, options, resolve, reject })),

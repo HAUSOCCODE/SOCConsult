@@ -1,4 +1,5 @@
 import { safeStudentError } from "../../client/src/utils/studentUiErrors.js";
+import { isRecoverableUiError, safeUiError } from "../../client/src/utils/safeUiErrors.js";
 ﻿import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -14,13 +15,14 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
   const compiled = await transform(raw.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
   const state = [], refs = [], effects = [], pending = [], listeners = {}; let slot = 0, refSlot = 0;
   const imports = {
-    safeStudentError, useMemo: fn => fn(),
+    safeStudentError, safeUiError, isRecoverableUiError, useMemo: fn => fn(),
     useState: initial => { const i = slot++; if (!(i in state)) state[i] = initial; return [state[i], value => state[i] = typeof value === "function" ? value(state[i]) : value]; },
     useRef: initial => { const i = refSlot++; return refs[i] ||= { current: initial }; }, useEffect: fn => effects.push(fn), useDialogFocus() {},
     createPortal: tree => tree, document: { body: {} }, window: { document: { body: {} }, addEventListener: (key, fn) => listeners[key] = fn, removeEventListener: key => delete listeners[key] },
     api: (path, options) => new Promise((resolve, reject) => pending.push({ path, options, resolve, reject })),
     useToast: () => ({ success() {}, error() {} }), formatManilaDisplay: value => value.toISOString(),
     StatusBadge: ({ status }) => React.createElement("span", null, status), EmptyState: ({ title, text }) => React.createElement("p", null, title, text),
+    Loading: ({ message }) => React.createElement("p", null, message), ErrorState: ({ message, onRetry }) => React.createElement("div", null, React.createElement("p", null, message), React.createElement("button", { onClick: onRetry }, "Try again")),
     AppointmentRequestDetailsModal: ({ appointment, actions }) => React.createElement("div", null, appointment.reason, actions),
     OneTimeScheduleRequests: () => null, ...overrides,
   };
@@ -31,7 +33,7 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
 const button = (tree, text) => elements(tree).find(el => el.type === "button" && el.props.children === text);
 
 test("request list renders escaped separate text, schedule fallback, server pages and no decisions before fresh detail", async () => {
-  const h = await harness(); assert.match(h.html(h.render()), /Loading requests/);
+  const h = await harness(); assert.match(h.html(h.render()), /Loading consultation requests/);
   const cleanup = h.effects[0](); assert.equal(h.pending[0].path, "/appointments/requests?status=Pending&page=1");
   h.pending[0].resolve(result()); await settle(); let tree = h.render(), html = h.html(tree);
   assert.match(html, /&lt;img/); assert.match(html, /Student &lt;script&gt;/); assert.match(html, /Separate concern/); assert.match(html, /Not scheduled/); assert.match(html, /Supporting document attached/);
@@ -54,8 +56,8 @@ test("request list renders escaped separate text, schedule fallback, server page
 
 test("retry, empty, filter, All explanation and aborted responses preserve current list and detail", async () => {
   const h = await harness(); h.render(); let cleanup = h.effects[0]();
-  h.pending[0].reject(Error("PRIVATE")); await settle(); let tree = h.render(); assert.match(h.html(tree), /Unable to load/); assert.doesNotMatch(h.html(tree), /PRIVATE/);
-  button(tree, "Retry").props.onClick(); cleanup(); h.render(); cleanup = h.effects[0]();
+  h.pending[0].reject(Error("PRIVATE")); await settle(); let tree = h.render(); assert.match(h.html(tree), /Unable to connect to SOCConsult/); assert.doesNotMatch(h.html(tree), /PRIVATE/);
+  elements(tree).find(element => typeof element.props?.onRetry === "function").props.onRetry(); cleanup(); h.render(); cleanup = h.effects[0]();
   h.listeners.focus(); assert.equal(h.pending[1].options.signal.aborted, true);
   h.pending[2].resolve(result()); await settle(); h.pending[1].resolve(result([])); await settle(); assert.equal(h.state[3].data.requests.length, 1);
   tree = h.render(); button(tree, "View Details").props.onClick();
