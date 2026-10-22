@@ -5,13 +5,12 @@ import AttendanceResponse from "../models/AttendanceResponse.js";
 import Availability from "../models/Availability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
-import User from "../models/User.js";
-import Notification from "../models/Notification.js";
 import { lockProviderSchedules } from "./providerSchedulingLock.js";
 import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
 import { safeReason, scheduleSnapshot, statusHistoryEntry } from "./appointmentHistoryService.js";
-import { appointmentEvent, bestEffortStudentConsultationEmail, createStudentConsultationNotification } from "./consultationNotificationService.js";
+import { appointmentEvent, bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
+  createFacultyConsultationNotification, createStudentConsultationNotification, facultyAppointmentEvent } from "./consultationNotificationService.js";
 
 const fail = (message, statusCode = 409, code = "APPOINTMENT_TRANSITION_BLOCKED") => {
   throw Object.assign(new Error(message), { statusCode, code });
@@ -134,14 +133,9 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
     changes: { before: { status: from }, after: { status: to } },
     metadata: { source: action }, createdAt: now,
   }], { session });
-  if (actor.role === "student") {
-    const targetUser = await User.findById(appointment.faculty).select("role").session(session);
-    await Notification.create([{ recipient: appointment.faculty, type: "appointment", category: "Consultation",
-      title: action === "request" ? "Consultation Request Submitted" : action.endsWith("_proposal") ? "Reschedule Response Recorded" : `Consultation ${to}`,
-      message: action === "request" ? "A Student submitted a consultation request." : `The consultation status is now ${to}.`,
-      relatedEntityId: appointment._id,
-      actionUrl: targetUser?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments" }], { session });
-  }
+  const facultyEvent = facultyAppointmentEvent(action, actor.role);
+  if (facultyEvent) await createFacultyConsultationNotification({ faculty: appointment.faculty,
+    appointmentId: appointment._id, event: facultyEvent, session, transitionVersion });
   const event = appointmentEvent(action);
   if (event) await createStudentConsultationNotification({ student: appointment.student, appointmentId: appointment._id, event, session, transitionVersion });
 }
@@ -281,6 +275,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
   } finally { await session.endSession(); }
   const event = appointmentEvent(action);
   if (event) await bestEffortStudentConsultationEmail({ student: result.student, appointmentId: result._id, event });
+  const facultyEvent = facultyAppointmentEvent(action, actor.role);
+  if (facultyEvent) await bestEffortFacultyConsultationEmail({ faculty: result.faculty, appointmentId: result._id, event: facultyEvent });
   return safeAppointment(result, actor.role);
 }
 
@@ -321,5 +317,6 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
     throw error;
   } finally { await session.endSession(); }
   await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "request_submitted" });
+  await bestEffortFacultyConsultationEmail({ faculty: appointment.faculty, appointmentId: appointment._id, event: "faculty_request_submitted" });
   return safeAppointment(appointment, actor.role);
 }

@@ -29,6 +29,16 @@ import { useNavigate } from "react-router-dom";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const ITEMS_PER_PAGE = 6;
+const facultyNotificationDestination = (notification) => {
+  const id = String(notification?.relatedEntityId || "");
+  const base = notification?.actionUrl === "/dean/faculty/consultations" ? "/dean/faculty"
+    : ["/faculty/appointments", "/faculty/consultations"].includes(notification?.actionUrl) ? "/faculty" : "";
+  if (!base || !/^[a-f\d]{24}$/i.test(id) || !/^faculty_/.test(notification?.type || "")) return "";
+  const section = ["faculty_request_submitted", "faculty_proposal_declined"].includes(notification.type) ? "requests"
+    : ["faculty_cancelled", "faculty_finalized", "faculty_attendance_review", "faculty_expired"].includes(notification.type) ? "history"
+      : "consultations";
+  return `${base}/${section}?appointment=${id}`;
+};
 
 const iconFor = (notification) => {
   if (/rejected|cancelled/i.test(notification.title || "")) return XCircle;
@@ -458,8 +468,15 @@ function StudentNotificationsContent({
 
   const open = async (notification) => {
     if (!notification.isRead && !(await read(notification._id))) return;
-    if (!faculty && /^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i.test(notification.actionUrl || "")) {
+    const facultyDestination = facultyNotificationDestination(notification);
+    const safeStudentPath = /^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i;
+    const safeFacultyPath = /^\/(?:faculty|dean\/faculty)\/(?:consultations|requests|history)\?appointment=[a-f\d]{24}$/i;
+    if (!faculty && safeStudentPath.test(notification.actionUrl || "")) {
       navigate(notification.actionUrl);
+      return;
+    }
+    if (faculty && safeFacultyPath.test(facultyDestination)) {
+      navigate(facultyDestination);
       return;
     }
     setSelected(notification);
@@ -1814,9 +1831,9 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
           >
             Close
           </button>
-          {notification.actionUrl && (
+          {(facultyNotificationDestination(notification) || notification.actionUrl) && (
             <a
-              href={notification.actionUrl}
+              href={facultyNotificationDestination(notification) || notification.actionUrl}
               className="btn-primary w-full text-center sm:w-auto"
             >
               View details
