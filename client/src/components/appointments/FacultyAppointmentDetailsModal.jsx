@@ -30,7 +30,7 @@ export default function FacultyAppointmentDetailsModal({
   onAttendanceSubmitted,
 }) {
   const dialogRef = useRef(null);
-  useDialogFocus(dialogRef, { onClose });
+  useDialogFocus(dialogRef, { onClose, restoreTarget: opener });
 
 
 
@@ -46,7 +46,7 @@ export default function FacultyAppointmentDetailsModal({
         aria-modal="true"
         aria-labelledby="faculty-appointment-title"
         onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <div className="min-w-0">
