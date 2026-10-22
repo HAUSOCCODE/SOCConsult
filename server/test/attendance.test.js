@@ -35,8 +35,11 @@ for (const student of ATTENDANCE_OUTCOMES) for (const faculty of ATTENDANCE_OUTC
       assert.equal(stored.attendance.finalOutcome, student === faculty ? student : null);
       assert.deepEqual(stored.statusHistory.map(e => e.newStatus), ["Awaiting Attendance Update", stored.status]);
       assert.equal(h.state.responses.length, 2);
-      assert.equal(h.state.notifications.length, 5);
+      assert.equal(h.state.notifications.length, 6);
       assert.equal(h.state.notifications.filter(notification => notification.type === "attendance_response_received").length, 1);
+      const facultyNotice = h.state.notifications.find(notification => notification.type === "faculty_student_attendance_submitted");
+      assert.equal(facultyNotice?.message, "The student has submitted an attendance response.");
+      assert.doesNotMatch(JSON.stringify(facultyNotice), /my private reason|Student No-show|Faculty No-show/);
       assert.doesNotMatch(JSON.stringify([h.state.audits, h.state.notifications, stored.statusHistory]), /private reason/);
       const view = await readAttendance({ id: row._id, actor: actor("student"), now });
       assert.deepEqual(view.outcomes, { student, faculty });
@@ -88,8 +91,9 @@ test("concurrent submissions, transaction retries and rollback", async () => {
         const results = await Promise.allSettled(["student", "student", "faculty"].map(role => processAttendance({ id: row._id, actor: actor(role), input: { outcome: "Completed" }, now })));
         assert.equal(results.filter(r => r.status === "fulfilled").length, 2);
         assert.equal(h.state.responses.length, 2); assert.equal(h.state.appointments[0].status, "Completed");
-        assert.equal(h.state.notifications.length, 5);
+        assert.equal(h.state.notifications.length, 6);
         assert.equal(h.state.notifications.filter(notification => notification.type === "attendance_response_received").length, 1);
+        assert.equal(h.state.notifications.filter(notification => notification.type === "faculty_student_attendance_submitted").length, 1);
       }
     } finally { h.restore(); }
   }

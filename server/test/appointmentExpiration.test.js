@@ -52,10 +52,12 @@ test("two expiration workers have one committed transition, history, audit, Stud
     assert.equal(stored.statusHistory[0].previousStatus, "Pending"); assert.equal(stored.statusHistory[0].newStatus, "Expired");
     assert.equal(stored.statusHistory[0].actorType, "system"); assert.equal(stored.statusHistory[0].source, "expire");
     assert.equal(stored.expirationReason, "faculty_response_deadline_passed");
-    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
-    assert.equal(h.state.notifications[0].recipient, record.student);
-    assert.equal(h.state.notifications[0].title, "Consultation Expired");
-    assert.equal(h.state.notifications[0].type, "expired");
+    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
+    const studentNotice = h.state.notifications.find(item => item.recipient === record.student);
+    const facultyNotice = h.state.notifications.find(item => item.recipient === record.faculty);
+    assert.equal(studentNotice?.title, "Consultation Expired");
+    assert.equal(studentNotice?.type, "expired");
+    assert.equal(facultyNotice?.type, "faculty_expired");
     assert.equal(h.state.slots[0].reservationToken, undefined);
     assert.equal(h.state.slots[1].reservationToken, unrelated.reservationToken);
     assert.deepEqual(h.state.holds.map((hold) => hold.appointment), [unrelated._id]);
@@ -63,7 +65,7 @@ test("two expiration workers have one committed transition, history, audit, Stud
     Appointment.find = originalFind;
     // Restrict this follow-up to the already expired record's Faculty owner.
     assert.deepEqual(await run({ facultyId: record.faculty }), emptyExpirationCounts());
-    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+    assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
   } finally { Appointment.find = originalFind; Availability.updateOne = releaseToken; OneTimeScheduleHold.deleteMany = releaseHolds; h.restore(); }
 });
 
@@ -92,7 +94,7 @@ test("each expiration transaction failure rolls back all effects, is reported fa
       h.fail(undefined); h.retry();
       assert.deepEqual(await run(), { ...emptyExpirationCounts(), attempted: 1, changed: 1 });
       assert.equal(h.state.appointments[0].statusHistory.length, 1);
-      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
       assert.equal(h.state.slots[0].reservationToken, undefined); assert.equal(h.state.holds.length, 0);
     } finally { h.restore(); }
   }

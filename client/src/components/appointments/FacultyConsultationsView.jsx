@@ -12,6 +12,9 @@ import { consultationTime } from "./PersonalConsultationDetails";
 const sections = ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
 export default function FacultyConsultationsView({ detailOnly = false, selection, onChanged, onDetailClose } = {}) {
   const { user } = useAuth();
+  const searchParams = new URLSearchParams(window.location?.search || "");
+  const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
+    ? searchParams.get("appointment") : "";
   const base = user.role === "dean" ? "/dean/faculty" : "/faculty";
   const [section, setSection] = useState("Upcoming"), [page, setPage] = useState(1), [revision, setRevision] = useState(0);
   const [list, setList] = useState({ loading: true }), [detail, setDetail] = useState(null), [selected, setSelected] = useState("");
@@ -37,7 +40,10 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     return () => { listRequest.current?.abort(); clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [section, page, revision, detailOnly]);
   useEffect(() => () => detailRequest.current?.abort(), []);
-  const close = () => { if (busyRef.current || proposing || cancelling) return; detailRequest.current?.abort(); setSelected(""); setDetail(null); opener.current?.focus(); onDetailClose?.(); };
+  const close = () => { if (busyRef.current || proposing || cancelling) return; detailRequest.current?.abort(); setSelected(""); setDetail(null);
+    if (linkedAppointment) { const next = new URLSearchParams(window.location?.search || ""); next.delete("appointment");
+      window.history?.replaceState(null, "", `${window.location?.pathname || ""}${next.size ? `?${next}` : ""}${window.location?.hash || ""}`); }
+    opener.current?.focus(); onDetailClose?.(); };
   const open = async (id, target) => {
     if (target) opener.current = target;
     detailRequest.current?.abort(); const c = new AbortController(); detailRequest.current = c;
@@ -62,6 +68,7 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     if (selection?.id) void open(selection.id, selection.opener);
     return () => { if (selection) detailRequest.current?.abort(); };
   }, [selection]);
+  useEffect(() => { if (!detailOnly && linkedAppointment && linkedAppointment !== selected) void open(linkedAppointment); }, [detailOnly, linkedAppointment]);
   const a = detail?.appointment;
   return <div className="min-w-0 space-y-5">
     {!detailOnly && <>

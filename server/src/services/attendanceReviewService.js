@@ -4,13 +4,13 @@ import AttendanceResponse from "../models/AttendanceResponse.js";
 import AttendanceReview, { assertReviewIndex } from "../models/AttendanceReview.js";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
-import Notification from "../models/Notification.js";
 import { REVIEW_ACTIONS } from "../config/attendanceReview.js";
 import { REVIEW_REASONS } from "../config/attendance.js";
 import { safeReason, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { validAttendance } from "./attendanceService.js";
 import { consultationDetails, consultationFilterOptions, listRecord, parseConsultationQuery, validRecordId } from "./deanConsultationService.js";
-import { bestEffortStudentConsultationEmail, createStudentConsultationNotification } from "./consultationNotificationService.js";
+import { bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
+  createFacultyConsultationNotification, createStudentConsultationNotification } from "./consultationNotificationService.js";
 
 const fail = (message, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode }); };
 const requireDean = actor => { if (actor?.role !== "dean" || actor.management !== true || actor.accountStatus !== "Active") fail("Dean management access required.", 403); };
@@ -74,14 +74,14 @@ export async function submitReview({ id, actor, input, now = new Date() }) {
   if (!reason) fail("A resolution reason is required.", 400);
   await assertReviewIndex();
   const session = await mongoose.startSession();
-  let result, studentId;
+  let result, studentId, facultyId;
   try {
     await session.withTransaction(async () => {
       result = undefined;
       const dean = await User.findById(actor.id).select("role accountStatus").session(session);
       if (dean?.role !== "dean" || dean.accountStatus !== "Active") fail("Active Dean required.", 403);
       const row = await Appointment.findById(id).select("+attendance").session(session).lean();
-      if (row) studentId = row.student;
+      if (row) { studentId = row.student; facultyId = row.faculty; }
       if (!row) fail("Review not found.", 404);
       if (row.status !== "Attendance Review" || row.__v !== input.expectedVersion || row.attendance?.finalOutcome != null || row.attendance?.finalizedAt ||
         await AttendanceReview.exists({ appointment: id, isFinal: true }).session(session)) fail("This review changed or was resolved. Refresh before continuing.");
@@ -112,16 +112,17 @@ export async function submitReview({ id, actor, input, now = new Date() }) {
         description: "Dean attendance review action recorded", relatedEntityType: "Appointment", relatedEntityId: row._id,
         changes: { before: { status: row.status }, after: { status, finalOutcome } }, metadata: { reviewId: String(review._id), action: input.action }, createdAt: reviewedAt }], { session });
       if (isFinal) {
-        const faculty = await User.findById(row.faculty).select("role").session(session);
         await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event: "finalized", session });
-        await Notification.create([{ recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments",
-          type: "appointment", category: "Attendance", title: "Attendance Record Reviewed", relatedEntityId: row._id,
-          message: `The attendance record was reviewed. Recorded outcome: ${finalOutcome}.` }], { session });
+        await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id,
+          event: "faculty_finalized", session, transitionVersion: updated.__v });
       }
       result = { reviewId: String(review._id), status, finalOutcome, version: updated.__v, state: isFinal ? "Resolved" : "Unresolved" };
     });
   } catch (error) { if (error.code === 11000) fail("This review was already resolved. Refresh before continuing."); throw error; }
   finally { await session.endSession(); }
-  if (result?.state === "Resolved") await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event: "finalized" });
+  if (result?.state === "Resolved") {
+    await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event: "finalized" });
+    await bestEffortFacultyConsultationEmail({ faculty: facultyId, appointmentId: id, event: "faculty_finalized" });
+  }
   return result;
 }

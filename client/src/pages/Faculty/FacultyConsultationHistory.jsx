@@ -17,6 +17,9 @@ const safeMessage = error => error?.status === 400 ? "Review the selected histor
         : "We couldn't load consultation history. Please try again.";
 
 export default function FacultyConsultationHistory() {
+  const searchParams = new URLSearchParams(window.location?.search || "");
+  const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
+    ? searchParams.get("appointment") : "";
   const [draft, setDraft] = useState(EMPTY), [filters, setFilters] = useState(EMPTY);
   const [page, setPage] = useState(1), [revision, setRevision] = useState(0);
   const [state, setState] = useState({ loading: true, data: null, error: "" });
@@ -38,7 +41,9 @@ export default function FacultyConsultationHistory() {
 
   const apply = event => { event.preventDefault(); if (!dateError) { setPage(1); setFilters({ ...draft, search: draft.search.trim() }); } };
   const clear = () => { setDraft(EMPTY); setFilters(EMPTY); setPage(1); };
-  const closeDetails = () => { detailSequence.current += 1; setSelected(null); setDetail({ loading: false, error: "", appointment: null }); };
+  const closeDetails = () => { detailSequence.current += 1; setSelected(null); setDetail({ loading: false, error: "", appointment: null });
+    if (linkedAppointment) { const next = new URLSearchParams(window.location?.search || ""); next.delete("appointment");
+      window.history?.replaceState(null, "", `${window.location?.pathname || ""}${next.size ? `?${next}` : ""}${window.location?.hash || ""}`); } };
   const openDetails = async id => {
     const current = ++detailSequence.current;
     setSelected(id); setDetail({ loading: true, error: "", appointment: null });
@@ -51,6 +56,7 @@ export default function FacultyConsultationHistory() {
   };
   const consultations = state.data?.consultations || [], pagination = state.data?.pagination;
   const filtered = Object.values(filters).some(Boolean);
+  useEffect(() => { if (linkedAppointment && linkedAppointment !== selected) void openDetails(linkedAppointment); }, [linkedAppointment]);
 
   return <div className="min-w-0 space-y-5 pb-16 md:pb-0">
     <header className="rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">

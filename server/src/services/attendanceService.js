@@ -3,13 +3,13 @@ import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import AttendanceResponse, { assertAttendanceIndexes } from "../models/AttendanceResponse.js";
 import AuditLog from "../models/AuditLog.js";
-import Notification from "../models/Notification.js";
 import User from "../models/User.js";
 import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS } from "../config/attendance.js";
 import { safeReason, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { participation, participantAttendance } from "./attendancePrivacyService.js";
 import { ATTENDANCE_TRANSITIONS } from "../config/appointmentStatus.js";
-import { bestEffortStudentConsultationEmail, createStudentConsultationNotification } from "./consultationNotificationService.js";
+import { bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
+  createFacultyConsultationNotification, createStudentConsultationNotification } from "./consultationNotificationService.js";
 
 const fail = (message, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode }); };
 export function validAttendance(row) {
@@ -43,10 +43,6 @@ async function transition(row, to, session, now) {
   (row.statusHistory ||= []).push(statusHistoryEntry({ from, to, actor: { role: "system" }, action, now: timestamp }));
   row.status = to;
   await audit(row, { role: "system" }, action, session, timestamp, from, to);
-  const faculty = await User.findById(row.faculty).select("role").session(session);
-  const message = to === "Awaiting Attendance Update" ? "Your attendance response is now available."
-    : to === "Completed" ? `Attendance finalized: ${row.attendance.finalOutcome}.`
-    : "This consultation requires authorized attendance review.";
   if (to === "Attendance Review") {
     const deans = await User.find({ role: "dean", accountStatus: "Active" }).select("_id").session(session).lean();
     for (const dean of deans) await createEventNotification({ recipient: dean._id, event: "attendance_review_created", relatedEntityId: row._id,
@@ -54,11 +50,11 @@ async function transition(row, to, session, now) {
   }
   const event = to === "Awaiting Attendance Update" ? "attendance_update_required"
     : to === "Completed" ? "finalized" : "attendance_review";
+  const facultyEvent = to === "Awaiting Attendance Update" ? "faculty_attendance_update_required"
+    : to === "Completed" ? "faculty_finalized" : "faculty_attendance_review";
   await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event, session });
-  await Notification.create([{ recipient: row.faculty, actionUrl: faculty?.role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments",
-    type: "appointment", category: "Attendance", title: to === "Completed" ? "Attendance Finalized" : to,
-    message, relatedEntityId: row._id }], { session });
-  return event;
+  await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id, event: facultyEvent, session });
+  return { studentEvent: event, facultyEvent };
 }
 export async function readAttendance({ id, actor, now = new Date() }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
@@ -79,12 +75,13 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
   const session = await mongoose.startSession();
   let changed = false;
   const studentEmailEvents = new Set();
-  let studentId;
+  const facultyEmailEvents = new Set();
+  let studentId, facultyId;
   try {
     await session.withTransaction(async () => {
       changed = false;
       const row = await Appointment.findById(id).select("+attendance").session(session).lean();
-      if (row) studentId = row.student;
+      if (row) { studentId = row.student; facultyId = row.faculty; }
       const role = submitting && row ? participation(row, actor) : null;
       if (submitting && (!row || !role)) fail("Appointment not found.", 404);
       if (!row || !validAttendance(row) || !["Confirmed", "Awaiting Attendance Update"].includes(row.status)) {
@@ -97,7 +94,10 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
       const responses = await AttendanceResponse.find({ appointment: id }).session(session).lean();
       if (submitting && responses.some(r => r.participantRole === role)) fail("Your attendance response has already been submitted.");
       const originalStatus = row.status;
-      if (row.status === "Confirmed") studentEmailEvents.add(await transition(row, "Awaiting Attendance Update", session, now));
+      if (row.status === "Confirmed") {
+        const events = await transition(row, "Awaiting Attendance Update", session, now);
+        studentEmailEvents.add(events.studentEvent); facultyEmailEvents.add(events.facultyEvent);
+      }
       if (submitting) {
         const [response] = await AttendanceResponse.create([{ appointment: row._id, participant: actor.id,
           participantRole: role, outcome: input.outcome, reason, submittedAt: now, policyVersion: row.attendance.policyVersion }], { session });
@@ -107,14 +107,18 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
         if (role === "student") {
           await createStudentConsultationNotification({ student: row.student, appointmentId: row._id,
             event: "attendance_response_received", session });
+          await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id,
+            event: "faculty_student_attendance_submitted", session });
           studentEmailEvents.add("attendance_response_received");
+          facultyEmailEvents.add("faculty_student_attendance_submitted");
         }
       }
       const decision = attendanceDecision(responses, deadlinePassed);
       if (decision) {
         if (decision.status === "Completed") Object.assign(row.attendance, { finalOutcome: decision.finalOutcome, finalizedAt: now, finalizationSource: "participant_agreement" });
         else Object.assign(row.attendance, { finalOutcome: null, reviewReason: decision.reviewReason, missingRoles: decision.missingRoles, reviewStartedAt: now });
-        studentEmailEvents.add(await transition(row, decision.status, session, now));
+        const events = await transition(row, decision.status, session, now);
+        studentEmailEvents.add(events.studentEvent); facultyEmailEvents.add(events.facultyEvent);
       }
       if (!submitting && row.status === originalStatus) return;
       const updated = await Appointment.findOneAndUpdate({ _id: row._id, status: originalStatus,
@@ -128,5 +132,6 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
     throw error;
   } finally { await session.endSession(); }
   for (const event of studentEmailEvents) if (event) await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event });
+  for (const event of facultyEmailEvents) if (event) await bestEffortFacultyConsultationEmail({ faculty: facultyId, appointmentId: id, event });
   return changed;
 }

@@ -14,6 +14,9 @@ const timestamp = value => value && Number.isFinite(new Date(value).getTime()) ?
 
 export default function AppointmentRequests() {
   const toast = useToast();
+  const searchParams = new URLSearchParams(window.location?.search || "");
+  const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
+    ? searchParams.get("appointment") : "";
   const [status, setStatus] = useState("Pending");
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
@@ -52,6 +55,8 @@ export default function AppointmentRequests() {
   const close = () => {
     if (busyRef.current) return;
     detailRequest.current?.abort(); setSelectedId(""); setDetail({}); setRejecting(false); setNote(""); setConfirming(false); setProposing(false); setDecisionError("");
+    if (linkedAppointment) { const next = new URLSearchParams(window.location?.search || ""); next.delete("appointment");
+      window.history?.replaceState(null, "", `${window.location?.pathname || ""}${next.size ? `?${next}` : ""}${window.location?.hash || ""}`); }
   };
   const open = async id => {
     detailRequest.current?.abort();
@@ -63,6 +68,7 @@ export default function AppointmentRequests() {
     } catch { if (!controller.signal.aborted) setDetail({ error: "Unable to load this request. It may no longer be available." }); }
   };
   useEffect(() => () => { listRequest.current?.abort(); detailRequest.current?.abort(); }, []);
+  useEffect(() => { if (linkedAppointment && linkedAppointment !== selectedId) void open(linkedAppointment); }, [linkedAppointment]);
   const decide = async decision => {
     if (busyRef.current || !detail.appointment) return;
     if (!Number.isInteger(detail.appointment.__v)) { setDecisionError("Reload these details before deciding."); return; }
