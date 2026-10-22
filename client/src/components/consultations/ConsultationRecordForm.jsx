@@ -22,11 +22,16 @@ export default function ConsultationRecordForm({ appointmentId }) {
   const [error, setError] = useState("");
   const pending = useRef(false);
 
-  const load = async () => {
-    setState({ loading: true }); setError("");
+  const load = async ({ preserveDraft = false } = {}) => {
+    setState({ loading: true });
+    if (!preserveDraft) setError("");
     try {
       const data = await api(`/appointments/${appointmentId}/consultation-record`, { cache: "no-store" });
-      setState(data); setNotes(data.record?.notes || ""); setRecommendations(data.record?.recommendations || "");
+      setState(data);
+      if (!preserveDraft) {
+        setNotes(data.record?.notes || "");
+        setRecommendations(data.record?.recommendations || "");
+      }
     } catch (requestError) { setState({ error: safeError(requestError) }); }
   };
   useEffect(() => { void load(); }, [appointmentId]);
@@ -44,7 +49,7 @@ export default function ConsultationRecordForm({ appointmentId }) {
       setState(data); setNotes(data.record.notes); setRecommendations(data.record.recommendations);
     } catch (requestError) {
       setError(safeError(requestError));
-      if (requestError?.status === 409) await load();
+      if (requestError?.status === 409) await load({ preserveDraft: true });
     } finally { pending.current = false; setSaving(false); }
   };
 

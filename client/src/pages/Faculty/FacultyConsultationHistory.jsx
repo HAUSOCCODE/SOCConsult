@@ -5,16 +5,15 @@ import FacultyAppointmentDetailsModal from "../../components/appointments/Facult
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
 import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 
 const STATUSES = ["Completed", "Cancelled", "Rejected", "Expired", "Attendance Review"];
 const OUTCOMES = ["Completed", "Student No-show", "Faculty No-show"];
 const MODES = ["Online", "Face-to-Face"];
 const EMPTY = { from: "", to: "", status: "", attendanceOutcome: "", mode: "", search: "" };
-const safeMessage = error => error?.status === 400 ? "Review the selected history filters and try again."
-  : error?.status === 401 ? "Your session has expired. Please sign in again."
-    : error?.status === 403 ? "You don't have permission to access this content."
-      : error?.status === 0 ? "Network connection interrupted. Check your connection and try again."
-        : "We couldn't load consultation history. Please try again.";
+const safeMessage = error => safeUiError(error, "We couldn't load consultation history. Please try again.", {
+  validation: "Review the selected history filters and try again.",
+});
 
 export default function FacultyConsultationHistory() {
   const searchParams = new URLSearchParams(window.location?.search || "");
@@ -22,7 +21,7 @@ export default function FacultyConsultationHistory() {
     ? searchParams.get("appointment") : "";
   const [draft, setDraft] = useState(EMPTY), [filters, setFilters] = useState(EMPTY);
   const [page, setPage] = useState(1), [revision, setRevision] = useState(0);
-  const [state, setState] = useState({ loading: true, data: null, error: "" });
+  const [state, setState] = useState({ loading: true, data: null, error: "", requestError: null });
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState({ loading: false, error: "", appointment: null });
   const sequence = useRef(0), detailSequence = useRef(0);
@@ -34,8 +33,8 @@ export default function FacultyConsultationHistory() {
     Object.entries(filters).forEach(([key, value]) => value && query.set(key, value));
     setState(previous => ({ ...previous, loading: true, error: "" }));
     api(`/appointments/faculty-history?${query}`, { signal: controller.signal })
-      .then(data => current === sequence.current && setState({ loading: false, data, error: "" }))
-      .catch(error => error.name !== "AbortError" && current === sequence.current && setState({ loading: false, data: null, error: safeMessage(error) }));
+      .then(data => current === sequence.current && setState({ loading: false, data, error: "", requestError: null }))
+      .catch(error => error.name !== "AbortError" && current === sequence.current && setState({ loading: false, data: null, error: safeMessage(error), requestError: error }));
     return () => controller.abort();
   }, [filters, page, revision]);
 
@@ -77,7 +76,7 @@ export default function FacultyConsultationHistory() {
       {dateError && <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{dateError}</p>}
       <button type="submit" disabled={Boolean(dateError)} className="btn-primary mt-4 min-h-10 disabled:opacity-50">Apply Filters</button>
     </form>
-    {state.loading && !state.data ? <Loading /> : state.error ? <ErrorState message={state.error} onRetry={() => setRevision(value => value + 1)} retryable={!state.error.includes("permission")} /> : consultations.length === 0 ? <EmptyState title={filtered ? "No historical consultations match the selected filters." : "No consultation history yet."} /> : <section className="space-y-3" aria-live="polite">
+    {state.loading && !state.data ? <Loading message="Loading consultation history..." /> : state.error ? <ErrorState message={state.error} onRetry={() => setRevision(value => value + 1)} retryable={isRecoverableUiError(state.requestError)} /> : consultations.length === 0 ? <EmptyState title={filtered ? "No historical consultations match the selected filters." : "No consultation history yet."} /> : <section className="space-y-3" aria-live="polite">
       {consultations.map(item => <HistoryItem key={item._id} item={item} onView={() => openDetails(item._id)} />)}
       <nav className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3" aria-label="Consultation history pagination"><button type="button" className="btn-secondary" disabled={pagination.page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><p className="text-sm font-semibold text-slate-700">Page {pagination.page} of {pagination.totalPages} · {pagination.total} records</p><button type="button" className="btn-secondary" disabled={pagination.page >= pagination.totalPages} onClick={() => setPage(value => value + 1)}>Next</button></nav>
     </section>}

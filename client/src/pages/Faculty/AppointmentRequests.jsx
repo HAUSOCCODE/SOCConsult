@@ -3,11 +3,12 @@ import { createPortal } from "react-dom";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
-import { EmptyState, StatusBadge } from "../../components/UI";
+import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
 import AppointmentRequestDetailsModal from "../../components/appointments/AppointmentRequestDetailsModal";
 import OneTimeScheduleRequests from "../../components/appointments/OneTimeScheduleRequests";
 import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { useToast } from "../../context/ToastContext";
+import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 
 const filters = ["Pending", "Reschedule Proposed", "Confirmed", "Rejected", "Cancelled", "Expired", "All"];
 const timestamp = value => value && Number.isFinite(new Date(value).getTime()) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
@@ -45,7 +46,7 @@ export default function AppointmentRequests() {
           if (page > Math.max(1, data.pagination.totalPages)) setPage(Math.max(1, data.pagination.totalPages));
           else setList({ data });
         }
-      } catch { if (!current.signal.aborted) setList({ error: "Unable to load appointment requests." }); }
+      } catch (error) { if (!current.signal.aborted) setList({ requestError: error, error: safeUiError(error, "Unable to load appointment requests. Please try again.") }); }
     };
     void load();
     const focus = () => { if (!busyRef.current) void load(); };
@@ -65,7 +66,7 @@ export default function AppointmentRequests() {
     try {
       const data = await api(`/appointments/requests/${id}`, { signal: controller.signal, cache: "no-store" });
       if (!controller.signal.aborted) setDetail({ appointment: data.appointment });
-    } catch { if (!controller.signal.aborted) setDetail({ error: "Unable to load this request. It may no longer be available." }); }
+    } catch (error) { if (!controller.signal.aborted) setDetail({ error: safeUiError(error, "Unable to load this request. Please try again.") }); }
   };
   useEffect(() => () => { listRequest.current?.abort(); detailRequest.current?.abort(); }, []);
   useEffect(() => { if (linkedAppointment && linkedAppointment !== selectedId) void open(linkedAppointment); }, [linkedAppointment]);
@@ -99,8 +100,8 @@ export default function AppointmentRequests() {
     </label>
     {status === "All" && <p className="text-sm text-slate-600">All includes attendance, finalized, and retained legacy records.</p>}
     {status === "Pending" && <p className="text-sm text-slate-600">Earliest requested schedule first. Unscheduled requests appear last.</p>}
-    {list.loading ? <p role="status">Loading requests...</p> : list.error ? <div role="alert">{list.error} <button className="btn-secondary" onClick={() => setRevision(value => value + 1)}>Retry</button></div> : <>
-      {!list.data?.requests.length ? <EmptyState title="No appointment requests" text="No requests match this filter." /> : <div className="space-y-3">
+    {list.loading ? <Loading message="Loading consultation requests..." /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(value => value + 1)} retryable={isRecoverableUiError(list.requestError)} /> : <>
+      {!list.data?.requests.length ? <EmptyState title={status === "Pending" ? "No pending consultation requests." : "No appointment requests match this filter."} text="New matching requests will appear here." /> : <div className="space-y-3">
         {list.data.requests.map(request => <article key={request._id} className="min-w-0 rounded-xl border bg-white p-4 space-y-2">
           <h2 className="font-bold break-words">{request.student.name}</h2>
           <StatusBadge appointment status={request.status} allowWrap />
@@ -140,7 +141,7 @@ function RequestLoadingDialog({ loading, onClose, onRetry }) {
   return createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
     <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="request-loading-title" className="rounded-xl bg-white p-6 space-y-4">
       <h2 id="request-loading-title">Appointment Request Details</h2>
-      {loading ? <p role="status">Loading request details...</p> : <div role="alert">Unable to load this request. It may no longer be available. <button className="btn-secondary" onClick={onRetry}>Retry</button></div>}
+      {loading ? <p role="status">Loading request details...</p> : <div role="alert">This record is unavailable or you no longer have access to it. <button className="btn-secondary" onClick={onRetry}>Retry</button></div>}
       <button className="btn-secondary" onClick={onClose}>Close</button>
     </section>
   </div>, document.body);
