@@ -2,7 +2,7 @@ import { CalendarDays, Eye, FilterX, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import FacultyAppointmentDetailsModal from "../../components/appointments/FacultyAppointmentDetailsModal";
-import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
+import { EmptyState, ErrorState, Loading, Modal, StatusBadge } from "../../components/UI";
 import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
@@ -90,4 +90,6 @@ function Field({ label, children }) { return <label className="min-w-0 text-sm f
 function Select({ value, onChange, empty, values }) { return <select className="field" value={value} onChange={e => onChange(e.target.value)}><option value="">{empty}</option>{values.map(item => <option key={item}>{item}</option>)}</select>; }
 function when(value) { return value ? formatManilaDisplay(new Date(value), { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, "timestamp") : "Schedule unavailable"; }
 function HistoryItem({ item, onView }) { return <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr_1fr_auto] lg:items-center"><div className="min-w-0"><h2 className="break-words font-bold text-slate-900">{item.subject || "Consultation"}</h2><p className="mt-1 break-words text-sm text-slate-600">{formatPersonName(item.student) || "Student unavailable"}{item.student?.studentId || item.student?.institutionalId ? ` · ${item.student.studentId || item.student.institutionalId}` : ""}</p><p className="mt-2 flex items-start gap-2 text-sm text-slate-600"><CalendarDays size={15} className="mt-0.5 shrink-0" />{when(item.startAt)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Appointment Status</p><div className="mt-1"><StatusBadge appointment status={item.status} allowWrap compact /></div></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Attendance Outcome</p><p className="mt-1 break-words text-sm font-semibold text-slate-800">{item.finalAttendanceOutcome || "Not finalized"}</p><p className="mt-1 text-sm text-slate-600">{item.consultationMode}</p></div><button type="button" onClick={onView} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2"><Eye size={16} /> View Details</button></article>; }
-function DetailState({ title, onClose }) { return <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"><section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><p className="text-sm text-slate-700">{title}</p><button type="button" className="btn-secondary mt-4" onClick={onClose}>Close</button></section></div>; }
+function DetailState({ title, onClose }) {
+  return <Modal title="Consultation record" onClose={onClose} actions={<button type="button" className="btn-secondary" onClick={onClose}>Close</button>}><p className="break-words text-sm text-slate-700" role="status">{title}</p></Modal>;
+}

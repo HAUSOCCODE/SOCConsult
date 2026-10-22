@@ -139,7 +139,7 @@ function RequestLoadingDialog({ loading, onClose, onRetry }) {
   const ref = useRef(null);
   useDialogFocus(ref, { onClose });
   return createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-    <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="request-loading-title" className="rounded-xl bg-white p-6 space-y-4">
+    <section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="request-loading-title" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md space-y-4 overflow-y-auto rounded-xl bg-white p-5 shadow-xl sm:p-6">
       <h2 id="request-loading-title">Appointment Request Details</h2>
       {loading ? <p role="status">Loading request details...</p> : <div role="alert">This record is unavailable or you no longer have access to it. <button className="btn-secondary" onClick={onRetry}>Retry</button></div>}
       <button className="btn-secondary" onClick={onClose}>Close</button>

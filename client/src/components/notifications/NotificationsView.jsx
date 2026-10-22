@@ -1760,7 +1760,7 @@ function NotificationDetailsModal({ notification, date, typeLabel, onClose }) {
         ref={dialogRef} tabIndex={-1}
         aria-labelledby="notification-details-title"
         onMouseDown={(event) => event.stopPropagation()}
-        className="w-full max-w-xl rounded-2xl bg-white shadow-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
           <h2

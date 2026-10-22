@@ -55,7 +55,7 @@ export default function FacultyScheduleDetailsModal({
         aria-modal="true"
         aria-labelledby="schedule-details-title"
         onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
         <ConfirmDialog
           open={Boolean(rejectTarget)}
