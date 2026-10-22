@@ -159,16 +159,13 @@ test("canonical titles, reused account components and calendar links remain avai
   } finally {
     globalThis.document = oldDocument;
   }
-  const Profile = () => null,
-    Security = () => null;
-  const Account = await load("pages/Faculty/FacultyAccountSettings.jsx", {
-    FacultyProfile: Profile,
-    FacultySecuritySettings: Security,
-  });
-  assert.deepEqual(
-    React.Children.toArray(Account().props.children).map((x) => x.type),
-    [Profile, Security],
-  );
+  const account = await source("pages/Faculty/FacultyAccountSettings.jsx");
+  assert.match(account, /ProfilePictureEditor/);
+  assert.match(account, /SecuritySettings/);
+  assert.match(account, /Institutional Faculty ID/);
+  assert.match(account, /Official Email Address/);
+  assert.match(account, /role="tablist"/);
+  const Profile = () => null;
   const Availability = await load("pages/Faculty/FacultyAvailabilityCalendar.jsx", {
     Link: router.Link, ManageAvailability: Profile, ConsultationCalendar: Profile,
     FacultyConsultationsView: Profile, AvailabilityCalendarDetails: Profile,
