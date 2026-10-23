@@ -65,6 +65,8 @@ describe("Student appointment timestamp classification", () => {
       "Pending",
       "Confirmed",
       "Reschedule Proposed",
+      "Awaiting Attendance Update",
+      "Attendance Review",
       "Completed",
       "Cancelled",
       "Rejected",
@@ -79,7 +81,7 @@ describe("Student appointment timestamp classification", () => {
       ),
     );
     const result = classifyStudentAppointments(records, now);
-    assert.equal(result.current.length, 3);
+    assert.equal(result.current.length, 5);
     assert.equal(result.history.length, 4);
     assert.deepEqual(
       new Set([...result.current, ...result.history].map((item) => item.status)),
