@@ -6,12 +6,12 @@ import { processConsultationReminders } from "../src/services/consultationRemind
 export async function runReminderCommand({ mongoUri = process.env.MONGODB_URI,
   connect = uri => mongoose.connect(uri, { autoIndex: false }), disconnect = () => mongoose.disconnect(),
   processRun = processConsultationReminders, write = line => console.log(line) } = {}) {
-  let result = { scanned: 0, created: 0, skipped: 0, errors: 0 };
-  if (!mongoUri) result.errors++;
+  let result = { scanned: 0, created: 0, skipped: 0, errors: 0, incomplete: 0 };
+  if (!mongoUri) { result.errors++; result.incomplete = 1; }
   else try { await connect(mongoUri); result = await processRun(); }
-  catch { result.errors++; }
+  catch { result.errors++; result.incomplete = 1; }
   finally { try { await disconnect(); } catch { result.errors++; } }
   write(JSON.stringify(result));
-  return result.errors ? 1 : 0;
+  return result.errors || result.incomplete ? 1 : 0;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = await runReminderCommand();

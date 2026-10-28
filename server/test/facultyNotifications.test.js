@@ -8,6 +8,7 @@ import { FACULTY_CONSULTATION_EVENTS, createFacultyConsultationNotification,
   facultyAppointmentEvent, facultyConsultationPath } from "../src/services/consultationNotificationService.js";
 import { processConsultationReminders } from "../src/services/consultationReminderService.js";
 import { newId } from "./helpers/appointmentHarness.js";
+import { publicNotification } from "../src/services/notificationService.js";
 
 test("Faculty notification catalog contains exactly the approved privacy-safe events", () => {
   assert.deepEqual(Object.keys(FACULTY_CONSULTATION_EVENTS), [
@@ -56,8 +57,8 @@ test("shared reminder processor creates one Student and one Faculty notice and d
   User.findById = () => { const query = { select() { return query; }, session() { return query; }, async lean() { return { role: "faculty" }; } }; return query; };
   Notification.create = async rows => { const key = rows[0].deduplicationKey; if (keys.has(key)) throw Object.assign(new Error("duplicate"), { code: 11000 }); keys.add(key); records.push(...rows); return rows; };
   try {
-    assert.deepEqual(await processConsultationReminders({ now: new Date("2026-11-01T00:00:00Z") }), { scanned: 1, created: 1, skipped: 0, errors: 0 });
-    assert.deepEqual(await processConsultationReminders({ now: new Date("2026-11-01T00:00:00Z") }), { scanned: 1, created: 0, skipped: 1, errors: 0 });
+    assert.deepEqual(await processConsultationReminders({ now: new Date("2026-11-01T00:00:00Z") }), { scanned: 1, created: 1, skipped: 0, errors: 0, incomplete: 0 });
+    assert.deepEqual(await processConsultationReminders({ now: new Date("2026-11-01T00:00:00Z") }), { scanned: 1, created: 0, skipped: 1, errors: 0, incomplete: 0 });
     assert.deepEqual(records.map(row => row.type).sort(), ["faculty_upcoming_reminder", "upcoming_reminder"]);
   } finally { Appointment.find = originalFind; Notification.create = originalCreate; User.findById = originalFindById; }
 });
@@ -77,4 +78,24 @@ test("Faculty notification UI preserves shared read controls and validates deep 
   assert.match(view, /Unable to load notifications/);
   assert.doesNotMatch(view, /Approve consultation|Reject consultation/);
   for (const source of [consultations, requests, history]) assert.match(source, /getAll\("appointment"\)\.length === 1/);
+});
+
+test("notification client accepts API-resolved Faculty/Dean event links and rejects mismatched or management links", async () => {
+  const source = await readFile(new URL("../../client/src/components/notifications/NotificationsView.jsx", import.meta.url), "utf8");
+  const start = source.indexOf("const facultyNotificationDestination =");
+  const end = source.indexOf("\n};", start) + 3;
+  const destination = new Function(source.slice(start, end) + "; return facultyNotificationDestination;")();
+  const appointment = newId();
+  for (const role of ["faculty", "dean"]) {
+    const base = role === "dean" ? "/dean/faculty" : "/faculty";
+    for (const [type, page] of [["faculty_request_submitted", "requests"], ["faculty_proposal_declined", "requests"],
+      ["faculty_finalized", "history"], ["faculty_attendance_review", "history"], ["faculty_upcoming_reminder", "consultations"]]) {
+      const notice = publicNotification({ type, relatedEntityId: appointment, category: "Consultation",
+        actionUrl: base + "/consultations" }, { role });
+      assert.equal(destination(notice), `${base}/${page}?appointment=${appointment}`);
+      assert.equal(destination({ ...notice, relatedEntityId: newId() }), "");
+      assert.equal(destination({ ...notice, actionUrl: "/dean/users" }), "");
+      assert.equal(destination({ ...notice, actionUrl: notice.actionUrl + "&redirect=evil" }), "");
+    }
+  }
 });

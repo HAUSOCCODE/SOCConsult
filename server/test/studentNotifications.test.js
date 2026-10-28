@@ -72,8 +72,8 @@ test("24-hour reminder processor is bounded, Confirmed-only, idempotent, and kee
   try {
     const first = await processConsultationReminders({ now });
     const second = await processConsultationReminders({ now });
-    assert.deepEqual(first, { scanned: 1, created: 1, skipped: 0, errors: 0 });
-    assert.deepEqual(second, { scanned: 1, created: 0, skipped: 1, errors: 0 });
+    assert.deepEqual(first, { scanned: 1, created: 1, skipped: 0, errors: 0, incomplete: 0 });
+    assert.deepEqual(second, { scanned: 1, created: 0, skipped: 1, errors: 0, incomplete: 0 });
     assert.equal(records.length, 1); assert.equal(records[0].type, "upcoming_reminder");
   } finally { Appointment.find = originalFind; Notification.create = originalCreate; User.findById = originalUser; }
 });
