@@ -1,6 +1,6 @@
 import Notification from "../models/Notification.js";
 import mongoose from "mongoose";
-import { CATEGORIES, categoryExpression, notificationProjection, publicNotification } from "../services/notificationService.js";
+import { visibleNotifications, CATEGORIES, categoryExpression, notificationProjection, publicNotification } from "../services/notificationService.js";
 
 export async function getNotifications(req, res) {
   const query = req.query || {};
@@ -11,7 +11,7 @@ export async function getNotifications(req, res) {
     (query.category !== undefined && !CATEGORIES.includes(query.category)) ||
     (query.readState !== undefined && !["all", "read", "unread"].includes(query.readState)))
     return res.status(400).json({ message: "Invalid notification filters." });
-  const owned = { recipient: req.user.id, ...(req.user.role === "student" && { type: { $ne: "task" } }) };
+  const owned = visibleNotifications(req.user);
   const filter = { ...owned };
   if (query.category) filter.$expr = { $eq: [categoryExpression, query.category] };
   if (query.readState && query.readState !== "all") filter.isRead = query.readState === "read";

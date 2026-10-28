@@ -53,6 +53,23 @@ source from which an authorized administrator may export a CSV. Its actual
 column names are not assumed; column mapping must be updated after an authorized
 sample export becomes available.
 
+### Consultation reminder sweeps
+
+`appointments:remind` uses one captured time and stable ascending appointment IDs
+to traverse upcoming Confirmed consultations in batches of 100 (up to 1,000
+batches per invocation). Duplicates and failed records do not block later records
+or the other participant. Notification uniqueness remains required; email is
+best-effort after successful notification persistence and is not retried for an
+already-persisted notice.
+
+The command prints only aggregate `scanned`, `created`, `skipped`, `errors`, and
+`incomplete` counts and exits nonzero for errors or incomplete traversal. A row may
+count as both created and erroneous if only part of its delivery succeeded.
+Alert on nonzero exits, repair failures, and rerun safely using deduplication.
+A capped sweep restarts from the beginning on rerun; if the bound is routinely
+exceeded, operators must increase the bounded service invocation capacity or
+partition scheduling before relying on complete delivery. No scheduler is configured.
+
 DEA-18 removes public account registration. Active accounts can sign in with
 Approved or missing/null legacy registration state; explicit Pending, Rejected,
 or unknown states are denied. Login, session validation, startup, and account

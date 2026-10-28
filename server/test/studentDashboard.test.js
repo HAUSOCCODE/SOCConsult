@@ -32,7 +32,7 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   const notificationCalls = [];
   let appointmentCount = 0;
 
-  patch(Appointment, "aggregate", async () => []);
+  patch(Appointment, "aggregate", pipeline => pipeline[0].$match.status ? { option: async () => [{ count: 3 }] } : Promise.resolve([]));
   patch(Appointment, "countDocuments", async (filter) => {
     appointmentFilters.push(filter);
     appointmentCount += 1;
@@ -58,7 +58,7 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   let body;
   try {
     await getStudentDashboard(
-      { user: { id: "student-a" }, query: { studentId: "student-b" } },
+      { user: { id: "507f1f77bcf86cd799439013" }, query: { studentId: "student-b" } },
       { json: (value) => (body = value) },
     );
   } finally {
@@ -79,13 +79,12 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   assert.equal(body.pendingCount, 2);
   assert.equal(body.attendanceRequiredCount, 3);
   assert.equal(body.unreadNotificationCount, 4);
-  assert.ok(appointmentFilters.every((filter) => filter.student === "student-a"));
-  assert.ok(notificationFilters.every((filter) => filter.recipient === "student-a"));
+  assert.ok(appointmentFilters.every((filter) => filter.student === "507f1f77bcf86cd799439013"));
+  assert.ok(notificationFilters.every((filter) => filter.recipient === "507f1f77bcf86cd799439013"));
   assert.equal(appointmentFilters[0].status, "Confirmed");
   assert.equal(appointmentFilters[1].status, "Pending");
-  assert.equal(appointmentFilters[2].status, "Awaiting Attendance Update");
-  assert.equal(appointmentFilters[3].status, "Confirmed");
-  assert.deepEqual(appointmentFilters[4].status.$in, [
+  assert.equal(appointmentFilters[2].status, "Confirmed");
+  assert.deepEqual(appointmentFilters[3].status.$in, [
     "Pending",
     "Reschedule Proposed",
     "Confirmed",

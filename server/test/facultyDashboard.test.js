@@ -8,6 +8,7 @@ import Notification from "../src/models/Notification.js";
 import User from "../src/models/User.js";
 import { readFacultyDashboard } from "../src/services/facultyDashboardService.js";
 import { attendanceEnrollment } from "../src/config/attendance.js";
+import { publicNotification, facultyNotificationDestination } from "../src/services/notificationService.js";
 
 const ids = { faculty: "507f1f77bcf86cd799439011", dean: "507f1f77bcf86cd799439012", student: "507f1f77bcf86cd799439013" };
 const now = new Date("2026-10-19T16:00:00Z"); // Manila midnight, October 20.
@@ -109,4 +110,36 @@ test("authenticated dashboard denies unsupported roles and client ownership para
     const res=await request(role,suffix);assert.equal(res.status,status);assert.equal(res.headers.get("cache-control"),"no-store");
    }
  }finally{await new Promise(r=>server.close(r));h.restore();}
+});
+
+test("Faculty and Dean dashboard links match notification-center event destinations and retain appointment references", async () => {
+  for (const role of ["faculty", "dean"]) {
+    const h = harness(ids[role]);
+    const base = role === "dean" ? "/dean/faculty" : "/faculty";
+    const user = { id: ids[role], role };
+    const appointment = "507f1f77bcf86cd799439099";
+    try {
+      for (const [type, destination] of [["faculty_request_submitted", "requests"],
+        ["faculty_proposal_declined", "requests"], ["faculty_finalized", "history"],
+        ["faculty_attendance_review", "history"], ["faculty_upcoming_reminder", "consultations"]]) {
+        const notice = { _id: type, recipient: user.id, type, category: "Consultation", relatedEntityId: appointment,
+          actionUrl: role === "dean" ? "/dean/faculty/consultations" : "/faculty/appointments", createdAt: now };
+        h.notices.push(notice);
+        const expected = `${base}/${destination}?appointment=${appointment}`;
+        assert.equal(publicNotification(notice, user).actionUrl, expected);
+        assert.equal(facultyNotificationDestination({ ...notice, actionUrl: expected }, user), expected);
+      }
+      const result = await readFacultyDashboard(user, now);
+      for (const notice of result.recentNotifications) {
+        const source = h.notices.find(row => row._id === notice._id);
+        assert.equal(notice.actionUrl, publicNotification(source, user).actionUrl);
+        assert.ok(notice.actionUrl.startsWith(base + "/"));
+        assert.ok(notice.actionUrl.endsWith(`?appointment=${appointment}`));
+      }
+      assert.equal(result.recentNotifications.length, 5);
+      for (const path of ["/dean/users", "/dean/consultations", "/dean/attendance-review", "https://evil.test", `${base}/history?appointment=bad`])
+        assert.equal(facultyNotificationDestination({ type: "faculty_finalized", actionUrl: path, relatedEntityId: appointment }, user), undefined);
+      assert.equal(facultyNotificationDestination({ type: "faculty_finalized", actionUrl: base + "/history", relatedEntityId: "bad" }, user), undefined);
+    } finally { h.restore(); }
+  }
 });

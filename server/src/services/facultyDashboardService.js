@@ -1,8 +1,6 @@
-import mongoose from "mongoose";
+import { countRequiredAttendance } from "./attendanceRequiredService.js";
 import Appointment from "../models/Appointment.js";
-import AttendanceResponse from "../models/AttendanceResponse.js";
 import Notification from "../models/Notification.js";
-import { ATTENDANCE_POLICY, RESPONSE_WINDOW_MS } from "../config/attendance.js";
 import { getDateRangeFilter } from "./calendarRangeService.js";
 import { categoryExpression, notificationProjection, publicNotification } from "./notificationService.js";
 import { formatFullName } from "./personNameService.js";
@@ -21,27 +19,13 @@ const list = (filter, sort, limit) => Appointment.find(filter).select(projection
 
 export async function readFacultyDashboard(user, now = new Date()) {
   const owned = { faculty: user.id };
-  const facultyId = new mongoose.Types.ObjectId(user.id);
   const pending = { ...owned, status: "Pending" };
   const upcoming = { ...owned, status: "Confirmed", startAt: { $gt: now }, endAt: { $gt: now } };
   const today = { ...owned, status: { $in: todayStatuses }, ...getDateRangeFilter("today", now) };
   const [pendingCount, upcomingCount, attendance, next, todayTotal, todayRows, requests, notices] = await Promise.all([
     Appointment.countDocuments(pending).maxTimeMS(TIMEOUT),
     Appointment.countDocuments(upcoming).maxTimeMS(TIMEOUT),
-    // Count authoritative response absence without fetching response content or unbounded candidate lists.
-    Appointment.aggregate([
-      { $match: { faculty: facultyId, status: { $in: ["Confirmed", "Awaiting Attendance Update"] },
-        "attendance.policyVersion": ATTENDANCE_POLICY, startAt: { $type: "date" }, endAt: { $type: "date", $lte: now },
-        "attendance.responseDeadlineAt": { $gt: now },
-        $expr: { $and: [{ $gt: ["$endAt", "$startAt"] },
-          { $eq: ["$attendance.attendanceOpensAt", "$endAt"] },
-          { $eq: ["$attendance.responseDeadlineAt", { $add: ["$endAt", RESPONSE_WINDOW_MS] }] }] } } },
-      { $lookup: { from: AttendanceResponse.collection.name, let: { appointmentId: "$_id" }, pipeline: [
-        { $match: { participant: facultyId, participantRole: "faculty", $expr: { $eq: ["$appointment", "$$appointmentId"] } } },
-        { $project: { _id: 1 } }, { $limit: 1 },
-      ], as: "ownResponse" } },
-      { $match: { "ownResponse.0": { $exists: false } } }, { $count: "count" },
-    ]).option({ maxTimeMS: TIMEOUT }),
+    countRequiredAttendance(user.id, "faculty", now),
     list(upcoming, { startAt: 1, _id: 1 }, 1),
     Appointment.countDocuments(today).maxTimeMS(TIMEOUT),
     list(today, { startAt: 1, _id: 1 }, 10),
@@ -53,12 +37,10 @@ export async function readFacultyDashboard(user, now = new Date()) {
       actionUrl: { $in: user.role === "dean" ? personalDestinations : personalDestinations.filter(path => path.startsWith("/faculty/")) } })
       .select(notificationProjection).sort({ createdAt: -1, _id: -1 }).limit(5).maxTimeMS(TIMEOUT).lean(),
   ]);
-  return { asOf: now.toISOString(), pendingCount, upcomingCount, attendanceRequiredCount: attendance[0]?.count ?? 0,
+  return { asOf: now.toISOString(), pendingCount, upcomingCount, attendanceRequiredCount: attendance,
     nextConsultation: summary(next[0]), todayTotal, todayConsultations: todayRows.map(summary),
     recentRequests: requests.map(summary), recentNotifications: notices.map(row => {
-      const page = row.actionUrl.split("/").at(-1);
-      const actionUrl = `${user.role === "dean" ? "/dean/faculty" : "/faculty"}/${page === "appointments" ? "consultations" : page}`;
-      const safe = publicNotification({ ...row, actionUrl }, user);
+      const safe = publicNotification(row, user);
       return { _id: safe._id, title: safe.title, message: safe.message, isRead: safe.isRead,
         createdAt: safe.createdAt, actionUrl: safe.actionUrl };
     }) };

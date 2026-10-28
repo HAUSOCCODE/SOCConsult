@@ -1,4 +1,22 @@
+import { FACULTY_CONSULTATION_EVENTS, facultyConsultationPath } from "./consultationNotificationService.js";
 import Notification from "../models/Notification.js";
+
+export const visibleNotifications = user => ({ recipient: user.id,
+  ...(user.role === "student" && { type: { $ne: "task" } }) });
+
+// Resolve validated personal destinations; management URLs never become personal links.
+export function facultyNotificationDestination(notification, user) {
+  if (!["faculty", "dean"].includes(user.role)) return undefined;
+  const definition = Object.hasOwn(FACULTY_CONSULTATION_EVENTS, notification.type || "")
+    ? FACULTY_CONSULTATION_EVENTS[notification.type] : null;
+  const id = String(notification.relatedEntityId || "");
+  const base = user.role === "dean" ? "/dean/faculty" : "/faculty";
+  const allowed = [base + "/consultations", base + "/requests", base + "/history", "/faculty/appointments"];
+  const path = notification.actionUrl;
+  if (!definition || !/^[a-f\d]{24}$/i.test(id) ||
+    !allowed.some(value => path === value || path === value + "?appointment=" + id)) return undefined;
+  return facultyConsultationPath(id, definition[2], user.role === "dean");
+}
 
 export const CATEGORIES = ["Management", "Consultation", "Attendance", "Report"];
 export const notificationProjection = "type category title message relatedEntityId actionUrl isRead readAt createdAt";
@@ -9,6 +27,7 @@ export const categoryExpression = { $ifNull: ["$category", { $switch: { branches
 export function safeActionUrl(value, user, category) {
   if (typeof value !== "string" || value.length > 200 || /[\\\s#]/.test(value)) return undefined;
   if (user.role === "dean" && value === "/faculty/appointments") value = "/dean/faculty/consultations";
+  if (user.role === "faculty" && value === "/faculty/appointments") value = "/faculty/consultations";
   const base = user.role === "dean" ? "/dean" : user.role === "student" ? "/student" : "/faculty";
   const allowed = user.role === "dean"
     ? /^\/dean\/(?:import(?:\?preview=[a-f\d-]{36})?|users(?:\?userId=[a-f\d]{24})?|attendance-review(?:\/[a-f\d]{24})?|reports|consultations|faculty\/(?:consultations|requests|history)(?:\?appointment=[a-f\d]{24})?)$/i
@@ -43,7 +62,7 @@ export function publicNotification(row, user) {
     : "/dean/faculty/consultations";
   return Object.fromEntries(Object.entries({ _id: value._id, type: value.type, category,
     title: value.title, message: value.message, relatedEntityId: value.relatedEntityId,
-    actionUrl: safeActionUrl(historicalActionUrl(value.actionUrl, user) || (user.role === "dean" ? fallback : ""), user, category),
+    actionUrl: safeActionUrl(facultyNotificationDestination(value, user) || historicalActionUrl(value.actionUrl, user) || (user.role === "dean" ? fallback : ""), user, category),
     isRead: value.isRead, readAt: value.readAt, createdAt: value.createdAt }).filter(([, v]) => v !== undefined));
 }
 const events = {

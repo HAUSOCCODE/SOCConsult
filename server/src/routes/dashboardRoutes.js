@@ -1,3 +1,5 @@
+import { countRequiredAttendance } from "../services/attendanceRequiredService.js";
+import { visibleNotifications } from "../services/notificationService.js";
 import { attendanceCounts } from "../services/attendanceReportingService.js";
 import { Router } from "express";
 import { getFacultyDashboard } from "../controllers/facultyDashboardController.js";
@@ -34,12 +36,8 @@ export async function getStudentDashboard(req, res) {
       student: req.user.id,
       status: "Pending",
     }),
-    Appointment.countDocuments({
-      student: req.user.id,
-      status: "Awaiting Attendance Update",
-      "attendance.studentResponded": { $ne: true },
-    }),
-    Notification.countDocuments({ recipient: req.user.id, isRead: false }),
+    countRequiredAttendance(req.user.id, "student", now),
+    Notification.countDocuments({ ...visibleNotifications(req.user), isRead: false }),
     Appointment.findOne({
       student: req.user.id,
       status: "Confirmed",
@@ -73,9 +71,9 @@ export async function getStudentDashboard(req, res) {
       .sort({ createdAt: -1, _id: -1 })
       .limit(5)
       .lean(),
-    Notification.find({ recipient: req.user.id })
+    Notification.find(visibleNotifications(req.user))
       .select("title message isRead createdAt")
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .limit(5)
       .lean(),
   ]);
