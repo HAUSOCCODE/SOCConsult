@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { deanUiError } from "../../utils/deanUiErrors";
+import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   CalendarDays,
@@ -13,7 +14,10 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import ProfilePictureEditor from "./ProfilePictureEditor";
-import { formatPersonName } from "../../utils/formatPersonName";
+import {
+  formatPersonName,
+  validatePersonNameFields,
+} from "../../utils/formatPersonName";
 import {
   FACULTY_POSITIONS,
   OTHER_POSITION,
@@ -22,7 +26,9 @@ export default function ProfilePage() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const [form, setForm] = useState({
-    name: formatPersonName(user.name),
+    firstName: user.firstName || "",
+    middleName: user.middleName || "",
+    lastName: user.lastName || "",
     program: user.program || "",
     position: FACULTY_POSITIONS.includes(user.position)
       ? user.position
@@ -40,15 +46,22 @@ export default function ProfilePage() {
     specialization: user.specialization || "",
     contactNumber: user.contactNumber || "",
   });
+  const [nameErrors, setNameErrors] = useState({});
   const save = async (e) => {
     e.preventDefault();
     try {
-      if (user.role === "faculty" && !form.position) {
+      const nameValidation = validatePersonNameFields(form);
+      if (!nameValidation.valid) {
+        setNameErrors(nameValidation.errors);
+        toast.error("Please complete the required name fields.");
+        return;
+      }
+      if (["faculty", "dean"].includes(user.role) && !form.position) {
         toast.error("Position / Designation is required.");
         return;
       }
       if (
-        user.role === "faculty" &&
+        ["faculty", "dean"].includes(user.role) &&
         form.position === OTHER_POSITION &&
         !form.customPosition.trim()
       ) {
@@ -60,9 +73,9 @@ export default function ProfilePage() {
         method: "PUT",
         body: JSON.stringify({
           ...profileForm,
-          name: formatPersonName(form.name),
+          ...nameValidation.values,
           position:
-            user.role === "faculty"
+            ["faculty", "dean"].includes(user.role)
               ? form.position === OTHER_POSITION
                 ? customPosition.trim()
                 : form.position
@@ -70,9 +83,11 @@ export default function ProfilePage() {
         }),
       });
       updateUser(data.user);
-      toast.success(data.message || "Profile updated successfully.");
+      setNameErrors({});
+      toast.success("Profile updated successfully.");
     } catch (error) {
-      toast.error(error.message || "Unable to update profile.");
+      if (error.errors) setNameErrors(error.errors);
+      toast.error(deanUiError(error, "profile"));
     }
   };
   return (
@@ -88,7 +103,7 @@ export default function ProfilePage() {
         <div className="mb-6 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
           <ProfilePictureEditor />
           <div className={`min-w-0 ${user.role === "student" ? "hidden md:block" : ""}`}>
-            <h2 className="font-bold">{formatPersonName(user.name)}</h2>
+            <h2 className="font-bold">{formatPersonName(user)}</h2>
             <p className="[overflow-wrap:anywhere] text-sm text-slate-500">
               {user.email || user.username}
             </p>
@@ -96,7 +111,9 @@ export default function ProfilePage() {
         </div>
         <div className={`grid gap-4 ${user.role === "student" ? "md:grid-cols-2 md:gap-5" : "sm:grid-cols-2 sm:gap-5"}`}>
           {[
-            ["name", "Full Name"],
+            ["firstName", "First Name"],
+            ["lastName", "Last Name"],
+            ["middleName", "Middle Name (Optional)"],
             ["program", "Program"],
             ["yearLevel", "Year Level"],
             ["office", "Office"],
@@ -104,14 +121,21 @@ export default function ProfilePage() {
             ["contactNumber", "Contact Number"],
           ]
             .filter(([key]) => {
-              if (key === "name" || key === "contactNumber") return true;
+              if (
+                ["firstName", "middleName", "lastName", "contactNumber"].includes(
+                  key,
+                )
+              )
+                return true;
               return user.role === "student"
                 ? ["program", "yearLevel"].includes(key)
                 : ["office", "specialization"].includes(key);
             })
             .map(([key, label]) => {
               const StudentIcon = {
-                name: UserRound,
+                firstName: UserRound,
+                middleName: UserRound,
+                lastName: UserRound,
                 program: GraduationCap,
                 yearLevel: CalendarDays,
                 contactNumber: Phone,
@@ -126,7 +150,7 @@ export default function ProfilePage() {
                 </span>
                 {user.role === "student" && key === "program" ? (
                   <>
-                    <textarea
+                    <textarea aria-label={label}
                       rows={2}
                       className="field mt-2 min-h-11 resize-none py-2.5 md:hidden"
                       value={form[key]}
@@ -134,7 +158,7 @@ export default function ProfilePage() {
                         setForm({ ...form, [key]: e.target.value })
                       }
                     />
-                    <input
+                    <input aria-label={label}
                       className="field mt-2 hidden min-h-11 py-2.5 md:block"
                       value={form[key]}
                       onChange={(e) =>
@@ -145,14 +169,39 @@ export default function ProfilePage() {
                 ) : (
                   <input
                     className="field mt-2 min-h-11 py-2.5"
+                    required={["firstName", "lastName"].includes(key)}
+                    maxLength={
+                      ["firstName", "middleName", "lastName"].includes(key)
+                        ? 80
+                        : undefined
+                    }
+                    placeholder={
+                      key === "firstName"
+                        ? "Enter your first name"
+                        : key === "middleName"
+                          ? "Enter your middle name"
+                          : key === "lastName"
+                            ? "Enter your last name"
+                            : undefined
+                    }
+                    aria-invalid={Boolean(nameErrors[key])}
+                    aria-describedby={nameErrors[key] ? `profile-${key}-error` : undefined}
                     value={form[key]}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, [key]: e.target.value });
+                      setNameErrors((current) => ({ ...current, [key]: "" }));
+                    }}
                   />
+                )}
+                {nameErrors[key] && (
+                  <span id={`profile-${key}-error`} className="mt-1.5 block text-xs font-medium text-red-700">
+                    {nameErrors[key]}
+                  </span>
                 )}
               </label>
               );
             })}
-          {user.role === "faculty" && (
+          {["faculty", "dean"].includes(user.role) && (
             <label className="text-sm font-semibold">
               Position / Designation
               {form.position === OTHER_POSITION ? (
@@ -250,7 +299,8 @@ export default function ProfilePage() {
   );
 }
 
-export function SecuritySettings() {
+export function SecuritySettings({ onPasswordChanged } = {}) {
+  const { user, clearPasswordRecommendation } = useAuth();
   const toast = useToast();
   const empty = { currentPassword: "", newPassword: "", confirmPassword: "" };
   const [passwords, setPasswords] = useState(empty);
@@ -261,6 +311,9 @@ export function SecuritySettings() {
   });
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const change = (key, value) =>
     setPasswords((current) => ({ ...current, [key]: value }));
@@ -274,6 +327,7 @@ export function SecuritySettings() {
   };
   const submit = async (event) => {
     event.preventDefault();
+    if (pending.current) return;
     setValidationError("");
     if (passwords.newPassword !== passwords.confirmPassword) {
       setValidationError("New passwords do not match.");
@@ -295,6 +349,7 @@ export function SecuritySettings() {
       );
       return;
     }
+    pending.current = true;
     setSubmitting(true);
     try {
       const data = await api("/auth/change-password", {
@@ -305,12 +360,16 @@ export function SecuritySettings() {
           confirmNewPassword: passwords.confirmPassword,
         }),
       });
+      if (user?.role === "faculty") clearPasswordRecommendation?.();
+      if (!mounted.current) return;
       clear();
-      toast.success(data.message || "Password changed successfully.");
+      onPasswordChanged?.();
+      toast.success("Password changed successfully.");
     } catch (error) {
-      toast.error(error.message || "Unable to change password.");
+      if (mounted.current) toast.error(deanUiError(error, "password"));
     } finally {
-      setSubmitting(false);
+      pending.current = false;
+      if (mounted.current) setSubmitting(false);
     }
   };
 
@@ -327,14 +386,15 @@ export function SecuritySettings() {
           Manage your account password and security.
         </p>
       </div>
-      <form onSubmit={submit} className="panel">
+      <form aria-busy={submitting} onSubmit={submit} className="panel">
         <h3 className="text-lg font-bold text-maroon-900">Change Password</h3>
         <p className="mt-1 text-sm text-slate-500">
           Use at least 8 characters, one uppercase letter, and one number.
           Spaces are not allowed.
         </p>
+        {submitting && <p role="status">Changing password...</p>}
         {validationError && (
-          <p
+          <p id="password-validation-error"
             role="alert"
             className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
           >
@@ -359,6 +419,8 @@ export function SecuritySettings() {
                       : "new-password"
                   }
                   className="field pr-11"
+                  aria-invalid={Boolean(validationError)}
+                  aria-describedby={validationError ? "password-validation-error" : undefined}
                   value={passwords[key]}
                   onChange={(event) => change(key, event.target.value)}
                 />
@@ -373,7 +435,7 @@ export function SecuritySettings() {
                   aria-label={`${visible[key] ? "Hide" : "Show"} ${label.toLowerCase()}`}
                   className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-500"
                 >
-                  {visible[key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {visible[key] ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
                 </button>
               </span>
             </label>
@@ -382,6 +444,7 @@ export function SecuritySettings() {
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
+            disabled={submitting}
             onClick={() => {
               clear();
               setValidationError("");

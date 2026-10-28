@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { EmptyState, StatusBadge } from "../UI";
@@ -8,17 +10,17 @@ import { formatPersonName } from "../../utils/formatPersonName";
 import ConfirmDialog from "../ConfirmDialog";
 
 const date = (value) =>
-  new Date(value).toLocaleDateString(undefined, {
+  formatManilaDisplay(new Date(value), {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
+  }, "date");
 const time = (value) =>
-  new Date(value).toLocaleTimeString([], {
+  formatManilaDisplay(new Date(value), {
     hour: "numeric",
     minute: "2-digit",
-  });
+  }, "time");
 
 export default function FacultyScheduleDetailsModal({
   details,
@@ -28,32 +30,16 @@ export default function FacultyScheduleDetailsModal({
   onRetry,
   onApprove,
   onReject,
-  onReschedule,
 }) {
   const [appointmentDetails, setAppointmentDetails] = useState(null);
-  const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
 
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    const closeOnEscape = (event) => {
-      if (
-        event.key === "Escape" &&
-        !appointmentDetails &&
-        !rescheduleTarget &&
-        !rejectTarget
-      )
-        onClose();
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [appointmentDetails, onClose, rejectTarget, rescheduleTarget]);
+  const dialogRef = useRef(null);
+  const submittingRef = useRef(false);
+  useDialogFocus(dialogRef, { onClose, busy: submitting || Boolean(rejectTarget) || Boolean(appointmentDetails) });
+
 
   const schedule = details?.schedule;
   const pending = details?.pendingRequests || [];
@@ -62,14 +48,14 @@ export default function FacultyScheduleDetailsModal({
   return createPortal(
     <div
       className="fixed inset-0 z-[9998] flex h-[100dvh] w-full min-w-0 items-center justify-center bg-black/50 p-3 sm:p-4"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) => event.target === event.currentTarget && !submitting && !rejectTarget && !appointmentDetails && onClose()}
     >
-      <section
+      <section ref={dialogRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="schedule-details-title"
         onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
         <ConfirmDialog
           open={Boolean(rejectTarget)}
@@ -89,13 +75,15 @@ export default function FacultyScheduleDetailsModal({
             setRejectNote("");
           }}
           onConfirm={async () => {
-            if (!rejectTarget || submitting) return;
+            if (!rejectTarget || submittingRef.current) return;
+            submittingRef.current = true;
             setSubmitting(true);
             try {
               await onReject(rejectTarget, rejectNote.trim());
               setRejectTarget(null);
               setRejectNote("");
             } finally {
+              submittingRef.current = false;
               setSubmitting(false);
             }
           }}
@@ -114,11 +102,11 @@ export default function FacultyScheduleDetailsModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            disabled={submitting || Boolean(rejectTarget) || Boolean(appointmentDetails)} onClick={onClose}
             aria-label="Close schedule details"
             className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
 
@@ -162,7 +150,7 @@ export default function FacultyScheduleDetailsModal({
                       Schedule Status
                     </p>
                     <div className="mt-1">
-                      <StatusBadge
+                      <StatusBadge allowWrap appointment
                         status={schedule.isActive ? "Active" : "Inactive"}
                       />
                     </div>
@@ -205,7 +193,7 @@ export default function FacultyScheduleDetailsModal({
                                 "Student"}
                             </h4>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge allowWrap appointment status={appointment.status} />
                         </div>
                         <p className="mt-3 text-sm text-slate-600">
                           Estimated Time:{" "}
@@ -226,9 +214,10 @@ export default function FacultyScheduleDetailsModal({
                             type="button"
                             disabled={submitting}
                             onClick={async () => {
-                              setSubmitting(true);
-                              await onApprove(appointment);
-                              setSubmitting(false);
+                              if (submittingRef.current) return;
+                              submittingRef.current = true; setSubmitting(true);
+                              try { await onApprove(appointment); }
+                              finally { submittingRef.current = false; setSubmitting(false); }
                             }}
                             className="rounded-lg bg-green-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
                           >
@@ -244,14 +233,6 @@ export default function FacultyScheduleDetailsModal({
                             className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
                           >
                             Reject
-                          </button>
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => setRescheduleTarget(appointment)}
-                            className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-bold text-amber-800"
-                          >
-                            Reschedule
                           </button>
                         </div>
                       </article>
@@ -292,7 +273,7 @@ export default function FacultyScheduleDetailsModal({
                               </p>
                             </div>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge allowWrap appointment status={appointment.status} />
                         </div>
                         <button
                           type="button"
@@ -309,13 +290,13 @@ export default function FacultyScheduleDetailsModal({
 
               <section>
                 <h3 className="text-lg font-bold text-maroon-900">
-                  Approved Students ({students.length})
+                  Confirmed Students ({students.length})
                 </h3>
                 {students.length === 0 ? (
                   <div className="mt-4">
                     <EmptyState
                       title="No approved students are currently assigned to this schedule."
-                      text="Approved appointments for this exact schedule will appear here."
+                      text="Confirmed appointments for this exact schedule will appear here."
                     />
                   </div>
                 ) : (
@@ -343,7 +324,7 @@ export default function FacultyScheduleDetailsModal({
                               </p>
                             </div>
                           </div>
-                          <StatusBadge status={appointment.status} />
+                          <StatusBadge allowWrap appointment status={appointment.status} />
                         </div>
                         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                           <Detail
@@ -371,13 +352,6 @@ export default function FacultyScheduleDetailsModal({
                           >
                             View Appointment
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setRescheduleTarget(appointment)}
-                            className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-50"
-                          >
-                            Reschedule
-                          </button>
                         </div>
                       </article>
                     ))}
@@ -390,7 +364,7 @@ export default function FacultyScheduleDetailsModal({
         <footer className="sticky bottom-0 flex justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
           <button
             type="button"
-            onClick={onClose}
+            disabled={submitting || Boolean(rejectTarget) || Boolean(appointmentDetails)} onClick={onClose}
             className="btn-secondary w-full sm:w-auto"
           >
             Close
@@ -403,61 +377,6 @@ export default function FacultyScheduleDetailsModal({
           appointment={appointmentDetails}
           onClose={() => setAppointmentDetails(null)}
         />
-      )}
-      {rescheduleTarget && (
-        <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4"
-          onMouseDown={(event) =>
-            event.target === event.currentTarget &&
-            !submitting &&
-            setRescheduleTarget(null)
-          }
-        >
-          <section
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="faculty-reschedule-title"
-            onMouseDown={(event) => event.stopPropagation()}
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
-          >
-            <h2
-              id="faculty-reschedule-title"
-              className="text-xl font-bold text-maroon-900"
-            >
-              Reschedule Student?
-            </h2>
-            <p className="mt-3 break-words text-sm text-slate-600">
-              {formatPersonName(rescheduleTarget.student?.name) ||
-                "This student"}{" "}
-              will be removed from this schedule and will need to select another
-              available consultation schedule. The appointment record will be
-              preserved.
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => setRescheduleTarget(null)}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={async () => {
-                  setSubmitting(true);
-                  const succeeded = await onReschedule(rescheduleTarget);
-                  setSubmitting(false);
-                  if (succeeded) setRescheduleTarget(null);
-                }}
-                className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? "Rescheduling..." : "Confirm Reschedule"}
-              </button>
-            </div>
-          </section>
-        </div>
       )}
     </div>,
     document.body,

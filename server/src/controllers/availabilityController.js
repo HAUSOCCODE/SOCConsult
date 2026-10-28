@@ -1,58 +1,22 @@
+import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import Availability from "../models/Availability.js";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
+import StudentAvailability from "../models/StudentAvailability.js";
 import mongoose from "mongoose";
-import { logActivity, notify } from "../services/activityService.js";
+import { mutateAvailability } from "../services/availabilityManagementService.js";
 import {
   availabilityStatus,
-  processExpiredAvailability,
 } from "../services/availabilityExpirationService.js";
-
-const validateSchedule = ({ startAt, endAt }) => {
-  if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()))
-    return "Select a valid availability date, start time, and end time.";
-  if (endAt <= startAt) return "End time must be later than start time.";
-  if (startAt <= new Date())
-    return "Start time must be later than the current time.";
-  return "";
-};
-
-const validMeetingLink = (value) => {
-  try {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname);
-  } catch {
-    return false;
-  }
-};
 
 const legacyPlatform = (availability) => {
   if (availability.meetingPlatform) return availability.meetingPlatform;
   return "Meeting platform not provided";
 };
 
-const validateModeFields = ({
-  mode,
-  location,
-  meetingPlatform,
-  meetingLink,
-}) => {
-  if (mode === "Face-to-Face" && !location?.trim())
-    return "Location is required for face-to-face availability.";
-  if (mode === "Online" && !meetingPlatform?.trim())
-    return "Meeting platform is required for online availability.";
-  if (
-    mode === "Online" &&
-    meetingLink?.trim() &&
-    !validMeetingLink(meetingLink.trim())
-  )
-    return "Please enter a valid meeting link.";
-  return "";
-};
-
 const scheduleShape = (availability) => ({
-  _id: availability.id,
-  availabilityId: availability.id,
+  _id: availability.id || String(availability._id),
+  availabilityId: availability.id || String(availability._id),
   startAt: availability.startAt,
   endAt: availability.endAt,
   mode: availability.mode || "Online",
@@ -63,84 +27,147 @@ const scheduleShape = (availability) => ({
 });
 
 export const getAvailableFaculty = async (_req, res) => {
-  await processExpiredAvailability();
   const now = new Date();
   const faculty = await User.find({
-    role: "faculty",
-    registrationStatus: "Approved",
     accountStatus: "Active",
+    $or: [
+      { role: "faculty", registrationStatus: "Approved" },
+      { role: "dean" },
+    ],
   }).select(
-    "name email employeeId position specialization office +profilePicture",
+    "name role position specialization office +profilePicture",
   );
   const ids = faculty.map((item) => item.id);
   const availability = await Availability.find({
     faculty: { $in: ids },
     isActive: true,
+    reservationToken: { $exists: false },
+    startAt: { $gt: now },
     endAt: { $gt: now },
   });
+  const appointments = await Appointment.find({ faculty: { $in: ids }, status: { $in: BLOCKING_STATUSES } })
+    .select("faculty availability startAt endAt");
   const counts = Object.fromEntries(faculty.map((item) => [item.id, 0]));
   const modes = Object.fromEntries(faculty.map((item) => [item.id, new Set()]));
   availability.forEach((item) => {
+    if (appointments.some(appointment => String(appointment.faculty) === String(item.faculty) &&
+      (String(appointment.availability) === String(item._id) ||
+        (item.startAt < appointment.endAt && item.endAt > appointment.startAt)))) return;
     counts[item.faculty] += 1;
     modes[item.faculty].add(item.mode || "Online");
   });
   res.json({
-    faculty: faculty.map((item) => ({
-      ...item.toObject(),
-      profilePicture:
-        typeof item.profilePicture === "string"
-          ? item.profilePicture
-          : item.profilePicture?.url,
-      availableScheduleCount: counts[item.id],
-      consultationModes: [...modes[item.id]],
-    })),
+    faculty: faculty
+      .filter((item) => item.role === "faculty" || counts[item.id] > 0)
+      .map((item) => ({
+        ...item.toObject(),
+        profilePicture:
+          typeof item.profilePicture === "string"
+            ? item.profilePicture
+            : item.profilePicture?.url,
+        availableScheduleCount: counts[item.id],
+        consultationModes: [...modes[item.id]],
+      })),
   });
 };
 
 export const getFacultyAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.params.facultyId });
+  const facultyId = req.user.role === "student" ? req.params.facultyId : req.user.id;
+  if (req.user.role === "student") {
+    if (!mongoose.isValidObjectId(facultyId))
+      return res.status(404).json({ message: "Consultation provider not found." });
+    const provider = await User.exists({
+      _id: facultyId,
+      accountStatus: "Active",
+      $or: [
+        { role: "faculty", registrationStatus: "Approved" },
+        { role: "dean" },
+      ],
+    });
+    if (!provider)
+      return res.status(404).json({ message: "Consultation provider not found." });
+  }
   const now = new Date();
   const schedules = await Availability.find({
-    faculty: req.params.facultyId,
+    faculty: facultyId,
     isActive: true,
+    ...(req.user.role === "student" && {
+      reservationToken: { $exists: false },
+    }),
+    ...(req.user.role === "student" && { startAt: { $gt: now } }),
     endAt: { $gt: now },
   }).sort({ startAt: 1 });
-  const activeRequests =
-    req.user.role === "student"
-      ? await Appointment.find({
-          student: req.user.id,
-          availability: { $in: schedules.map((schedule) => schedule.id) },
-          status: { $in: ["Pending", "Approved", "Rescheduled"] },
-        }).select("availability status")
-      : [];
-  const requestByAvailability = new Map(
-    activeRequests.map((appointment) => [
-      String(appointment.availability),
-      appointment,
-    ]),
-  );
-  res.json({
-    schedules: schedules.map((schedule) => {
-      const activeRequest = requestByAvailability.get(schedule.id);
-      return {
+  if (req.user.role === "student") {
+    const studentAvailability = await StudentAvailability.find({
+      student: req.user.id,
+      isActive: true,
+      endAt: { $gt: now },
+    })
+      .select("startAt endAt")
+      .lean();
+    const hasActiveStudentAvailability = studentAvailability.length > 0;
+    const [studentAppointments, providerAppointments] = await Promise.all([
+      Appointment.find({
+        student: req.user.id,
+        status: { $in: BLOCKING_STATUSES },
+        startAt: { $exists: true },
+        endAt: { $gt: now },
+      }).select("startAt endAt"),
+      Appointment.find({
+        faculty: facultyId,
+        status: { $in: BLOCKING_STATUSES },
+      }).select("availability startAt endAt"),
+    ]);
+    const overlaps = (slot, appointment) =>
+      slot.startAt < appointment.endAt && slot.endAt > appointment.startAt;
+    const matchedSchedules = schedules.filter((schedule) => {
+      if (
+        hasActiveStudentAvailability &&
+        !studentAvailability.some(
+          (period) =>
+            period.startAt <= schedule.startAt &&
+            period.endAt >= schedule.endAt,
+        )
+      )
+        return false;
+      return (
+        !studentAppointments.some((appointment) =>
+          overlaps(schedule, appointment),
+        ) &&
+        !providerAppointments.some((appointment) =>
+          String(appointment.availability) === String(schedule._id) || overlaps(schedule, appointment),
+        )
+      );
+    });
+    return res.json({
+      hasActiveStudentAvailability,
+      schedules: matchedSchedules.map((schedule) => ({
         ...scheduleShape(schedule),
-        hasActiveRequest: Boolean(activeRequest),
-        requestStatus: activeRequest?.status || null,
-        appointmentId: activeRequest?.id || null,
-      };
-    }),
+        matchingType: hasActiveStudentAvailability
+          ? "Matched with your availability"
+          : "Based on Faculty availability only",
+        bookable: true,
+      })),
+    });
+  }
+  res.json({
+    schedules: schedules.map(scheduleShape),
   });
 };
 
 export const getMyAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
+  res.set("Cache-Control", "no-store");
+  if (Object.keys(req.query).length) return res.status(400).json({ message: "Invalid personal availability filters. Owner IDs are not accepted." });
   const now = new Date();
   const availability = await Availability.find({ faculty: req.user.id })
-    .select("+meetingLink")
+    .select("+meetingLink +reservationToken")
     .lean();
+  const linked = await Appointment.find({ faculty: req.user.id, status: { $in: BLOCKING_STATUSES } }).select("availability status").lean();
   const shaped = availability
     .map((schedule) => ({
       ...schedule,
+      reservationToken: undefined,
+      protected: Boolean(schedule.reservationToken) || linked.some(item => String(item.availability) === String(schedule._id)),
       status: availabilityStatus(schedule, now),
     }))
     .sort((left, right) => {
@@ -155,7 +182,6 @@ export const getMyAvailability = async (req, res) => {
 };
 
 export const getAppointmentRequestSchedules = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
   const now = new Date();
   const schedules = await Availability.find({
     faculty: req.user.id,
@@ -169,7 +195,7 @@ export const getAppointmentRequestSchedules = async (req, res) => {
       $match: {
         faculty: new mongoose.Types.ObjectId(req.user.id),
         availability: { $in: schedules.map((schedule) => schedule._id) },
-        status: { $in: ["Pending", "Approved", "Rejected"] },
+        status: { $in: ["Pending", "Confirmed", "Rejected"] },
       },
     },
     {
@@ -179,38 +205,12 @@ export const getAppointmentRequestSchedules = async (req, res) => {
           $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] },
         },
         approvedCount: {
-          $sum: { $cond: [{ $eq: ["$status", "Approved"] }, 1, 0] },
+          $sum: { $cond: [{ $eq: ["$status", "Confirmed"] }, 1, 0] },
         },
         rejectedCount: {
           $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] },
         },
-        pendingEstimatedMinutes: {
-          $sum: {
-            $cond: [
-              { $eq: ["$status", "Pending"] },
-              { $ifNull: ["$estimatedDurationMinutes", 0] },
-              0,
-            ],
-          },
-        },
-        approvedEstimatedMinutes: {
-          $sum: {
-            $cond: [
-              { $eq: ["$status", "Approved"] },
-              { $ifNull: ["$estimatedDurationMinutes", 0] },
-              0,
-            ],
-          },
-        },
-        totalEstimatedMinutes: {
-          $sum: {
-            $cond: [
-              { $in: ["$status", ["Pending", "Approved"]] },
-              { $ifNull: ["$estimatedDurationMinutes", 0] },
-              0,
-            ],
-          },
-        },
+
       },
     },
   ]);
@@ -219,13 +219,9 @@ export const getAppointmentRequestSchedules = async (req, res) => {
     schedules: schedules.map((schedule) => ({
       ...schedule,
       availabilityId: String(schedule._id),
-      capacityMinutes: Math.round((schedule.endAt - schedule.startAt) / 60000),
       pendingCount: 0,
       approvedCount: 0,
       rejectedCount: 0,
-      pendingEstimatedMinutes: 0,
-      approvedEstimatedMinutes: 0,
-      totalEstimatedMinutes: 0,
       ...bySchedule.get(String(schedule._id)),
       _id: schedule._id,
     })),
@@ -235,7 +231,6 @@ export const getAppointmentRequestSchedules = async (req, res) => {
 export const getAvailabilityDetails = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id))
     return res.status(400).json({ message: "Invalid availability ID." });
-  await processExpiredAvailability({ facultyId: req.user.id });
   const schedule = await Availability.findOne({
     _id: req.params.id,
     faculty: req.user.id,
@@ -250,7 +245,7 @@ export const getAvailabilityDetails = async (req, res) => {
   const appointments = await Appointment.find({
     availability: schedule.id,
     faculty: req.user.id,
-    status: { $in: ["Pending", "Approved", "Rejected"] },
+    status: { $in: ["Pending", "Confirmed", "Rejected"] },
   })
     .populate(
       "student",
@@ -281,7 +276,7 @@ export const getAvailabilityDetails = async (req, res) => {
       (appointment) => appointment.status === "Pending",
     ),
     approvedStudents: safe.filter(
-      (appointment) => appointment.status === "Approved",
+      (appointment) => appointment.status === "Confirmed",
     ),
     rejectedRequests: safe.filter(
       (appointment) => appointment.status === "Rejected",
@@ -289,207 +284,15 @@ export const getAvailabilityDetails = async (req, res) => {
   });
 };
 
-export const requestFacultyReschedule = async (req, res) => {
-  if (
-    !mongoose.isValidObjectId(req.params.id) ||
-    !mongoose.isValidObjectId(req.params.appointmentId)
-  )
-    return res
-      .status(400)
-      .json({ message: "Invalid schedule or appointment ID." });
-  const schedule = await Availability.findOne({
-    _id: req.params.id,
-    faculty: req.user.id,
-  });
-  if (!schedule)
-    return res.status(404).json({ message: "Availability not found." });
-  const appointment = await Appointment.findOne({
-    _id: req.params.appointmentId,
-    availability: schedule.id,
-    faculty: req.user.id,
-  });
-  if (!appointment)
-    return res
-      .status(404)
-      .json({ message: "Appointment not found for this schedule." });
-  if (!["Pending", "Approved", "Rescheduled"].includes(appointment.status))
-    return res.status(400).json({
-      message:
-        "Only a pending, approved, or scheduled appointment can be rescheduled.",
-    });
-  appointment.status = "Needs Reschedule";
-  appointment.responseNote = (req.body.note || "").trim();
-  appointment.rescheduleRequested = false;
-  appointment.rescheduleRequestNote = "";
-  appointment.rescheduleRequestStatus = "Approved";
-  appointment.rescheduleReviewedAt = new Date();
-  appointment.rescheduleReviewedBy = req.user.id;
-  await appointment.save();
-  await Promise.all([
-    logActivity(
-      "appointment_reschedule_required",
-      req.user.id,
-      "Appointment",
-      appointment.id,
-      { availabilityId: schedule.id },
-    ),
-    notify(
-      appointment.student,
-      "appointment",
-      "Consultation Reschedule Required",
-      "Your faculty member has requested that your consultation be rescheduled. Please select another available schedule.",
-      appointment.id,
-    ),
-  ]);
-  res.json({
-    message:
-      "The student was removed from this schedule and notified to choose a new schedule.",
-    appointment,
-  });
-};
-
 export const createAvailability = async (req, res) => {
-  const startAt = new Date(req.body.startAt);
-  const endAt = new Date(req.body.endAt);
-  const validationError = validateSchedule({ startAt, endAt });
-  if (validationError)
-    return res.status(400).json({ message: validationError });
-  if (
-    await Availability.exists({
-      faculty: req.user.id,
-      isActive: true,
-      startAt: { $lt: endAt },
-      endAt: { $gt: startAt },
-    })
-  )
-    return res
-      .status(409)
-      .json({ message: "This availability overlaps an existing schedule." });
-  if (!["Face-to-Face", "Online"].includes(req.body.mode))
-    return res
-      .status(400)
-      .json({ message: "Select a valid consultation mode." });
-  const modeValidation = validateModeFields(req.body);
-  if (modeValidation) return res.status(400).json({ message: modeValidation });
-  const availability = await Availability.create({
-    faculty: req.user.id,
-    startAt,
-    endAt,
-    location: req.body.mode === "Face-to-Face" ? req.body.location.trim() : "",
-    mode: req.body.mode,
-    meetingPlatform:
-      req.body.mode === "Online" ? req.body.meetingPlatform.trim() : "",
-    meetingLink: req.body.mode === "Online" ? req.body.meetingLink.trim() : "",
-  });
-  res
-    .status(201)
-    .json({ message: "Availability published successfully.", availability });
+  const availability = await mutateAvailability({ actor: req.user, input: req.body, action: "create" });
+  res.status(201).json({ message: "Availability published successfully.", availability });
 };
-
 export const updateAvailability = async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
-  const schedule = await Availability.findOne({
-    _id: req.params.id,
-    faculty: req.user.id,
-  }).select("+meetingLink");
-  if (!schedule)
-    return res.status(404).json({ message: "Availability not found." });
-  if (availabilityStatus(schedule) === "expired")
-    return res.status(409).json({
-      message: "Expired availability cannot be edited or reactivated.",
-    });
-  if (req.body.startAt || req.body.endAt) {
-    const startAt = new Date(req.body.startAt || schedule.startAt);
-    const endAt = new Date(req.body.endAt || schedule.endAt);
-    const validationError = validateSchedule({ startAt, endAt });
-    if (validationError)
-      return res.status(400).json({ message: validationError });
-    const changesTime =
-      startAt.getTime() !== schedule.startAt.getTime() ||
-      endAt.getTime() !== schedule.endAt.getTime();
-    if (
-      changesTime &&
-      (await Appointment.exists({
-        availability: schedule.id,
-        status: { $in: ["Pending", "Approved", "Rescheduled"] },
-      }))
-    )
-      return res.status(409).json({
-        message:
-          "An availability with consultation requests cannot have its time changed.",
-      });
-    if (
-      changesTime &&
-      (await Availability.exists({
-        _id: { $ne: schedule.id },
-        faculty: req.user.id,
-        isActive: true,
-        startAt: { $lt: endAt },
-        endAt: { $gt: startAt },
-      }))
-    )
-      return res
-        .status(409)
-        .json({ message: "This availability overlaps an existing schedule." });
-    schedule.startAt = startAt;
-    schedule.endAt = endAt;
-  }
-  if (typeof req.body.isActive === "boolean")
-    schedule.isActive = req.body.isActive;
-  const updatesModeFields = [
-    "mode",
-    "location",
-    "meetingPlatform",
-    "meetingLink",
-  ].some((field) => req.body[field] !== undefined);
-  if (updatesModeFields) {
-    const mode = req.body.mode || schedule.mode;
-    if (!["Face-to-Face", "Online"].includes(mode))
-      return res
-        .status(400)
-        .json({ message: "Select a valid consultation mode." });
-    const modeFields = {
-      mode,
-      location: req.body.location ?? schedule.location,
-      meetingPlatform: req.body.meetingPlatform ?? schedule.meetingPlatform,
-      meetingLink: req.body.meetingLink ?? schedule.meetingLink,
-    };
-    const modeValidation = validateModeFields(modeFields);
-    if (modeValidation)
-      return res.status(400).json({ message: modeValidation });
-    schedule.mode = mode;
-    schedule.location =
-      mode === "Face-to-Face" ? modeFields.location.trim() : "";
-    schedule.meetingPlatform =
-      mode === "Online" ? modeFields.meetingPlatform.trim() : "";
-    schedule.meetingLink =
-      mode === "Online" ? modeFields.meetingLink.trim() : "";
-  }
-  await schedule.save();
-  res.json({
-    message: req.body.startAt
-      ? "Availability updated."
-      : `Availability ${schedule.isActive ? "activated" : "deactivated"}.`,
-    availability: schedule,
-  });
+  const availability = await mutateAvailability({ actor: req.user, id: req.params.id, input: req.body, action: "update" });
+  res.json({ message: "Availability updated.", availability });
 };
-
 export const deleteAvailability = async (req, res) => {
-  if (
-    await Appointment.exists({
-      availability: req.params.id,
-      status: { $in: ["Pending", "Approved", "Rescheduled"] },
-    })
-  )
-    return res.status(409).json({
-      message:
-        "An availability with active consultation requests cannot be removed.",
-    });
-  const schedule = await Availability.findOneAndDelete({
-    _id: req.params.id,
-    faculty: req.user.id,
-  });
-  if (!schedule)
-    return res.status(404).json({ message: "Availability not found." });
+  await mutateAvailability({ actor: req.user, id: req.params.id, input: req.body, action: "delete" });
   res.json({ message: "Availability removed." });
 };

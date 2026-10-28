@@ -1,5 +1,7 @@
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
@@ -7,36 +9,31 @@ import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { formatPersonName } from "../../utils/formatPersonName";
 
 const dateTime = (value) =>
-  value ? new Date(value).toLocaleString() : "Not scheduled";
+  value ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
 const time = (value) =>
   value
-    ? new Date(value).toLocaleTimeString([], {
+    ? formatManilaDisplay(new Date(value), {
         hour: "numeric",
         minute: "2-digit",
-      })
+      }, "time")
     : "Not scheduled";
 
 export default function AppointmentRequestDetailsModal({
   appointment,
   onClose,
+  personalRequest = false,
+  actions,
 }) {
-  useEffect(() => {
-    const previousOverflow = window.document.body.style.overflow;
-    const closeOnEscape = (event) => event.key === "Escape" && onClose();
-    window.document.body.style.overflow = "hidden";
-    window.document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.document.body.style.overflow = previousOverflow;
-      window.document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [onClose]);
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, { onClose });
+
 
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex h-[100dvh] w-full min-w-0 items-center justify-center bg-black/50 p-3 sm:p-4"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <section
+      <section ref={dialogRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="request-details-title"
@@ -62,7 +59,7 @@ export default function AppointmentRequestDetailsModal({
             autoFocus
             className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
 
@@ -73,6 +70,7 @@ export default function AppointmentRequestDetailsModal({
                 label="Full Name"
                 value={formatPersonName(appointment.student?.name)}
               />
+              {!personalRequest && <>
               <Detail
                 label="Official Student Email"
                 value={appointment.student?.email}
@@ -87,23 +85,21 @@ export default function AppointmentRequestDetailsModal({
                 label="Year Level"
                 value={appointment.yearLevel || appointment.student?.yearLevel}
               />
+              </>}
             </DetailSection>
             <DetailSection title="Consultation Information">
-              <Detail label="Subject / Topic" value={appointment.subject} />
+              <Detail label={personalRequest ? "Subject / Course" : "Subject / Topic"} value={appointment.subject} />
               <Detail
                 label="Requested Date"
                 value={
                   appointment.startAt
-                    ? new Date(appointment.startAt).toLocaleDateString(
-                        undefined,
-                        {
+                    ? formatManilaDisplay(new Date(appointment.startAt), {
                           weekday: "long",
                           year: "numeric",
                           month: "long",
                           day: "numeric",
-                        },
-                      )
-                    : "Awaiting Faculty Schedule"
+                        }, "date")
+                    : "Pending Faculty schedule"
                 }
               />
               <Detail
@@ -123,7 +119,7 @@ export default function AppointmentRequestDetailsModal({
                 }
               />
               <Detail
-                label="Reason for Consultation"
+                label={personalRequest ? "Consultation Concern" : "Reason for Consultation"}
                 value={appointment.reason}
                 wide
                 breakAnywhere
@@ -145,28 +141,30 @@ export default function AppointmentRequestDetailsModal({
                   Status
                 </p>
                 <div className="mt-1">
-                  <StatusBadge status={appointment.status} />
+                  <StatusBadge appointment status={appointment.status} />
                 </div>
               </div>
             </DetailSection>
           </div>
 
-          <OnlineMeetingDetails
+          {!personalRequest && <OnlineMeetingDetails
             appointment={appointment}
             allowLink
             emptyLinkText="Meeting link not provided."
-          />
+          />}
 
           <DetailSection title="Supporting Documents">
             <div className="sm:col-span-2">
               <SupportingDocumentViewer
                 appointment={appointment}
+                personalRequest={personalRequest}
                 wrapFileNames
               />
             </div>
           </DetailSection>
         </div>
-        <footer className="sticky bottom-0 flex justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+        <footer className="sticky bottom-0 flex flex-wrap gap-3 justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+          {actions}
           <button
             type="button"
             onClick={onClose}

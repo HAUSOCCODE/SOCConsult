@@ -1,5 +1,6 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import UserAvatar from "./UserAvatar";
 import { formatPersonName } from "../../utils/formatPersonName";
@@ -10,21 +11,10 @@ export default function ProfileImagePreview({
   buttonClassName = "",
 }) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef(null);
   const source = user?.profilePicture;
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
+  useDialogFocus(dialogRef, { open, onClose: () => setOpen(false) });
 
   if (!source) return <UserAvatar user={user} className={className} />;
 
@@ -32,7 +22,7 @@ export default function ProfileImagePreview({
     <>
       <button
         type="button"
-        aria-label={`View ${formatPersonName(user?.name) || "user"} profile picture`}
+        aria-label={`View ${formatPersonName(user) || "user"} profile picture`}
         onClick={(event) => {
           event.stopPropagation();
           setOpen(true);
@@ -50,24 +40,24 @@ export default function ProfileImagePreview({
             }
           >
             <section
+              ref={dialogRef} tabIndex={-1}
               role="dialog"
               aria-modal="true"
-              aria-label={`${formatPersonName(user?.name) || "User"} profile picture preview`}
+              aria-label={`${formatPersonName(user) || "User"} profile picture preview`}
               className="relative flex max-h-[92vh] max-w-[94vw] items-center justify-center rounded-2xl bg-slate-950/80 p-3 shadow-2xl sm:p-5"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <button
                 type="button"
-                autoFocus
                 aria-label="Close profile picture preview"
                 onClick={() => setOpen(false)}
                 className="absolute right-2 top-2 z-10 grid h-10 w-10 place-items-center rounded-full bg-white text-slate-800 shadow-lg hover:bg-slate-100 sm:right-3 sm:top-3"
               >
-                <X size={22} />
+                <X aria-hidden="true" size={22} />
               </button>
               <img
                 src={source}
-                alt={`${formatPersonName(user?.name) || "User"} profile`}
+                alt={`${formatPersonName(user) || "User"} profile`}
                 className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain"
               />
             </section>

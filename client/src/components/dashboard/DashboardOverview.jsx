@@ -1,3 +1,4 @@
+import AttendanceSummary from "../appointments/AttendanceSummary";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarCheck, CheckCircle2, Clock3, Users } from "lucide-react";
@@ -12,11 +13,8 @@ const titles = {
   totalFaculty: "Total Faculty",
   totalUsers: "Total Users",
   totalAppointments: "Total Appointments",
-  pendingRegistrations: "Pending Registrations",
   pendingAppointments: "Pending Appointments",
-  approvedAppointments: "Approved Appointments",
-  rescheduledAppointments: "Rescheduled Appointments",
-  completedConsultations: "Completed Consultations",
+  completedConsultations: "Verified Completed Attendance",
   cancelledAppointments: "Cancelled Appointments",
   rejectedAppointments: "Rejected Appointments",
   upcomingAppointments: "Upcoming Appointments",
@@ -79,10 +77,11 @@ export default function DashboardOverview({
     : recent;
   return (
     <div className="w-full min-w-0 space-y-7">
+      <AttendanceSummary counts={data.attendanceSummary} />
       <section className="w-full min-w-0 rounded-2xl bg-[#72182A] p-5 text-white shadow-sm sm:p-8">
         <p className="eyebrow !text-gold-300">Welcome back</p>
         <h1 className="mt-2 max-w-full whitespace-normal break-normal font-sans text-[2rem] font-bold leading-[1.1] tracking-[-0.02em] sm:text-[2.5rem] lg:text-[2.875rem]">
-          Hello, {formatPersonName(user.name)}
+          Hello, {formatPersonName(user)}
         </h1>
         <p className="mt-2 text-sm text-slate-100">
           Here is the latest activity from your SOCConsult workspace.
@@ -110,13 +109,13 @@ export default function DashboardOverview({
               <div className="flex items-center justify-between">
                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-maroon-50 text-maroon-800 transition group-hover:bg-maroon-800 group-hover:text-gold-300">
                   {key.includes("pending") ? (
-                    <Clock3 size={20} />
+                    <Clock3 aria-hidden="true" size={20} />
                   ) : key.includes("total") ? (
-                    <Users size={20} />
+                    <Users aria-hidden="true" size={20} />
                   ) : key.includes("completed") ? (
-                    <CheckCircle2 size={20} />
+                    <CheckCircle2 aria-hidden="true" size={20} />
                   ) : (
-                    <CalendarCheck size={20} />
+                    <CalendarCheck aria-hidden="true" size={20} />
                   )}
                 </span>
                 <strong className="text-3xl font-extrabold tracking-tight text-maroon-900">
@@ -164,7 +163,7 @@ export default function DashboardOverview({
                         : item.student?.email)}
                   </p>
                 </div>
-                <StatusBadge
+                <StatusBadge allowWrap
                   compact
                   status={
                     user.role === "student"

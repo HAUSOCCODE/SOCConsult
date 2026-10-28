@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
@@ -7,13 +9,14 @@ import Pagination from "../Pagination";
 import AppointmentRequestDetailsModal from "./AppointmentRequestDetailsModal";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import FacultyAppointmentDetailsModal from "./FacultyAppointmentDetailsModal";
+import FacultyRescheduleModal from "./FacultyRescheduleModal";
 import {
+  isLegacyAppointmentStatus,
   getAppointmentDisplayStatus,
   isAwaitingFacultyUpdate,
 } from "../../utils/appointmentStatus";
 import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../profile/ProfileImagePreview";
-import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 import ConfirmDialog from "../ConfirmDialog";
 import {
@@ -32,7 +35,6 @@ const HISTORY_ITEMS_PER_PAGE = 6;
 export default function AppointmentsPage({ filter }) {
   const { user } = useAuth();
   const toast = useToast();
-  const navigate = useNavigate();
   const [items, setItems] = useState(null);
   const [studentViews, setStudentViews] = useState(null);
   const [error, setError] = useState("");
@@ -43,20 +45,14 @@ export default function AppointmentsPage({ filter }) {
   const [appointmentsPage, setAppointmentsPage] = useState(1);
   const [details, setDetails] = useState(null);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [facultyReschedule, setFacultyReschedule] = useState(null);
   const [rescheduleSlots, setRescheduleSlots] = useState([]);
-  const [requestTarget, setRequestTarget] = useState(null);
-  const [requestReason, setRequestReason] = useState("");
-  const [requestError, setRequestError] = useState("");
-  const [requestSubmitting, setRequestSubmitting] = useState(false);
-  const [reviewTarget, setReviewTarget] = useState(null);
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState(null);
-  const [availabilityCapacity, setAvailabilityCapacity] = useState([]);
-  const [approvalWarning, setApprovalWarning] = useState(null);
   const [updatingIds, setUpdatingIds] = useState(() => new Set());
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
+  const pendingUpdates = useRef(new Set());
+  const rescheduleRef = useRef(null);
+  useDialogFocus(rescheduleRef, { open: Boolean(rescheduleTarget), onClose: () => setRescheduleTarget(null), busy: updatingIds.size > 0 });
   const load = () =>
     api("/appointments/mine")
       .then((d) => {
@@ -68,9 +64,6 @@ export default function AppointmentsPage({ filter }) {
             ? d.studentViews
             : null,
         );
-        setAvailabilityCapacity(
-          Array.isArray(d?.availabilityCapacity) ? d.availabilityCapacity : [],
-        );
         setError("");
       })
       .catch(() => setError("Unable to load appointments. Please try again."));
@@ -80,11 +73,13 @@ export default function AppointmentsPage({ filter }) {
     return () => clearInterval(id);
   }, []);
   const update = async (id, status, extra = {}) => {
+    if (pendingUpdates.current.has(id)) return false;
+    pendingUpdates.current.add(id);
     setUpdatingIds((current) => new Set(current).add(id));
     try {
       const d = await api(`/appointments/${id}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status, ...extra }),
+        body: JSON.stringify({ status, expectedVersion: items.find((item) => item._id === id)?.__v, ...extra }),
       });
       if (status === "Rejected") toast.info(d.message);
       else toast.success(d.message);
@@ -101,6 +96,7 @@ export default function AppointmentsPage({ filter }) {
       toast.error(e.message || "Unable to update the appointment.");
       return false;
     } finally {
+      pendingUpdates.current.delete(id);
       setUpdatingIds((current) => {
         const next = new Set(current);
         next.delete(id);
@@ -129,37 +125,6 @@ export default function AppointmentsPage({ filter }) {
       toast.error(requestError.message || "Unable to load schedules.");
     }
   };
-  const chooseNewSchedule = (appointment) =>
-    navigate("/student/book", {
-      state: {
-        rescheduleAppointment: {
-          appointmentId: appointment._id,
-          facultyId: appointment.faculty?._id || appointment.faculty,
-          currentAvailabilityId:
-            appointment.availability?._id || appointment.availability,
-          subject: appointment.subject,
-          yearLevel: appointment.yearLevel || appointment.student?.yearLevel,
-          estimatedDurationMinutes: appointment.estimatedDurationMinutes,
-          reason: appointment.reason,
-        },
-      },
-    });
-  const cancel = async (id) => {
-    try {
-      const target = items?.find((item) => item._id === id);
-      const d = await api(
-        target?.bookingMethod === "schedule_request"
-          ? `/schedule-requests/${id}/cancel`
-          : `/appointments/${id}/cancel`,
-        { method: "PUT" },
-      );
-      toast.success(d.message);
-      setCancelTarget(null);
-      load();
-    } catch (e) {
-      toast.error(e.message || "Unable to cancel the appointment.");
-    }
-  };
   const openSupportingDocument = async (appointment) => {
     try {
       const data = await api(`/appointments/${appointment._id}/document`);
@@ -171,86 +136,7 @@ export default function AppointmentsPage({ filter }) {
       toast.error(requestError.message || "Unable to open the document.");
     }
   };
-  const requestReschedule = async () => {
-    const reason = requestReason.trim();
-    if (!reason) {
-      setRequestError("Please enter a reason for rescheduling.");
-      return;
-    }
-    if (reason.length < 5) {
-      setRequestError(
-        "Please enter a meaningful reason of at least 5 characters.",
-      );
-      return;
-    }
-    if (reason.length > 500) {
-      setRequestError("Reason cannot exceed 500 characters.");
-      return;
-    }
-    setRequestSubmitting(true);
-    try {
-      const data = await api(
-        `/appointments/${requestTarget._id}/request-reschedule`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ reason }),
-        },
-      );
-      toast.success("Reschedule request submitted successfully.");
-      setRequestTarget(null);
-      setRequestReason("");
-      setRequestError("");
-      load();
-    } catch (requestError) {
-      toast.error(
-        requestError.message ||
-          "Unable to submit the reschedule request. Please try again.",
-      );
-    } finally {
-      setRequestSubmitting(false);
-    }
-  };
-  const reviewReschedule = async () => {
-    setReviewSubmitting(true);
-    try {
-      const data = await api(
-        `/appointments/${reviewTarget.appointment._id}/reschedule-request`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            decision: reviewTarget.decision,
-            note: reviewNote.trim(),
-          }),
-        },
-      );
-      if (reviewTarget.decision === "Rejected") toast.info(data.message);
-      else toast.success(data.message);
-      setReviewTarget(null);
-      setReviewNote("");
-      load();
-    } catch (requestError) {
-      toast.error(requestError.message || "Unable to review the request.");
-    } finally {
-      setReviewSubmitting(false);
-    }
-  };
-  const approve = async (appointment) => {
-    const availabilityId =
-      appointment.availability?._id || appointment.availability;
-    const capacity = availabilityCapacity.find(
-      (item) => item.availabilityId === String(availabilityId),
-    );
-    const excess = capacity
-      ? capacity.approvedEstimatedMinutes +
-        (appointment.estimatedDurationMinutes || 0) -
-        capacity.capacityMinutes
-      : 0;
-    if (excess > 0) {
-      setApprovalWarning({ appointment, excess });
-      return;
-    }
-    await update(appointment._id, "Approved");
-  };
+  const approve = appointment => update(appointment._id, "Confirmed");
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!items) return <Loading />;
   let shown = items;
@@ -258,7 +144,7 @@ export default function AppointmentsPage({ filter }) {
   if (filter === "requests")
     shown = items.filter((x) => x.status === "Pending");
   if (filter === "history") {
-    const historical = ["Completed", "Rejected", "Cancelled", "No Show"];
+    const historical = ["Completed", "Rejected", "Cancelled", "Expired"];
     const historyItems =
       user.role === "student" ? studentViews?.history || [] : items;
     shown = historyItems.filter((x) =>
@@ -273,23 +159,24 @@ export default function AppointmentsPage({ filter }) {
       return historySort === "oldest" ? difference : -difference;
     });
   }
-  if (user.role === "faculty" && !filter) {
+  if (["faculty", "dean"].includes(user.role) && !filter) {
     const now = new Date();
-    const today = now.toDateString();
+    const today = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
     shown = items.filter((item) => {
       const start = new Date(item.startAt);
       const end = new Date(item.endAt);
       if (appointmentTab === "Today")
         return (
-          ["Approved", "Rescheduled"].includes(item.status) &&
-          start.toDateString() === today
+          item.status === "Confirmed" &&
+          start.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) === today
         );
       if (appointmentTab === "Upcoming")
         return (
-          ["Approved", "Rescheduled"].includes(item.status) && start >= now
+          item.status === "Confirmed" && start >= now
         );
       if (appointmentTab === "Awaiting Update")
-        return ["Approved", "Rescheduled"].includes(item.status) && end < now;
+        return item.status === "Awaiting Attendance Update" || item.status === "Attendance Review" || (item.status === "Confirmed" && end <= now);
+      if (appointmentTab === "Legacy") return isLegacyAppointmentStatus(item.status);
       return item.status === appointmentTab;
     });
   }
@@ -312,74 +199,11 @@ export default function AppointmentsPage({ filter }) {
       >
         View Details
       </button>
-      {appointment.status === "Needs Reschedule" && (
-        <button
-          type="button"
-          onClick={() => chooseNewSchedule(appointment)}
-          className={`btn-table-primary ${
-            mobile ? "h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1" : ""
-          }`}
-        >
-          Choose New Schedule
-        </button>
-      )}
-      {appointment.status === "Pending" &&
-        new Date(appointment.startAt) > new Date() && (
-          <button
-            type="button"
-            onClick={() => setCancelTarget(appointment)}
-            className={
-              mobile
-                ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-                : "btn-danger-action-sm"
-            }
-          >
-            Cancel
-          </button>
-        )}
-      {appointment.status === "Awaiting Faculty Schedule" && (
-        <button
-          type="button"
-          onClick={() => setCancelTarget(appointment)}
-          className={
-            mobile
-              ? "btn-danger-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-              : "btn-danger-action-sm"
-          }
-        >
-          Cancel Request
-        </button>
-      )}
-      {["Approved", "Rescheduled"].includes(appointment.status) &&
-        new Date(appointment.startAt) > new Date() && (
-          <button
-            type="button"
-            disabled={
-              appointment.rescheduleRequestStatus === "Pending" ||
-              appointment.rescheduleRequested
-            }
-            onClick={() => {
-              setRequestTarget(appointment);
-              setRequestReason("");
-              setRequestError("");
-            }}
-            className={
-              mobile
-                ? "btn-action h-10 w-full min-w-0 px-3 sm:w-auto sm:flex-1"
-                : "btn-action-sm"
-            }
-          >
-            {appointment.rescheduleRequestStatus === "Pending" ||
-            appointment.rescheduleRequested
-              ? "Reschedule Requested"
-              : "Request Reschedule"}
-          </button>
-        )}
     </div>
   );
   return (
     <div
-      className={`w-full min-w-0 max-w-full space-y-6 ${user.role === "student" && filter === "history" ? "student-history space-y-4 pb-16 md:space-y-6 md:pb-0" : ""} ${user.role === "faculty" && filter === "history" ? "pb-16 md:pb-20" : ""}`}
+      className={`w-full min-w-0 max-w-full space-y-6 ${user.role === "student" && filter === "history" ? "student-history space-y-4 pb-16 md:space-y-6 md:pb-0" : ""} ${["faculty", "dean"].includes(user.role) && filter === "history" ? "pb-16 md:pb-20" : ""}`}
     >
       <ConfirmDialog
         open={Boolean(rejectTarget)}
@@ -438,7 +262,7 @@ export default function AppointmentsPage({ filter }) {
             Review your completed, rejected, and cancelled consultation records.
           </p>
         </div>
-      ) : user.role === "faculty" && !filter ? (
+      ) : ["faculty", "dean"].includes(user.role) && !filter ? (
         <section className="relative min-w-0 overflow-hidden rounded-2xl border border-maroon-100 bg-white p-5 shadow-sm sm:p-6">
           <div className="pointer-events-none absolute -right-8 -top-10 hidden h-36 w-36 rounded-full border border-gold-300/40 md:block" />
           <div className="relative flex min-w-0 items-center justify-between gap-5">
@@ -461,7 +285,7 @@ export default function AppointmentsPage({ filter }) {
       ) : (
         <div>
           <h1
-            className={`font-bold tracking-tight text-maroon-900 ${user.role === "faculty" && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}
+            className={`font-bold tracking-tight text-maroon-900 ${["faculty", "dean"].includes(user.role) && filter === "history" ? "text-2xl sm:text-[30px]" : "text-2xl"}`}
           >
             {filter === "requests"
               ? "Appointment Requests"
@@ -483,7 +307,7 @@ export default function AppointmentsPage({ filter }) {
             role="group"
             aria-label="Filter consultation history"
           >
-            {["All", "Completed", "No Show", "Cancelled"].map((name) => (
+            {["All", "Completed", "Expired", "Cancelled"].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -518,14 +342,14 @@ export default function AppointmentsPage({ filter }) {
           </label>
         </div>
       )}
-      {user.role === "faculty" && filter === "history" && (
+      {["faculty", "dean"].includes(user.role) && filter === "history" && (
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div
             className="grid min-w-0 grid-cols-2 gap-2 min-[480px]:flex min-[480px]:flex-wrap"
             role="group"
             aria-label="Filter consultation history"
           >
-            {["All", "Completed", "No Show", "Cancelled"].map((name) => (
+            {["All", "Completed", "Expired", "Cancelled"].map((name) => (
               <button
                 key={name}
                 type="button"
@@ -560,68 +384,6 @@ export default function AppointmentsPage({ filter }) {
           </label>
         </div>
       )}
-      {user.role === "faculty" &&
-        filter === "requests" &&
-        availabilityCapacity.length > 0 && (
-          <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-4">
-            {availabilityCapacity.map((capacity) => (
-              <article
-                key={capacity.availabilityId}
-                className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <p className="break-words font-bold text-maroon-900">
-                  {new Date(capacity.startAt).toLocaleDateString(undefined, {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {new Date(capacity.startAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}{" "}
-                  –{" "}
-                  {new Date(capacity.endAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </p>
-                <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                  <Capacity
-                    label="Pending Requests"
-                    value={capacity.pendingCount}
-                  />
-                  <Capacity
-                    label="Availability Capacity"
-                    value={`${capacity.capacityMinutes} min`}
-                  />
-                  <Capacity
-                    label="Pending Estimated"
-                    value={`${capacity.pendingEstimatedMinutes} min`}
-                  />
-                  <Capacity
-                    label="Approved Estimated"
-                    value={`${capacity.approvedEstimatedMinutes} min`}
-                  />
-                  <Capacity
-                    label="Total Estimated Time"
-                    value={`${capacity.totalEstimatedMinutes} min`}
-                    wide
-                  />
-                </dl>
-                {capacity.totalEstimatedMinutes > capacity.capacityMinutes && (
-                  <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    Consultation requests exceed this availability by{" "}
-                    {capacity.totalEstimatedMinutes - capacity.capacityMinutes}{" "}
-                    minutes.
-                  </p>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
       {details && filter === "requests" && (
         <AppointmentRequestDetailsModal
           appointment={details}
@@ -634,308 +396,39 @@ export default function AppointmentsPage({ filter }) {
           onClose={() => setDetails(null)}
         />
       )}
-      {details && user.role === "faculty" && filter !== "requests" && (
+      {details && ["faculty", "dean"].includes(user.role) && filter !== "requests" && (
         <FacultyAppointmentDetailsModal
           appointment={details}
           onClose={() => setDetails(null)}
-          onComplete={async () => {
-            if (await update(details._id, "Completed")) setDetails(null);
+        />
+      )}
+      {facultyReschedule && (
+        <FacultyRescheduleModal
+          appointment={facultyReschedule.appointment}
+          opener={facultyReschedule.opener}
+          onClose={() => setFacultyReschedule(null)}
+          onConflict={async () => { setFacultyReschedule(null); await load(); }}
+          onSuccess={(data) => {
+            toast.success(data.message);
+            setItems((current) =>
+              current?.map((appointment) =>
+                appointment._id === data.appointment?._id
+                  ? { ...appointment, ...data.appointment }
+                  : appointment,
+              ),
+            );
+            setFacultyReschedule(null);
+            window.dispatchEvent(new Event("notifications:updated"));
+            void load();
           }}
         />
       )}
-      {cancelTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget && setCancelTarget(null)
-            }
-          >
-            <section
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="cancel-consultation-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="w-full min-w-0 max-w-md rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="cancel-consultation-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                Cancel Consultation?
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                Are you sure you want to cancel this consultation request?
-              </p>
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setCancelTarget(null)}
-                  className="btn-secondary"
-                >
-                  Keep Appointment
-                </button>
-                <button
-                  type="button"
-                  onClick={() => cancel(cancelTarget._id)}
-                  className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-                >
-                  Cancel Appointment
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-      {requestTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget &&
-              !requestSubmitting &&
-              setRequestTarget(null)
-            }
-          >
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="request-reschedule-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:max-h-[92vh] sm:p-6"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <h2
-                  id="request-reschedule-title"
-                  className="text-xl font-bold text-maroon-900"
-                >
-                  Request Reschedule
-                </h2>
-                <button
-                  type="button"
-                  aria-label="Close reschedule request"
-                  disabled={requestSubmitting}
-                  onClick={() => {
-                    setRequestTarget(null);
-                    setRequestReason("");
-                    setRequestError("");
-                  }}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h3 className="font-bold text-slate-800">
-                  Current Consultation
-                </h3>
-                <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-                  <ModalDetail
-                    label="Faculty"
-                    value={formatPersonName(requestTarget.faculty?.name)}
-                  />
-                  <ModalDetail
-                    label="Date"
-                    value={new Date(requestTarget.startAt).toLocaleDateString()}
-                  />
-                  <ModalDetail
-                    label="Time"
-                    value={`${formatClock(requestTarget.startAt)} – ${formatClock(requestTarget.endAt)}`}
-                  />
-                  <ModalDetail
-                    label="Mode"
-                    value={requestTarget.consultationMode}
-                  />
-                  <ModalDetail
-                    label="Location / Meeting Platform"
-                    value={
-                      requestTarget.meetingPlatform || requestTarget.location
-                    }
-                    wide
-                  />
-                  <ModalDetail
-                    label="Subject / Topic"
-                    value={requestTarget.subject}
-                    wide
-                  />
-                </dl>
-              </div>
-              <label className="mt-5 block text-sm font-semibold text-slate-700">
-                Reason for Reschedule <span className="text-red-700">*</span>
-                <textarea
-                  autoFocus
-                  required
-                  maxLength={500}
-                  rows={5}
-                  value={requestReason}
-                  aria-invalid={Boolean(requestError)}
-                  onChange={(event) => {
-                    setRequestReason(event.target.value);
-                    setRequestError("");
-                  }}
-                  placeholder="Please explain why you need to reschedule this consultation."
-                  className="field mt-2 resize-y"
-                />
-              </label>
-              <div className="mt-1 flex justify-between gap-3 text-xs text-slate-500">
-                <span>Minimum 5 characters</span>
-                <span>{requestReason.length}/500</span>
-              </div>
-              {requestError && (
-                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                  {requestError}
-                </p>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={requestSubmitting}
-                  onClick={() => {
-                    setRequestTarget(null);
-                    setRequestReason("");
-                    setRequestError("");
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={requestSubmitting}
-                  onClick={requestReschedule}
-                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {requestSubmitting ? "Submitting..." : "Submit Request"}
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-      {reviewTarget &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4"
-            onMouseDown={(event) =>
-              event.target === event.currentTarget &&
-              !reviewSubmitting &&
-              setReviewTarget(null)
-            }
-          >
-            <section
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="review-reschedule-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="w-full min-w-0 max-w-lg rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="review-reschedule-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                {reviewTarget.decision === "Approved"
-                  ? "Approve Reschedule Request?"
-                  : "Reject Reschedule Request?"}
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                {reviewTarget.decision === "Approved"
-                  ? "The Student will be removed from the current consultation schedule and may select another available schedule. The appointment record and consultation data will be preserved."
-                  : "The appointment will remain approved and its current schedule will remain unchanged."}
-              </p>
-              {reviewTarget.decision === "Rejected" && (
-                <label className="mt-5 block text-sm font-semibold text-slate-700">
-                  Optional reason
-                  <textarea
-                    maxLength={500}
-                    rows={3}
-                    value={reviewNote}
-                    onChange={(event) => setReviewNote(event.target.value)}
-                    className="field mt-2 resize-y"
-                  />
-                </label>
-              )}
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={reviewSubmitting}
-                  onClick={() => {
-                    setReviewTarget(null);
-                    setReviewNote("");
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={reviewSubmitting}
-                  onClick={reviewReschedule}
-                  className={
-                    reviewTarget.decision === "Approved"
-                      ? "btn-primary"
-                      : "rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-                  }
-                >
-                  {reviewSubmitting
-                    ? "Saving..."
-                    : reviewTarget.decision === "Approved"
-                      ? "Approve Reschedule"
-                      : "Reject Reschedule"}
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-      {approvalWarning &&
-        createPortal(
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-3 sm:p-4">
-            <section
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="capacity-warning-title"
-              className="w-full min-w-0 max-w-lg rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
-            >
-              <h2
-                id="capacity-warning-title"
-                className="text-xl font-bold text-maroon-900"
-              >
-                Availability Capacity Warning
-              </h2>
-              <p className="mt-3 text-sm text-slate-600">
-                Approving this request will exceed your published consultation
-                availability by {approvalWarning.excess} minutes.
-              </p>
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setApprovalWarning(null)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const target = approvalWarning.appointment;
-                    setApprovalWarning(null);
-                    await update(target._id, "Approved");
-                  }}
-                  className="btn-primary"
-                >
-                  Approve Anyway
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        )}
-      {rescheduleTarget && user.role === "faculty" && (
+      {rescheduleTarget && ["faculty", "dean"].includes(user.role) && (
         <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-4">
-          <div className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+          <div ref={rescheduleRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="reschedule-slots-title" className="w-full min-w-0 max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="flex justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-maroon-900">
+                <h2 id="reschedule-slots-title" className="text-xl font-bold text-maroon-900">
                   Reschedule Consultation
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
@@ -944,7 +437,7 @@ export default function AppointmentsPage({ filter }) {
               </div>
               <button
                 type="button"
-                onClick={() => setRescheduleTarget(null)}
+                disabled={updatingIds.size > 0} onClick={() => setRescheduleTarget(null)}
                 className="font-bold text-slate-500"
               >
                 Close
@@ -957,9 +450,10 @@ export default function AppointmentsPage({ filter }) {
                 {rescheduleSlots.map((slot) => (
                   <button
                     key={slot._id}
+                    disabled={updatingIds.size > 0}
                     type="button"
                     onClick={async () => {
-                      await update(rescheduleTarget._id, "Rescheduled", {
+                      await update(rescheduleTarget._id, "Reschedule Proposed", {
                         availabilityId: slot.availabilityId,
                         startAt: slot.startAt,
                       });
@@ -968,7 +462,7 @@ export default function AppointmentsPage({ filter }) {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-sm hover:border-maroon-400"
                   >
                     <span className="block font-bold">
-                      {new Date(slot.startAt).toLocaleString()}
+                      {formatManilaDisplay(new Date(slot.startAt), undefined, "timestamp")}
                     </span>
                     <span className="mt-1 block text-slate-600">
                       {slot.mode} · {slot.location}
@@ -987,7 +481,7 @@ export default function AppointmentsPage({ filter }) {
           onPageChange={setAppointmentsPage}
           renderActions={renderStudentAppointmentActions}
         />
-      ) : user.role === "faculty" && !filter ? (
+      ) : ["faculty", "dean"].includes(user.role) && !filter ? (
         <FacultyCurrentAppointments
           appointments={shown}
           activeFilter={appointmentTab}
@@ -1000,9 +494,8 @@ export default function AppointmentsPage({ filter }) {
             setRejectNote("");
           }}
           onBeginReschedule={beginReschedule}
-          onComplete={(appointment) => update(appointment._id, "Completed")}
-          onReviewReschedule={(appointment, decision) =>
-            setReviewTarget({ appointment, decision })
+          onFacultyReschedule={(appointment, opener) =>
+            setFacultyReschedule({ appointment, opener })
           }
           onViewDocument={openSupportingDocument}
         />
@@ -1046,15 +539,6 @@ export default function AppointmentsPage({ filter }) {
                       <span>View Details</span>
                       {mobile && <ChevronRight size={17} aria-hidden="true" />}
                     </button>
-                    {appointment.status === "Needs Reschedule" && (
-                      <button
-                        type="button"
-                        onClick={() => chooseNewSchedule(appointment)}
-                        className={`btn-table-primary ${mobile ? "h-10 w-full min-w-0 flex-1 rounded-lg" : ""}`}
-                      >
-                        Choose New Schedule
-                      </button>
-                    )}
                   </div>
                 )
               : undefined
@@ -1071,7 +555,7 @@ export default function AppointmentsPage({ filter }) {
             >
               <div
                 className={`flex min-w-0 flex-col gap-4 ${
-                  user.role === "faculty" && filter !== "requests"
+                  ["faculty", "dean"].includes(user.role) && filter !== "requests"
                     ? "xl:flex-row xl:items-center xl:justify-between xl:gap-5"
                     : "lg:flex-row lg:items-start lg:justify-between lg:gap-6"
                 }`}
@@ -1084,7 +568,7 @@ export default function AppointmentsPage({ filter }) {
                           {formatPersonName(x.student?.name) ||
                             "Student name not provided"}
                         </h2>
-                        <StatusBadge status={x.status} />
+                        <StatusBadge appointment status={x.status} />
                       </div>
                       <dl className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
                         <div className="min-w-0">
@@ -1092,12 +576,12 @@ export default function AppointmentsPage({ filter }) {
                             Date
                           </dt>
                           <dd className="mt-1 break-words text-sm font-semibold text-slate-800">
-                            {new Date(x.startAt).toLocaleDateString(undefined, {
+                            {formatManilaDisplay(new Date(x.startAt), {
                               weekday: "short",
                               year: "numeric",
                               month: "short",
                               day: "numeric",
-                            })}
+                            }, "date")}
                           </dd>
                         </div>
                         <div className="min-w-0">
@@ -1105,27 +589,27 @@ export default function AppointmentsPage({ filter }) {
                             Time
                           </dt>
                           <dd className="mt-1 break-words text-sm font-semibold text-slate-800">
-                            {new Date(x.startAt).toLocaleTimeString([], {
+                            {formatManilaDisplay(new Date(x.startAt), {
                               hour: "numeric",
                               minute: "2-digit",
-                            })}{" "}
+                            }, "time")}{" "}
                             –{" "}
-                            {new Date(x.endAt).toLocaleTimeString([], {
+                            {formatManilaDisplay(new Date(x.endAt), {
                               hour: "numeric",
                               minute: "2-digit",
-                            })}
+                            }, "time")}
                           </dd>
                         </div>
                       </dl>
                     </>
                   )}
-                  {filter !== "requests" && user.role !== "faculty" && (
+                  {filter !== "requests" && !["faculty", "dean"].includes(user.role) && (
                     <>
                       <div className="flex flex-wrap items-center gap-3">
                         <h2 className="min-w-0 break-words font-bold">
                           {x.subject}
                         </h2>
-                        <StatusBadge
+                        <StatusBadge appointment
                           status={
                             user.role === "student"
                               ? getAppointmentDisplayStatus(x)
@@ -1146,12 +630,12 @@ export default function AppointmentsPage({ filter }) {
                         </p>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {new Date(x.startAt).toLocaleDateString(undefined, {
+                        {formatManilaDisplay(new Date(x.startAt), {
                           weekday: "short",
                           year: "numeric",
                           month: "short",
                           day: "numeric",
-                        })}
+                        }, "date")}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         Estimated consultation time:{" "}
@@ -1159,21 +643,21 @@ export default function AppointmentsPage({ filter }) {
                         {x.estimatedDurationMinutes ? " minutes" : ""}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        {new Date(x.startAt).toLocaleTimeString([], {
+                        {formatManilaDisplay(new Date(x.startAt), {
                           hour: "numeric",
                           minute: "2-digit",
-                        })}{" "}
+                        }, "time")}{" "}
                         –{" "}
-                        {new Date(x.endAt).toLocaleTimeString([], {
+                        {formatManilaDisplay(new Date(x.endAt), {
                           hour: "numeric",
                           minute: "2-digit",
-                        })}
+                        }, "time")}
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
                         {x.consultationMode || "Online"} ·{" "}
                         {x.location || "Location to be confirmed"}
                       </p>
-                      {user.role === "faculty" && x.student?.program && (
+                      {["faculty", "dean"].includes(user.role) && x.student?.program && (
                         <p className="mt-1 break-words text-sm text-slate-500">
                           Program: {x.student.program}
                         </p>
@@ -1192,36 +676,6 @@ export default function AppointmentsPage({ filter }) {
                           </p>
                         </div>
                       )}
-                      {user.role === "faculty" && x.rescheduleRequested && (
-                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                          <p className="font-bold">
-                            Pending Reschedule Request
-                          </p>
-                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words leading-relaxed">
-                            Reason: {x.rescheduleRequestNote}
-                          </p>
-                          <p className="mt-1 text-xs text-amber-800">
-                            Requested:{" "}
-                            {new Date(
-                              x.rescheduleRequestedAt || x.updatedAt,
-                            ).toLocaleString()}
-                          </p>
-                        </div>
-                      )}
-                      {user.role === "student" &&
-                        x.rescheduleRequestStatus === "Pending" && (
-                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                            Reschedule: Pending Faculty Approval
-                          </p>
-                        )}
-                      {user.role === "student" &&
-                        x.status === "Needs Reschedule" && (
-                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                            Your faculty member released the previous slot.
-                            Choose a new active schedule to continue this
-                            consultation.
-                          </p>
-                        )}
                       {user.role === "student" &&
                         isAwaitingFacultyUpdate(x) && (
                           <p className="mt-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
@@ -1237,7 +691,7 @@ export default function AppointmentsPage({ filter }) {
                   className={`flex w-full min-w-0 flex-wrap gap-2 ${
                     filter === "requests"
                       ? "lg:w-52 lg:shrink-0 lg:flex-col"
-                      : user.role === "faculty"
+                      : ["faculty", "dean"].includes(user.role)
                         ? "border-t border-slate-200 pt-3 xl:w-[22rem] xl:shrink-0 xl:justify-end xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
                         : "lg:w-auto lg:shrink-0"
                   }`}
@@ -1249,7 +703,7 @@ export default function AppointmentsPage({ filter }) {
                   >
                     View Details
                   </button>
-                  {user.role === "faculty" && x.status === "Pending" && (
+                  {["faculty", "dean"].includes(user.role) && x.status === "Pending" && (
                     <>
                       <button
                         disabled={updatingIds.has(x._id)}
@@ -1276,101 +730,6 @@ export default function AppointmentsPage({ filter }) {
                       </button>
                     </>
                   )}
-                  {user.role === "faculty" &&
-                    !x.rescheduleRequested &&
-                    ["Approved", "Rescheduled"].includes(x.status) && (
-                      <>
-                        <button
-                          disabled={updatingIds.has(x._id)}
-                          onClick={() => update(x._id, "Completed")}
-                          className="rounded-lg bg-maroon-800 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60"
-                        >
-                          {updatingIds.has(x._id)
-                            ? "Completing..."
-                            : "Complete"}
-                        </button>
-                        {new Date(x.endAt) < new Date() && (
-                          <button
-                            type="button"
-                            onClick={() => beginReschedule(x)}
-                            className="btn-action"
-                          >
-                            Reschedule
-                          </button>
-                        )}
-                      </>
-                    )}
-                  {user.role === "student" &&
-                    x.status === "Needs Reschedule" && (
-                      <button
-                        type="button"
-                        onClick={() => chooseNewSchedule(x)}
-                        className="btn-primary"
-                      >
-                        Choose New Schedule
-                      </button>
-                    )}
-                  {user.role === "faculty" &&
-                    x.rescheduleRequestStatus === "Pending" && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReviewTarget({
-                              appointment: x,
-                              decision: "Approved",
-                            })
-                          }
-                          className="rounded-lg bg-green-700 px-4 py-2 text-sm font-bold text-white"
-                        >
-                          Approve Reschedule
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReviewTarget({
-                              appointment: x,
-                              decision: "Rejected",
-                            })
-                          }
-                          className="btn-danger-action"
-                        >
-                          Reject Reschedule
-                        </button>
-                      </>
-                    )}
-                  {user.role === "student" &&
-                    x.status === "Pending" &&
-                    new Date(x.startAt) > new Date() && (
-                      <button
-                        onClick={() => setCancelTarget(x)}
-                        className="btn-danger-action"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  {user.role === "student" &&
-                    ["Approved", "Rescheduled"].includes(x.status) &&
-                    new Date(x.startAt) > new Date() && (
-                      <button
-                        type="button"
-                        disabled={
-                          x.rescheduleRequestStatus === "Pending" ||
-                          x.rescheduleRequested
-                        }
-                        onClick={() => {
-                          setRequestTarget(x);
-                          setRequestReason("");
-                          setRequestError("");
-                        }}
-                        className="btn-action"
-                      >
-                        {x.rescheduleRequestStatus === "Pending" ||
-                        x.rescheduleRequested
-                          ? "Reschedule Requested"
-                          : "Request Reschedule"}
-                      </button>
-                    )}
                   {x.supportingDocument?.name &&
                     filter !== "requests" &&
                     filter !== "history" &&
@@ -1397,6 +756,10 @@ const FACULTY_APPOINTMENT_FILTERS = [
   "Today",
   "Upcoming",
   "Awaiting Update",
+  "Reschedule Proposed",
+  "Awaiting Attendance Update",
+  "Attendance Review",
+  "Legacy",
   "Completed",
   "Cancelled",
 ];
@@ -1411,8 +774,7 @@ function FacultyCurrentAppointments({
   onApprove,
   onReject,
   onBeginReschedule,
-  onComplete,
-  onReviewReschedule,
+  onFacultyReschedule,
   onViewDocument,
 }) {
   const [sortOrder, setSortOrder] = useState("newest");
@@ -1579,8 +941,7 @@ function FacultyCurrentAppointments({
                     onApprove={onApprove}
                     onReject={onReject}
                     onBeginReschedule={onBeginReschedule}
-                    onComplete={onComplete}
-                    onReviewReschedule={onReviewReschedule}
+                    onFacultyReschedule={onFacultyReschedule}
                     onViewDocument={onViewDocument}
                   />
                 )}
@@ -1636,13 +997,13 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
       <div className="flex items-start justify-center p-3 md:items-center md:p-4 min-[1200px]:justify-start min-[1200px]:py-2.5 min-[1200px]:pl-6 min-[1200px]:pr-3">
         <div className="grid h-16 w-14 shrink-0 content-center rounded-lg border border-maroon-100 bg-maroon-50 text-center min-[1200px]:h-[4.25rem] min-[1200px]:w-[3.75rem]">
           <span className="text-[10px] font-extrabold uppercase tracking-wide text-maroon-700">
-            {start.toLocaleDateString(undefined, { month: "short" })}
+            {formatManilaDisplay(start, { month: "short" }, "date")}
           </span>
           <span className="text-2xl font-extrabold leading-6 text-maroon-900">
-            {start.toLocaleDateString(undefined, { day: "numeric" })}
+            {formatManilaDisplay(start, { day: "numeric" }, "date")}
           </span>
           <span className="text-[9px] font-semibold text-slate-500">
-            {start.toLocaleDateString(undefined, { year: "numeric" })}
+            {formatManilaDisplay(start, { year: "numeric" }, "date")}
           </span>
         </div>
       </div>
@@ -1668,7 +1029,7 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
               </div>
             </div>
             <span className="shrink-0 md:hidden">
-              <StatusBadge status={appointment.status} compact />
+              <StatusBadge appointment status={appointment.status} compact />
             </span>
           </div>
         </div>
@@ -1700,7 +1061,7 @@ function FacultyAppointmentRow({ appointment, renderActions }) {
       </div>
 
       <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
-        <StatusBadge status={appointment.status} compact />
+        <StatusBadge appointment status={appointment.status} compact />
       </div>
 
       <div className="col-span-2 border-t border-slate-200 p-3 md:col-span-4 md:px-4 min-[1200px]:col-span-1 min-[1200px]:flex min-[1200px]:items-center min-[1200px]:justify-center min-[1200px]:border-l min-[1200px]:border-t-0 min-[1200px]:py-3 min-[1200px]:pl-4 min-[1200px]:pr-6">
@@ -1719,8 +1080,7 @@ function FacultyAppointmentActions({
   onApprove,
   onReject,
   onBeginReschedule,
-  onComplete,
-  onReviewReschedule,
+  onFacultyReschedule,
   onViewDocument,
 }) {
   const buttonLayout = mobile
@@ -1760,45 +1120,21 @@ function FacultyAppointmentActions({
           </button>
         </>
       )}
-      {!appointment.rescheduleRequested &&
-        ["Approved", "Rescheduled"].includes(appointment.status) && (
+      {appointment.status === "Confirmed" && (
           <>
-            <button
-              disabled={updatingIds.has(appointment._id)}
-              onClick={() => onComplete(appointment)}
-              className={`rounded-lg bg-maroon-800 px-4 text-sm font-bold text-white transition-colors hover:bg-maroon-900 disabled:opacity-60 ${mobileButton}`}
-            >
-              {updatingIds.has(appointment._id) ? "Completing..." : "Complete"}
-            </button>
-            {new Date(appointment.endAt) < new Date() && (
+            {new Date(appointment.startAt) > new Date() && (
               <button
                 type="button"
-                onClick={() => onBeginReschedule(appointment)}
-                className={`btn-action ${mobileButton}`}
+                onClick={(event) =>
+                  onFacultyReschedule(appointment, event.currentTarget)
+                }
+                className={`rounded-lg border border-gold-500 bg-gold-50 px-4 text-sm font-bold text-maroon-900 transition-colors hover:bg-gold-100 ${mobileButton}`}
               >
                 Reschedule
               </button>
             )}
           </>
         )}
-      {appointment.rescheduleRequestStatus === "Pending" && (
-        <>
-          <button
-            type="button"
-            onClick={() => onReviewReschedule(appointment, "Approved")}
-            className={`rounded-lg bg-green-700 px-4 text-sm font-bold text-white ${mobileButton}`}
-          >
-            Approve Reschedule
-          </button>
-          <button
-            type="button"
-            onClick={() => onReviewReschedule(appointment, "Rejected")}
-            className={`btn-danger-action ${mobileButton}`}
-          >
-            Reject Reschedule
-          </button>
-        </>
-      )}
       {appointment.supportingDocument?.name && (
         <button
           type="button"
@@ -1812,53 +1148,38 @@ function FacultyAppointmentActions({
   );
 }
 
-function Capacity({ label, value, wide = false }) {
-  return (
-    <div className={`min-w-0 ${wide ? "sm:col-span-2" : ""}`}>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </dt>
-      <dd className="mt-1 break-words font-bold text-slate-800">{value}</dd>
-    </div>
-  );
-}
-
 const formatClock = (value) =>
   value
-    ? new Date(value).toLocaleTimeString("en-PH", {
+    ? formatManilaDisplay(new Date(value), {
         timeZone: "Asia/Manila",
         hour: "numeric",
         minute: "2-digit",
-      })
+      }, "time")
     : "Not scheduled";
 const appointmentDatePart = (appointment, options) =>
   appointment.startAt
-    ? new Date(appointment.startAt).toLocaleDateString("en-PH", {
+    ? formatManilaDisplay(new Date(appointment.startAt), {
         timeZone: "Asia/Manila",
         ...options,
-      })
+      }, "date")
     : "TBD";
 
 const CURRENT_APPOINTMENT_FILTERS = [
   "All",
-  "Awaiting Faculty Schedule",
+  "Reschedule Proposed",
   "Upcoming",
   "Pending",
-  "Approved",
-  "Rescheduled",
-  "Needs Reschedule",
+  "Confirmed",
 ];
 const CURRENT_APPOINTMENTS_PAGE_SIZE = 3;
 const PRIMARY_MOBILE_APPOINTMENT_FILTERS = [
   "All",
   "Upcoming",
   "Pending",
-  "Approved",
+  "Confirmed",
 ];
 const SECONDARY_MOBILE_APPOINTMENT_FILTERS = [
-  "Awaiting Faculty Schedule",
-  "Rescheduled",
-  "Needs Reschedule",
+  "Reschedule Proposed",
 ];
 
 function StudentCurrentAppointments({
@@ -1997,7 +1318,7 @@ function StudentCurrentAppointments({
           <details className="group relative min-w-0">
             <summary
               className={`flex min-h-9 cursor-pointer list-none items-center justify-center rounded-lg border px-1 py-2 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-300 min-[380px]:text-xs [&::-webkit-details-marker]:hidden ${
-                ["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].includes(
+                ["Confirmed", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].includes(
                   activeFilter,
                 )
                   ? "border-maroon-800 bg-maroon-800 text-white"
@@ -2007,7 +1328,7 @@ function StudentCurrentAppointments({
               More
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-              {["Approved", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].map(
+              {["Confirmed", ...SECONDARY_MOBILE_APPOINTMENT_FILTERS].map(
                 (filter) => (
                   <button
                     key={filter}
@@ -2113,7 +1434,7 @@ function StudentAppointmentCard({ appointment, renderActions }) {
                 </p>
               </div>
               <span className="shrink-0 md:hidden">
-                <StatusBadge status={status} compact />
+                <StatusBadge appointment status={status} compact />
               </span>
             </div>
           </div>
@@ -2145,7 +1466,7 @@ function StudentAppointmentCard({ appointment, renderActions }) {
 
       <div className="hidden min-w-0 items-center justify-center border-l border-slate-200 px-3 md:flex">
         <div className="flex justify-center">
-          <StatusBadge status={status} compact />
+          <StatusBadge appointment status={status} compact />
         </div>
       </div>
 
@@ -2197,12 +1518,12 @@ function ConsultationHistoryTable({
     safePage * HISTORY_ITEMS_PER_PAGE,
   );
   const facultyEmptySlots =
-    role === "faculty" && appointments.length > 0
+    ["faculty", "dean"].includes(role) && appointments.length > 0
       ? Math.max(0, HISTORY_ITEMS_PER_PAGE - pageAppointments.length)
       : 0;
-  const personLabel = role === "faculty" ? "Student" : "Faculty";
+  const personLabel = ["faculty", "dean"].includes(role) ? "Student" : "Faculty";
   const personFor = (appointment) =>
-    role === "faculty" ? appointment.student : appointment.faculty;
+    ["faculty", "dean"].includes(role) ? appointment.student : appointment.faculty;
   useEffect(() => {
     if (currentPage > totalPages) onPageChange(totalPages);
   }, [currentPage, onPageChange, totalPages]);
@@ -2224,12 +1545,12 @@ function ConsultationHistoryTable({
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime())
       ? "Not provided"
-      : parsed.toLocaleDateString("en-PH", {
+      : formatManilaDisplay(parsed, {
           timeZone: "Asia/Manila",
           year: "numeric",
           month: "short",
           day: "numeric",
-        });
+        }, "date");
   };
   const duration = (appointment) =>
     appointment.estimatedDurationMinutes
@@ -2244,37 +1565,37 @@ function ConsultationHistoryTable({
         >
           <thead className="h-11 bg-maroon-800 text-[11px] uppercase tracking-wide text-white 2xl:text-xs">
             <tr>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[11%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Date
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[14%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Subject / Topic
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[10%]" : "w-[14%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 {personLabel}
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[11%]" : "w-[12%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Mode
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[8%]" : "w-[13%]"} px-2.5 py-2 font-semibold 2xl:px-3`}
               >
                 Duration
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[18%]" : "w-[17%]"} px-2.5 py-2 text-center font-semibold 2xl:px-3`}
               >
                 Status
               </th>
-              <th
+              <th scope="col"
                 className={`${renderActions ? "w-[28%] pl-4 pr-6 2xl:pr-8" : "w-[14%] px-2.5 2xl:px-3"} py-2 font-semibold`}
               >
                 Action
@@ -2296,7 +1617,7 @@ function ConsultationHistoryTable({
                 {pageAppointments.map((appointment) => (
                   <tr
                     key={appointment._id}
-                    className={`${role === "faculty" ? "h-14" : ""} align-middle hover:bg-slate-50`}
+                    className={`${["faculty", "dean"].includes(role) ? "h-14" : ""} align-middle hover:bg-slate-50`}
                   >
                     <td className="px-2.5 py-2 whitespace-nowrap text-slate-600 2xl:px-3">
                       {date(appointment.startAt)}
@@ -2345,7 +1666,7 @@ function ConsultationHistoryTable({
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 2xl:px-3">
                       <div className="flex items-center justify-center">
-                        <StatusBadge
+                        <StatusBadge appointment
                           status={
                             role === "student"
                               ? getAppointmentDisplayStatus(appointment)
@@ -2523,7 +1844,7 @@ function FacultyHistoryAccordionRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-          <StatusBadge status={appointment.status} compact />
+          <StatusBadge appointment status={appointment.status} compact />
           <button
             type="button"
             onClick={onToggle}
@@ -2558,7 +1879,7 @@ function FacultyHistoryAccordionRow({
               {duration}
             </FacultyHistoryDetail>
             <FacultyHistoryDetail icon={Tag} label="Status">
-              <StatusBadge status={appointment.status} compact />
+              <StatusBadge appointment status={appointment.status} compact />
             </FacultyHistoryDetail>
           </dl>
 
@@ -2651,7 +1972,7 @@ function StudentHistoryMobileRow({
             {subject}
           </h3>
           <p className="mt-1 flex min-w-0 items-center gap-1.5 break-words text-xs leading-4 text-slate-600">
-            <UserRound size={13} className="shrink-0 text-maroon-700" />
+            <UserRound aria-hidden="true" size={13} className="shrink-0 text-maroon-700" />
             <span className="min-w-0 break-words">{facultyName}</span>
           </p>
           <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs leading-4 text-slate-600">
@@ -2664,7 +1985,7 @@ function StudentHistoryMobileRow({
 
         <div className="flex min-w-0 items-center gap-1 self-center">
           <span className="flex max-w-[4.75rem] justify-end min-[390px]:max-w-[8.5rem]">
-            <StatusBadge
+            <StatusBadge appointment
               status={getAppointmentDisplayStatus(appointment)}
               compact
               allowWrap

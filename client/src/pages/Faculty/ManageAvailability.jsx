@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { formatManilaDisplay, manilaInputParts, parseManilaInput } from "../../utils/formatDateTime";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
+import { safeStudentError } from "../../utils/studentUiErrors";
 import {
   EmptyState,
   ErrorState,
@@ -7,6 +9,7 @@ import {
   StatusBadge,
 } from "../../components/UI";
 import { useToast } from "../../context/ToastContext";
+import { Link } from "react-router-dom";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import {
   Clock3,
@@ -21,6 +24,7 @@ import {
 
 const emptyForm = {
   date: "",
+  endDate: "",
   startTime: "",
   endTime: "",
   mode: "Face-to-Face",
@@ -28,6 +32,7 @@ const emptyForm = {
   meetingPlatform: "Google Meet",
   customMeetingPlatform: "",
   meetingLink: "",
+  isActive: true,
 };
 
 const meetingPlatforms = ["Google Meet", "Microsoft Teams", "Zoom", "Other"];
@@ -41,18 +46,8 @@ const validMeetingLink = (value) => {
   }
 };
 
-const localParts = (value) => {
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return { date: `${year}-${month}-${day}`, time: `${hours}:${minutes}` };
-};
-
-const toTimestamp = (date, time) =>
-  new Date(`${date}T${time}:00`).toISOString();
+const localParts = manilaInputParts;
+const toTimestamp = (date, time) => parseManilaInput(date, time).toISOString();
 
 const formatLocation = (value) => {
   const text = String(value || "").trim();
@@ -69,13 +64,14 @@ const formatLocation = (value) => {
     .join("");
 };
 
-export default function ManageAvailability() {
+export default function ManageAvailability({ routeBase = "/faculty", consultationsPath = "/faculty/appointments", showCalendarLink = true, onChanged, revision = 0 }) {
+  const requestSequence = useRef(0);
+  const mutationBusy = useRef(false);
+  const [editingVersion, setEditingVersion] = useState(0);
   const toast = useToast();
   const showRequestError = (error, fallback) => {
-    const message = error?.message || fallback;
-    if (/overlap|conflict|cannot be removed|active consultation/i.test(message))
-      toast.warning(message);
-    else toast.error(message);
+    if (error?.status === 409) toast.warning("This slot changed, overlaps a schedule, or has a consultation reservation/history. Refresh availability. Use consultation reschedule or cancellation for reserved slots; deactivate slots with history.");
+    else toast.error(safeStudentError(error, error?.status === 400 ? "Check the availability date, times, mode, and meeting details." : fallback));
   };
   const [availability, setAvailability] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -96,13 +92,16 @@ export default function ManageAvailability() {
   }, [availability, expandedScheduleId]);
 
   const load = async () => {
+    const sequence = ++requestSequence.current;
     try {
-      const data = await api("/availability/mine");
+      const data = await api("/availability/mine", { cache: "no-store" });
+      if (sequence !== requestSequence.current) return;
       setAvailability(
         Array.isArray(data?.availability) ? data.availability : [],
       );
       setLoadError("");
     } catch {
+      if (sequence !== requestSequence.current) return;
       setLoadError("Unable to load availability. Please try again.");
     }
   };
@@ -113,10 +112,11 @@ export default function ManageAvailability() {
     const interval = window.setInterval(refresh, 20000);
     window.addEventListener("focus", refresh);
     return () => {
+      ++requestSequence.current;
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [revision]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -127,14 +127,15 @@ export default function ManageAvailability() {
   const save = async (event) => {
     event.preventDefault();
     setFormError("");
-    const start = new Date(`${form.date}T${form.startTime}:00`);
-    const end = new Date(`${form.date}T${form.endTime}:00`);
+    if (mutationBusy.current) return;
+    const start = parseManilaInput(form.date, form.startTime);
+    const end = parseManilaInput(form.endDate || form.date, form.endTime);
     if (
       !form.date ||
       !form.startTime ||
       !form.endTime ||
-      !Number.isFinite(start.getTime()) ||
-      !Number.isFinite(end.getTime())
+      !start ||
+      !end
     ) {
       setFormError(
         "Select a valid availability date, start time, and end time.",
@@ -169,6 +170,7 @@ export default function ManageAvailability() {
       setFormError("Please enter a valid meeting link.");
       return;
     }
+    mutationBusy.current = true;
     setSaving(true);
     try {
       const data = await api(
@@ -176,8 +178,10 @@ export default function ManageAvailability() {
         {
           method: editingId ? "PUT" : "POST",
           body: JSON.stringify({
+            ...(editingId && { expectedVersion: editingVersion }),
+            isActive: form.isActive,
             startAt: toTimestamp(form.date, form.startTime),
-            endAt: toTimestamp(form.date, form.endTime),
+            endAt: toTimestamp(form.endDate || form.date, form.endTime),
             mode: form.mode,
             location: form.mode === "Face-to-Face" ? form.location.trim() : "",
             meetingPlatform: form.mode === "Online" ? meetingPlatform : "",
@@ -186,11 +190,13 @@ export default function ManageAvailability() {
         },
       );
       await load();
+      onChanged?.();
       resetForm();
       toast.success(data.message);
     } catch (requestError) {
       showRequestError(requestError, "Unable to save availability.");
     } finally {
+      mutationBusy.current = false;
       setSaving(false);
     }
   };
@@ -199,10 +205,13 @@ export default function ManageAvailability() {
     const start = localParts(item.startAt);
     const end = localParts(item.endAt);
     setEditingId(item._id);
+    setEditingVersion(item.__v ?? 0);
     const platform = item.meetingPlatform || "";
     const knownPlatform = meetingPlatforms.includes(platform);
     setForm({
+      isActive: item.isActive,
       date: start.date,
+      endDate: end.date,
       startTime: start.time,
       endTime: end.time,
       mode: item.mode || "Online",
@@ -220,19 +229,22 @@ export default function ManageAvailability() {
   };
 
   const updateActiveState = async (item) => {
-    if (!item || toggling) return;
+    if (!item || mutationBusy.current) return;
+    mutationBusy.current = true;
     setToggling(true);
     try {
       const data = await api(`/availability/${item._id}`, {
         method: "PUT",
-        body: JSON.stringify({ isActive: !item.isActive }),
+        body: JSON.stringify({ isActive: !item.isActive, expectedVersion: item.__v ?? 0 }),
       });
       toast.success(data.message);
       await load();
+      onChanged?.();
       setDeactivateTarget(null);
     } catch (requestError) {
       showRequestError(requestError, "Unable to update availability.");
     } finally {
+      mutationBusy.current = false;
       setToggling(false);
     }
   };
@@ -243,20 +255,24 @@ export default function ManageAvailability() {
   };
 
   const remove = async () => {
-    if (!removeTarget || removing) return;
+    if (!removeTarget || mutationBusy.current) return;
+    mutationBusy.current = true;
     setRemoving(true);
     try {
       const data = await api(`/availability/${removeTarget._id}`, {
         method: "DELETE",
+        body: JSON.stringify({ expectedVersion: removeTarget.__v ?? 0 }),
       });
       setRemoveTarget(null);
       toast.success(
         data.message || "Consultation availability removed successfully.",
       );
       await load();
+      onChanged?.();
     } catch (requestError) {
       showRequestError(requestError, "Unable to remove availability.");
     } finally {
+      mutationBusy.current = false;
       setRemoving(false);
     }
   };
@@ -290,20 +306,21 @@ export default function ManageAvailability() {
         onCancel={() => !toggling && setDeactivateTarget(null)}
       />
       <section className="w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-[1200px]:p-5">
-        <h1 className="text-base font-bold text-maroon-900">
+        <h2 className="text-base font-bold text-maroon-900">
           Add Consultation Availability
-        </h1>
+        </h2>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          Publish the schedules students can select when booking.
+          Publish one consultation slot for one Student. Times use Asia/Manila.
         </p>
+        {showCalendarLink && <Link className="mt-2 inline-block text-sm font-semibold text-maroon-800 underline" to={`${routeBase}/calendar`}>Open Consultation Calendar</Link>}
         {formError && (
-          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p id="availability-form-error" role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {formError}
           </p>
         )}
-        <form onSubmit={save} className="mt-4 min-w-0 max-w-full space-y-3.5">
+        <form aria-describedby={formError ? "availability-form-error" : undefined} onSubmit={save} className="mt-4 min-w-0 max-w-full space-y-3.5">
           <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-3">
-            <Field label="Availability Date">
+            <Field label="Start Date">
               <input
                 className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm"
                 type="date"
@@ -313,6 +330,10 @@ export default function ManageAvailability() {
                   setForm({ ...form, date: event.target.value })
                 }
               />
+            </Field>
+            <Field label="End Date">
+              <input className="field mt-1.5 h-11 min-h-0 box-border px-3 py-2 text-sm" type="date" required
+                value={form.endDate || form.date} onChange={event => setForm({ ...form, endDate: event.target.value })} />
             </Field>
             <Field label="Start Time">
               <input
@@ -433,6 +454,7 @@ export default function ManageAvailability() {
               </>
             )}
           </div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setForm({ ...form, isActive: event.target.checked })} />Active and available for booking</label>
           <div className="flex min-w-0 flex-col items-stretch gap-2 min-[1200px]:flex-row min-[1200px]:items-center">
             <button
               disabled={saving}
@@ -471,6 +493,7 @@ export default function ManageAvailability() {
             {availability.map((item) => (
               <ScheduleCard
                 key={item._id}
+                consultationsPath={consultationsPath}
                 item={item}
                 onEdit={edit}
                 onToggle={toggle}
@@ -499,6 +522,7 @@ function ScheduleCard({
   onRemove,
   expanded,
   onExpand,
+  consultationsPath,
 }) {
   const dateOptions = {
     weekday: "long",
@@ -507,7 +531,7 @@ function ScheduleCard({
     day: "numeric",
   };
   const timeOptions = { hour: "numeric", minute: "2-digit" };
-  const expired = item.status === "expired";
+  const expired = item.status === "expired" || new Date(item.startAt) <= new Date();
   const statusLabel = expired
     ? "Expired"
     : item.isActive
@@ -528,7 +552,7 @@ function ScheduleCard({
           onClick={onExpand}
         >
           <h3 className="min-w-0 break-words text-[15px] font-bold leading-6 text-maroon-900 sm:text-base">
-            {new Date(item.startAt).toLocaleDateString(undefined, dateOptions)}
+            {formatManilaDisplay(new Date(item.startAt), dateOptions, "date")}
           </h3>
           <span className="flex shrink-0 items-center gap-1.5">
             <StatusBadge status={statusLabel} compact />
@@ -542,8 +566,8 @@ function ScheduleCard({
 
         <dl className={`${expanded ? "grid" : "hidden"} mt-3 min-w-0 grid-cols-1 gap-2 md:grid md:grid-cols-[1.05fr_.8fr_1.15fr]`}>
           <ScheduleDetail icon={Clock3} label="Time">
-            {new Date(item.startAt).toLocaleTimeString([], timeOptions)} –{" "}
-            {new Date(item.endAt).toLocaleTimeString([], timeOptions)}
+            {formatManilaDisplay(new Date(item.startAt), timeOptions, "time")} –{" "}
+            {formatManilaDisplay(new Date(item.endAt), timeOptions, "time")}
           </ScheduleDetail>
           <ScheduleDetail icon={ModeIcon} label="Mode">
             {item.mode || "Online"}
@@ -558,7 +582,7 @@ function ScheduleCard({
       </div>
 
       <div className={`${expanded ? "flex" : "hidden"} min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-2.5 md:flex`}>
-        {!expired && (
+        {!expired && !item.protected && (
           <>
             <button
               type="button"
@@ -580,6 +604,7 @@ function ScheduleCard({
         )}
         <button
           type="button"
+          disabled={expired || item.protected}
           onClick={() => onRemove(item._id)}
           className="btn-danger-action-sm h-8 w-auto gap-1.5 px-2.5"
         >
@@ -587,6 +612,7 @@ function ScheduleCard({
           Remove
         </button>
       </div>
+      {item.protected && <p className="p-3 text-sm text-amber-900">Reserved consultation. <Link className="font-semibold underline" to={consultationsPath}>Use reschedule or cancellation</Link> to change it.</p>}
     </article>
   );
 }

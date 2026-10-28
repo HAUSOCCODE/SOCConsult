@@ -1,3 +1,5 @@
+import { safeStudentError } from "../../utils/studentUiErrors";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
@@ -16,43 +18,30 @@ const initial = {
   meetingLink: "",
 };
 
-export default function OneTimeScheduleRequests() {
+export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDecided, onConflict } = {}) {
   const toast = useToast();
   const [requests, setRequests] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(reviewRequest || null);
   const [details, setDetails] = useState(null);
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState({ ...initial, durationMinutes: String(reviewRequest?.estimatedDurationMinutes || "") });
   const [rejectNote, setRejectNote] = useState("");
   const [busy, setBusy] = useState(false);
   const reviewButtonRef = useRef(null);
   const reviewDialogRef = useRef(null);
   const busyRef = useRef(false);
   busyRef.current = busy;
+  const closeReview = () => { setSelected(null); onClose?.(); };
   const load = () =>
     api("/schedule-requests/mine")
       .then((data) => setRequests(data.requests || []))
       .catch(() => toast.error("Unable to load schedule requests."));
   useEffect(() => {
+    if (reviewRequest) return;
     void load();
     const timer = window.setInterval(load, 20000);
     return () => window.clearInterval(timer);
   }, []);
-  useEffect(() => {
-    if (!selected) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    reviewDialogRef.current?.focus();
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape" && !busyRef.current) setSelected(null);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      const opener = reviewButtonRef.current;
-      window.requestAnimationFrame(() => opener?.focus());
-    };
-  }, [selected]);
+  useDialogFocus(reviewDialogRef, { open: Boolean(selected), busy, onClose: () => { if (!busyRef.current) closeReview(); }, restoreTarget: reviewButtonRef.current });
   const choose = (request, opener) => {
     reviewButtonRef.current = opener;
     setSelected(request);
@@ -63,9 +52,12 @@ export default function OneTimeScheduleRequests() {
     });
   };
   const decide = async (decision) => {
-    if (!selected || busy) return;
+    if (!selected || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
+      if (!Number.isInteger(selected.__v)) throw new Error("Reload request details.");
+      if (decision === "reject" && !rejectNote.trim()) throw new Error("A rejection reason is required.");
       let body = { note: rejectNote };
       if (decision === "approve") {
         if (!form.date || !form.time)
@@ -82,20 +74,24 @@ export default function OneTimeScheduleRequests() {
       }
       const data = await api(`/schedule-requests/${selected._id}/${decision}`, {
         method: "PUT",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
       });
       toast.success(data.message);
-      setSelected(null);
-      await load();
+      closeReview();
+      if (reviewRequest) onDecided?.();
+      else await load();
     } catch (error) {
-      toast.error(error.message || "Unable to decide this request.");
+      toast.error(safeStudentError(error, "Unable to decide this request. Check the schedule and required reason."));
+      if (error.status === 409) onConflict?.();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   return (
     <section className="w-full max-w-none space-y-3">
+      {!reviewRequest && <>
       <div>
         <h2 className="text-lg font-bold text-maroon-900">
           Requests for a Schedule
@@ -129,7 +125,7 @@ export default function OneTimeScheduleRequests() {
                     {request.reason}
                   </p>
                 </div>
-                <StatusBadge status={request.status} allowWrap />
+                <StatusBadge appointment status={request.status} allowWrap />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
@@ -151,6 +147,7 @@ export default function OneTimeScheduleRequests() {
           ))
         )}
       </div>
+      </>}
       {selected &&
         createPortal(
           <div
@@ -158,7 +155,7 @@ export default function OneTimeScheduleRequests() {
             role="presentation"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget && !busy) {
-                setSelected(null);
+                closeReview();
               }
             }}
           >
@@ -190,7 +187,7 @@ export default function OneTimeScheduleRequests() {
                 <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-semibold">
                     Consultation date
-                    <input
+                    <input disabled={busy}
                       type="date"
                       className="field mt-1"
                       value={form.date}
@@ -201,7 +198,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Start time (Asia/Manila)
-                    <input
+                    <input disabled={busy}
                       type="time"
                       className="field mt-1"
                       value={form.time}
@@ -212,7 +209,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Duration (minutes)
-                    <input
+                    <input disabled={busy}
                       type="number"
                       min="5"
                       max="240"
@@ -228,7 +225,7 @@ export default function OneTimeScheduleRequests() {
                   </label>
                   <label className="text-sm font-semibold">
                     Mode
-                    <select
+                    <select disabled={busy}
                       className="field mt-1"
                       value={form.mode}
                       onChange={(event) =>
@@ -242,7 +239,7 @@ export default function OneTimeScheduleRequests() {
                   {form.mode === "Face-to-Face" ? (
                     <label className="text-sm font-semibold sm:col-span-2">
                       Location
-                      <input
+                      <input disabled={busy}
                         className="field mt-1"
                         maxLength="150"
                         value={form.location}
@@ -255,7 +252,7 @@ export default function OneTimeScheduleRequests() {
                     <>
                       <label className="text-sm font-semibold">
                         Meeting platform
-                        <input
+                        <input disabled={busy}
                           className="field mt-1"
                           maxLength="100"
                           value={form.meetingPlatform}
@@ -269,7 +266,7 @@ export default function OneTimeScheduleRequests() {
                       </label>
                       <label className="text-sm font-semibold">
                         Meeting link (optional)
-                        <input
+                        <input disabled={busy}
                           type="url"
                           className="field mt-1"
                           value={form.meetingLink}
@@ -286,8 +283,8 @@ export default function OneTimeScheduleRequests() {
                 </div>
                 <div className="mt-5 border-t border-slate-200 pt-4">
                   <label className="text-sm font-semibold">
-                    Rejection reason (optional)
-                    <textarea
+                    Rejection reason (required)
+                    <textarea disabled={busy}
                       className="field mt-1 min-h-20 resize-y"
                       maxLength="500"
                       value={rejectNote}
@@ -301,7 +298,7 @@ export default function OneTimeScheduleRequests() {
                   type="button"
                   className="btn-secondary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={() => setSelected(null)}
+                  onClick={closeReview}
                 >
                   Close
                 </button>

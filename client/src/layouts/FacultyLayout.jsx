@@ -6,32 +6,55 @@ import {
   History,
   LayoutDashboard,
   UserRound,
-  LockKeyhole,
+  FileBarChart,
 } from "lucide-react";
+import { Link, Navigate, useLocation } from "react-router-dom";
+import { legacyFacultyDestination } from "../utils/deanWorkspace";
+import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
-import SOCConsultFacultyAIAssistant from "../components/faculty/SOCConsultFacultyAIAssistant";
 const navigation = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/faculty/dashboard" },
   {
-    icon: CalendarDays,
-    label: "My Appointments",
-    path: "/faculty/appointments",
-  },
-  {
     icon: ClipboardList,
-    label: "Appointment Requests",
+    label: "Consultation Requests",
     path: "/faculty/requests",
   },
-  { icon: History, label: "Consultation History", path: "/faculty/history" },
   {
     icon: CalendarClock,
-    label: "Manage Availability",
+    label: "Availability & Calendar",
     path: "/faculty/availability",
+    activePaths: ["/faculty/calendar"],
   },
+  {
+    icon: CalendarDays,
+    label: "My Consultations",
+    path: "/faculty/consultations",
+  },
+  { icon: History, label: "Consultation History", path: "/faculty/history" },
+  { icon: FileBarChart, label: "Reports", path: "/faculty/reports" },
   { icon: Bell, label: "Notifications", path: "/faculty/notifications" },
-  { icon: UserRound, label: "Profile", path: "/faculty/profile" },
-  { icon: LockKeyhole, label: "Security Settings", path: "/faculty/security" },
+  { icon: UserRound, label: "Account Settings", path: "/faculty/account" },
 ];
 export default function FacultyLayout() {
-  return <><RoleLayout role="faculty" navigation={navigation} /><SOCConsultFacultyAIAssistant /></>;
+  const { user, recommendPasswordChange } = useAuth();
+  const location = useLocation();
+  if (user?.role === "dean")
+    return (
+      <Navigate
+        to={legacyFacultyDestination(
+          location.pathname,
+          location.search,
+          location.hash,
+        )}
+        replace
+      />
+    );
+  return (
+    <>
+      {recommendPasswordChange && <div role="status" className="bg-amber-50 p-3 text-sm text-amber-900 lg:ml-72">
+        We recommend changing your initial password. <Link to="/faculty/account" className="font-semibold underline">Account Settings</Link>
+      </div>}
+      <RoleLayout role="faculty" navigation={navigation} />
+    </>
+  );
 }

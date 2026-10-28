@@ -26,13 +26,13 @@ describe("Student appointment timestamp classification", () => {
     );
     const happening = appointment(
       "happening",
-      "Approved",
+      "Confirmed",
       "2026-08-17T05:30:00.000Z",
       "2026-08-17T06:30:00.000Z",
     );
     const tomorrow = appointment(
       "tomorrow",
-      "Needs Reschedule",
+      "Reschedule Proposed",
       "2026-08-18T05:00:00.000Z",
       "2026-08-18T05:30:00.000Z",
     );
@@ -45,7 +45,7 @@ describe("Student appointment timestamp classification", () => {
   it("uses the exact end boundary and classifies yesterday as history", () => {
     const justFinished = appointment(
       "boundary",
-      "Approved",
+      "Confirmed",
       "2026-08-17T05:30:00.000Z",
       "2026-08-17T06:00:00.000Z",
     );
@@ -56,19 +56,21 @@ describe("Student appointment timestamp classification", () => {
       "2026-08-16T05:30:00.000Z",
     );
     assert.equal(isAppointmentPast(justFinished, now), true);
-    assert.equal(isStudentHistoryAppointment(justFinished, now), true);
-    assert.equal(isStudentHistoryAppointment(yesterday, now), true);
+    assert.equal(isStudentHistoryAppointment(justFinished, now), false);
+    assert.equal(isStudentHistoryAppointment(yesterday, now), false);
   });
 
   it("moves every past status to history without rewriting the status", () => {
     const statuses = [
       "Pending",
-      "Approved",
-      "Needs Reschedule",
+      "Confirmed",
+      "Reschedule Proposed",
+      "Awaiting Attendance Update",
+      "Attendance Review",
       "Completed",
       "Cancelled",
       "Rejected",
-      "No Show",
+      "Expired",
     ];
     const records = statuses.map((status, index) =>
       appointment(
@@ -79,15 +81,15 @@ describe("Student appointment timestamp classification", () => {
       ),
     );
     const result = classifyStudentAppointments(records, now);
-    assert.equal(result.current.length, 0);
-    assert.equal(result.history.length, statuses.length);
+    assert.equal(result.current.length, 5);
+    assert.equal(result.history.length, 4);
     assert.deepEqual(
-      new Set(result.history.map((item) => item.status)),
+      new Set([...result.current, ...result.history].map((item) => item.status)),
       new Set(statuses),
     );
     assert.equal(
-      records.find((item) => item.status === "Approved").status,
-      "Approved",
+      records.find((item) => item.status === "Confirmed").status,
+      "Confirmed",
     );
   });
 
@@ -101,7 +103,7 @@ describe("Student appointment timestamp classification", () => {
       ),
       appointment(
         "nearer",
-        "Approved",
+        "Confirmed",
         "2026-08-17T07:00:00.000Z",
         "2026-08-17T07:30:00.000Z",
       ),
@@ -113,7 +115,7 @@ describe("Student appointment timestamp classification", () => {
       ),
       appointment(
         "older",
-        "No Show",
+        "Expired",
         "2026-08-15T07:00:00.000Z",
         "2026-08-15T07:30:00.000Z",
       ),
@@ -133,7 +135,7 @@ describe("Student appointment timestamp classification", () => {
   it("keeps an unscheduled request current without inventing a date, then archives a rejection", () => {
     const request = {
       _id: "schedule-request",
-      status: "Awaiting Faculty Schedule",
+      status: "Pending",
       startAt: null,
       endAt: null,
     };

@@ -1,22 +1,25 @@
+import { recommendInitialPasswordChange } from "../services/facultyPasswordRecommendation.js";
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import AuditLog from "../models/AuditLog.js";
+import { migrateDeanAccount } from "../services/deanAccountMigrationService.js";
 import { env } from "../config/env.js";
-import { STUDENT_PROGRAMS } from "../config/programs.js";
+import { eligibleRegistrationState } from "../services/accountEligibility.js";
+import {
+  formatFullName,
+  validatePersonName,
+} from "../services/personNameService.js";
 import {
   cloudinaryReference,
   destroyAsset,
   uploadBuffer,
 } from "../services/cloudinaryStorage.js";
 
+import { logActivity, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
+
 const normalize = (value = "") => value.trim().toLowerCase();
-const validEmail = (email, domain) => {
-  const normalized = normalize(email);
-  const emailDomain = normalized.slice(normalized.lastIndexOf("@") + 1);
-  return (
-    /^[^\s@]+@[^\s@]+$/.test(normalized) && emailDomain === normalize(domain)
-  );
-};
 const validPassword = (password) =>
   password.length >= 8 &&
   !/\s/.test(password) &&
@@ -24,10 +27,12 @@ const validPassword = (password) =>
   /[0-9]/.test(password);
 const passwordValidationMessage =
   "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed.";
-import { logActivity, notify } from "../services/activityService.js";
 const publicUser = (user) => ({
   id: user.id,
-  name: user.name,
+  firstName: user.firstName || "",
+  middleName: user.middleName || "",
+  lastName: user.lastName || "",
+  name: formatFullName(user),
   email: user.email,
   username: user.username,
   role: user.role,
@@ -39,6 +44,10 @@ const publicUser = (user) => ({
   office: user.office,
   specialization: user.specialization,
   contactNumber: user.contactNumber,
+  ...(user.role === "student"
+    ? { institutionalId: user.institutionalId }
+    : {}),
+  ...(user.role === "dean" ? { institutionalId: user.institutionalId, accountSource: user.accountSource, accountStatus: user.accountStatus, passwordChangedAt: user.passwordChangedAt } : {}),
   profilePicture:
     typeof user.profilePicture === "string"
       ? user.profilePicture
@@ -47,155 +56,124 @@ const publicUser = (user) => ({
 const tokenFor = (user) =>
   jwt.sign({ sub: user.id }, env.jwtSecret, { expiresIn: "8h" });
 
-export async function register(req, res) {
-  const role = req.params.role;
-  if (!["student", "faculty"].includes(role))
-    return res
-      .status(404)
-      .json({ message: "Registration is unavailable for this role." });
-  const name = (req.body.name || "").trim();
-  const email = normalize(req.body.email);
-  const password = req.body.password || "";
-  const domain = role === "student" ? env.studentDomain : env.facultyDomain;
-  const roleLabel = role === "student" ? "student" : "faculty";
-  if (name.length < 2)
-    return res.status(400).json({ message: "Please enter your full name." });
-  if (!validEmail(email, domain)) {
-    return res.status(400).json({
-      message: `Please use your official Holy Angel University ${roleLabel} email (@${domain}).`,
-    });
-  }
-  if (!validPassword(password))
-    return res.status(400).json({ message: passwordValidationMessage });
-  const existing = await User.findOne({ email });
-  if (existing?.registrationStatus === "Pending")
-    return res.status(409).json({
-      message:
-        "An account with this email has already been created and is awaiting administrator approval. You do not need to register again.",
-    });
-  if (existing?.registrationStatus === "Approved")
-    return res.status(409).json({
-      message: "An account with this email already exists. Please log in.",
-    });
-  if (existing)
-    return res.status(409).json({
-      message:
-        "A registration with this email already exists. Please contact the School of Computing administrator.",
-    });
-  const idField = role === "student" ? "studentId" : "employeeId";
-  const idValue = (req.body[idField] || "").trim();
-  if (!idValue)
-    return res.status(400).json({
-      message: `${role === "student" ? "Student" : "Employee"} ID is required.`,
-    });
-  const program =
-    role === "student" ? (req.body.program || "").trim() : undefined;
-  if (role === "student" && !STUDENT_PROGRAMS.includes(program))
-    return res.status(400).json({ message: "Please select your program." });
-  const position =
-    role === "faculty" ? (req.body.position || "").trim() : undefined;
-  if (role === "faculty" && !position)
-    return res
-      .status(400)
-      .json({ message: "Position / Designation is required." });
-  const user = await User.create({
-    name,
-    email,
-    password: await bcrypt.hash(password, 12),
-    role,
-    [idField]: idValue,
-    program,
-    position,
-    registrationStatus: "Pending",
-    accountStatus: "Inactive",
-  });
-  await logActivity(`${role}_registered`, user.id, "User", user.id, { role });
-  const admins = await User.find({
-    role: "admin",
-    accountStatus: "Active",
-  }).select("_id");
-  await Promise.all(
-    admins.map((admin) =>
-      notify(
-        admin.id,
-        "registration",
-        `New ${role} registration`,
-        `${name} is awaiting approval.`,
-        user.id,
-      ),
-    ),
-  );
-  res.status(201).json({
-    message: "Registration submitted and awaiting administrator approval.",
-    user: publicUser(user),
-  });
-}
-
 export async function login(req, res) {
   const requestedRole = req.params.role;
-  if (!["student", "faculty", "admin"].includes(requestedRole))
+  if (!["student", "faculty", "dean"].includes(requestedRole))
     return res.status(404).json({ message: "Unknown role." });
-  const password = req.body.password || "";
-  if (!validPassword(password))
-    return res.status(400).json({ message: passwordValidationMessage });
-  const identifier = normalize(
-    req.body.identifier || req.body.email || req.body.username,
-  );
+  const fail = async (user) => {
+    if (["dean", "faculty"].includes(requestedRole)) {
+      await recordAuditEvent({
+        subjectUser: user?.id,
+        actorRole: "system",
+        action: "login_failed",
+        category: "Authentication",
+        description: "Failed sign-in",
+        metadata: { role: requestedRole },
+      });
+    }
+    return res.status(401).json({ ...(requestedRole === "faculty" && { code: "INVALID_CREDENTIALS" }), message: "Invalid credentials." });
+  };
+  const password = req.body?.password;
+  const rawIdentifier = req.body?.identifier ?? req.body?.email ?? req.body?.username;
+  if (typeof rawIdentifier !== "string" || typeof password !== "string")
+    return fail();
+  const identifier = normalize(rawIdentifier);
+  if (!identifier || !password) return fail();
   const user = await User.findOne(
-    requestedRole === "admin"
+    requestedRole === "dean"
       ? { username: identifier }
       : { email: identifier },
   ).select("+password +profilePicture");
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message: "Invalid credentials." });
+  if (!user) {
+    if (requestedRole === "student")
+      return res.status(404).json({
+        message: "No Student account was found for this email.",
+      });
+    return fail();
   }
+  if (!(await bcrypt.compare(password, user.password))) {
+    if (requestedRole === "student")
+      return res.status(401).json({ message: "Incorrect email or password." });
+    return fail(user);
+  }
+  if (requestedRole === "dean" &&
+      (user.role !== "dean" || user.accountStatus !== "Active"))
+    return fail(user);
+  if (requestedRole === "faculty" && (user.role !== "faculty" || user.accountStatus !== "Active" || !eligibleRegistrationState(user))) return fail(user);
   // The stored database role—not the selected frontend role—is authoritative.
   if (user.role !== requestedRole)
     return res
       .status(403)
       .json({ message: "This account cannot access the selected portal." });
-  if (user.role !== "admin" && user.registrationStatus === "Pending")
-    return res.status(403).json({
-      message:
-        "Your account has already been created. Please wait for an administrator to approve your registration before you can access SOCConsult. You do not need to register again.",
-    });
-  if (user.role !== "admin" && user.registrationStatus === "Rejected")
-    return res.status(403).json({
-      message:
-        "Your registration was not approved. Please contact the system administrator if you believe this requires review.",
-    });
+  if (!eligibleRegistrationState(user))
+    return res.status(403).json({ message: "Account access is unavailable. Please contact the Dean for assistance." });
   if (user.accountStatus !== "Active")
     return res.status(403).json({
       message:
-        "Your account is currently inactive. Please contact the system administrator for assistance.",
+        "Your account is currently inactive. Please contact the Dean for assistance.",
     });
-  await logActivity("login", user.id, "User", user.id, { role: user.role });
-  res.json({ token: tokenFor(user), user: publicUser(user) });
+  if (user.role === "dean") { try { await recordAuthenticationAudit(user, "login"); } catch { return res.status(503).json({ message: "Sign-in temporarily unavailable." }); }
+  } else await logActivity("login", user.id, "User", user.id, { role: user.role });
+  res.json({ token: tokenFor(user), user: publicUser(user),
+    ...(user.role === "faculty" && { recommendPasswordChange: await recommendInitialPasswordChange(user) }),
+  });
+}
+
+// Logout records activity; JWT expiry remains the existing session boundary.
+export async function logout(req, res) {
+  if (req.user.role === "dean") { try { await recordAuthenticationAudit(req.user, "logout"); } catch { return res.status(503).json({ message: "Unable to record sign-out." }); }
+  } else await logActivity("logout", req.user.id, "User", req.user.id, { role: req.user.role });
+  res.json({ message: "Signed out successfully." });
 }
 
 export async function me(req, res) {
   const user = await User.findById(req.user.id).select("+profilePicture");
+  if (!user) return res.status(401).json({ message: "Authentication required." });
   res.json({ user: publicUser(user) });
 }
 
 export async function updateProfile(req, res) {
-  const allowed = [
-    "name",
-    "program",
-    "yearLevel",
-    "position",
-    "office",
-    "specialization",
-    "contactNumber",
-  ];
+  const allowed = req.user.role === "student"
+    ? ["contactNumber"]
+    : req.user.role === "dean"
+      ? ["firstName", "middleName", "lastName", "office", "contactNumber"]
+      : ["firstName", "middleName", "lastName", "position", "office", "specialization", "contactNumber"];
+  if (!req.body || Array.isArray(req.body) || typeof req.body !== "object" ||
+      Object.keys(req.body).some(key => !allowed.includes(key)) ||
+      Object.entries(req.body).some(([key, value]) => typeof value !== "string" ||
+        value.length > (["office", "contactNumber"].includes(key) ? 100 : 500) || /[\x00-\x1f\x7f-\x9f]/.test(value)))
+    return res.status(400).json({ message: "Invalid profile update." });
   const updates = Object.fromEntries(
     allowed
-      .filter((key) => req.body[key] !== undefined)
+      .filter((key) => !["firstName", "middleName", "lastName"].includes(key) && req.body[key] !== undefined)
       .map((key) => [key, String(req.body[key]).trim()]),
   );
-  if (req.user.role !== "faculty") delete updates.position;
+  const hasNameUpdate = ["firstName", "middleName", "lastName"].some(
+    (key) => req.body[key] !== undefined,
+  );
+  if (hasNameUpdate) {
+    const existing = await User.findById(req.user.id).select(
+      "firstName middleName lastName name",
+    );
+    if (!existing)
+      return res.status(404).json({ message: "User not found." });
+    const nameValidation = validatePersonName({
+      firstName: req.body.firstName ?? existing.firstName,
+      middleName: req.body.middleName ?? existing.middleName,
+      lastName: req.body.lastName ?? existing.lastName,
+    });
+    if (!nameValidation.valid)
+      return res.status(400).json({
+        message: "Please correct the highlighted name fields.",
+        errors: nameValidation.errors,
+      });
+    Object.assign(updates, nameValidation.values, {
+      name: formatFullName(nameValidation.values),
+    });
+  }
+  if (!["faculty", "dean"].includes(req.user.role)) delete updates.position;
   if (
-    req.user.role === "faculty" &&
+    ["faculty", "dean"].includes(req.user.role) &&
     req.body.position !== undefined &&
     !updates.position
   )
@@ -206,6 +184,11 @@ export async function updateProfile(req, res) {
     new: true,
     runValidators: true,
   }).select("-password +profilePicture");
+  if (!user) return res.status(409).json({ message: "Account changed. Refresh before trying again." });
+  await logActivity("profile_updated", req.user.id, "User", req.user.id, {
+    role: req.user.role,
+    fieldNames: Object.keys(updates),
+  });
   res.json({
     message: "Profile updated successfully.",
     user: publicUser(user),
@@ -213,6 +196,8 @@ export async function updateProfile(req, res) {
 }
 
 export async function updateProfilePicture(req, res) {
+  if (req.body && Object.keys(req.body).length)
+    return res.status(400).json({ message: "Invalid profile picture request." });
   if (!req.file)
     return res
       .status(400)
@@ -220,8 +205,9 @@ export async function updateProfilePicture(req, res) {
   const currentUser = await User.findById(req.user.id).select(
     "+profilePicture",
   );
+  if (!currentUser) return res.status(401).json({ message: "Authentication required." });
   const uploaded = await uploadBuffer(req.file.buffer, {
-    folder: `consultio/profile-pictures/${req.user.role === "student" ? "students" : "faculty"}`,
+    folder: `consultio/profile-pictures/${req.user.role === "student" ? "students" : req.user.role === "dean" ? "deans" : "faculty"}`,
     resource_type: "image",
     transformation: [
       { width: 1000, height: 1000, crop: "limit", quality: "auto" },
@@ -230,8 +216,8 @@ export async function updateProfilePicture(req, res) {
   const profilePicture = cloudinaryReference(uploaded);
   let user;
   try {
-    user = await User.findByIdAndUpdate(
-      req.user.id,
+    user = await User.findOneAndUpdate(
+      { _id: req.user.id, profilePicture: currentUser?.profilePicture ?? null },
       { profilePicture },
       { new: true, runValidators: true },
     ).select("+profilePicture");
@@ -243,6 +229,13 @@ export async function updateProfilePicture(req, res) {
   const previous = currentUser?.profilePicture;
   if (previous && typeof previous !== "string")
     await destroyAsset(previous).catch(() => {});
+  await logActivity(
+    "profile_picture_updated",
+    req.user.id,
+    "User",
+    req.user.id,
+    { role: req.user.role },
+  );
   res.json({
     message: "Profile picture updated successfully.",
     user: publicUser(user),
@@ -250,17 +243,27 @@ export async function updateProfilePicture(req, res) {
 }
 
 export async function removeProfilePicture(req, res) {
+  if (req.body && Object.keys(req.body).length)
+    return res.status(400).json({ message: "Invalid profile picture request." });
   const currentUser = await User.findById(req.user.id).select(
     "+profilePicture",
   );
-  const user = await User.findByIdAndUpdate(
-    req.user.id,
+  const user = await User.findOneAndUpdate(
+    { _id: req.user.id, profilePicture: currentUser?.profilePicture ?? null },
     { $unset: { profilePicture: 1 } },
     { new: true },
   ).select("+profilePicture");
+  if (!user) return res.status(409).json({ message: "Account changed. Refresh before trying again." });
   const previous = currentUser?.profilePicture;
   if (previous && typeof previous !== "string")
     await destroyAsset(previous).catch(() => {});
+  await logActivity(
+    "profile_picture_removed",
+    req.user.id,
+    "User",
+    req.user.id,
+    { role: req.user.role },
+  );
   res.json({
     message: "Profile picture removed successfully.",
     user: publicUser(user),
@@ -268,46 +271,57 @@ export async function removeProfilePicture(req, res) {
 }
 
 export async function changePassword(req, res) {
-  const currentPassword = req.body.currentPassword || "";
-  const newPassword = req.body.newPassword || "";
-  const confirmNewPassword = req.body.confirmNewPassword || "";
-  if (!currentPassword || !newPassword || !confirmNewPassword)
-    return res.status(400).json({
-      message:
-        "Current password, new password, and password confirmation are required.",
-    });
+  const keys = ["currentPassword", "newPassword", "confirmNewPassword"];
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !keys.includes(key)) ||
+      keys.some(key => typeof req.body[key] !== "string" || !req.body[key]))
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: "Current password, new password, and password confirmation are required." });
+  const { currentPassword, newPassword, confirmNewPassword } = req.body;
   if (newPassword !== confirmNewPassword)
-    return res.status(400).json({
-      message: "New password and confirmation do not match.",
-    });
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: "New password and confirmation do not match." });
   if (!validPassword(newPassword))
-    return res.status(400).json({ message: passwordValidationMessage });
-
-  const user = await User.findById(req.user.id).select("+password");
-  if (!user || !(await bcrypt.compare(currentPassword, user.password)))
-    return res.status(400).json({ message: "Current password is incorrect." });
-  if (await bcrypt.compare(newPassword, user.password))
-    return res.status(400).json({
-      message: "New password must be different from your current password.",
-    });
-
-  user.password = await bcrypt.hash(newPassword, 12);
-  user.passwordChangedAt = new Date();
-  await user.save();
-  await logActivity("password_changed", user.id, "User", user.id, {
-    role: user.role,
-  });
-  res.json({ message: "Password changed successfully." });
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: passwordValidationMessage });
+  let session;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user.id).select("+password").session(session);
+      if (!user || user.accountStatus !== "Active" || user.role !== req.user.role ||
+          !(await bcrypt.compare(currentPassword, user.password))) {
+        const error = new Error("Unable to change password. Check your input and try again.");
+        error.statusCode = 400; error.code = "PASSWORD_INPUT_INVALID"; throw error;
+      }
+      if (await bcrypt.compare(newPassword, user.password)) {
+        const error = new Error("New password must be different from your current password.");
+        error.statusCode = 400; error.code = "PASSWORD_SAME"; throw error;
+      }
+      const timestamp = new Date();
+      const updated = await User.updateOne({ _id: user._id, password: user.password, accountStatus: "Active", role: user.role },
+        { $set: { password: await bcrypt.hash(newPassword, 12), passwordChangedAt: timestamp } }, { session, runValidators: true });
+      if (updated.modifiedCount !== 1) throw new Error("Concurrent password update");
+      await AuditLog.create([{
+        subjectUser: user._id, subjectRole: user.role, actorUser: user._id, actorRole: user.role,
+        action: "password_changed", category: "Account", description: "Password changed",
+        relatedEntityType: "User", relatedEntityId: user._id,
+      }], { session });
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
+    res.json({ message: "Password changed successfully." });
+  } catch (error) {
+    const uncertain = error.hasErrorLabel?.("UnknownTransactionCommitResult");
+    res.status(error.statusCode === 400 ? 400 : 503).json({ code: error.statusCode === 400 ? error.code : uncertain ? "PASSWORD_CHANGE_UNCERTAIN" : "PASSWORD_CHANGE_UNAVAILABLE", message: error.statusCode === 400 ? error.message :
+      uncertain ? "Unable to confirm password change. Try signing in before retrying." : "Password change is temporarily unavailable." });
+  } finally {
+    if (session) await session.endSession().catch(() => {});
+  }
 }
 
-export async function ensureAdmin() {
-  const existing = await User.findOne({ role: "admin" });
-  if (existing) return;
+export async function ensureDean() {
+  const result = await migrateDeanAccount({ users: User.collection, auditLogs: AuditLog.collection, username: env.deanUsername });
+  if (result.status !== "missing") return;
   await User.create({
-    name: "SOCConsult Administrator",
-    username: env.adminUsername,
-    password: await bcrypt.hash(env.adminPassword, 12),
-    role: "admin",
+    name: "SOCConsult Dean",
+    username: env.deanUsername,
+    password: await bcrypt.hash(env.deanPassword, 12),
+    role: "dean",
     registrationStatus: "Approved",
     accountStatus: "Active",
   });

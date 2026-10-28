@@ -29,6 +29,7 @@ const availabilitySchema = new mongoose.Schema(
       select: false,
     },
     isActive: { type: Boolean, default: true, index: true },
+    reservationToken: { type: String, select: false, index: true },
     expirationNotified: { type: Boolean, default: false, index: true },
   },
   { timestamps: true },

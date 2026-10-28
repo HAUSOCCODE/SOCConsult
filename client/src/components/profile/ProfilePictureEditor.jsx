@@ -1,3 +1,5 @@
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { deanUiError } from "../../utils/deanUiErrors";
 import { Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -14,6 +16,10 @@ export default function ProfilePictureEditor() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [selection, setSelection] = useState(null);
   const [removing, setRemoving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -23,17 +29,19 @@ export default function ProfilePictureEditor() {
     [selection],
   );
 
+  const dialogOpen = Boolean(selection || removing);
+  useDialogFocus(dialogRef, { open: dialogOpen, busy, onClose: () => { if (!pending.current) resetDialog(); } });
   const resetDialog = () => {
     setSelection(null);
     setRemoving(false);
     if (inputRef.current) inputRef.current.value = "";
   };
   const close = () => {
-    if (!busy) resetDialog();
+    if (!pending.current) resetDialog();
   };
   const choose = (event) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || pending.current) return;
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!allowedTypes.has(file.type) || !allowedExtensions.has(extension)) {
       toast.error("Please select a valid image file.");
@@ -48,7 +56,8 @@ export default function ProfilePictureEditor() {
     setSelection({ file, preview: URL.createObjectURL(file) });
   };
   const save = async () => {
-    if (!selection || busy) return;
+    if (!selection || pending.current) return;
+    pending.current = true;
     setBusy(true);
     try {
       const body = new FormData();
@@ -57,26 +66,35 @@ export default function ProfilePictureEditor() {
         method: "PATCH",
         body,
       });
+      if (!mounted.current) return;
       updateUser(data.user);
       toast.success("Profile picture updated successfully.");
+      pending.current = false;
       setBusy(false);
       resetDialog();
     } catch (error) {
-      toast.error(error.message || "Unable to upload profile picture.");
+      if (!mounted.current) return;
+      toast.error(deanUiError(error, "avatar"));
+      pending.current = false;
       setBusy(false);
     }
   };
   const remove = async () => {
-    if (busy) return;
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     try {
       const data = await api("/auth/me/profile-picture", { method: "DELETE" });
+      if (!mounted.current) return;
       updateUser(data.user);
       toast.success("Profile picture removed successfully.");
+      pending.current = false;
       setBusy(false);
       resetDialog();
     } catch (error) {
-      toast.error(error.message || "Unable to remove profile picture.");
+      if (!mounted.current) return;
+      toast.error(deanUiError(error, "avatar"));
+      pending.current = false;
       setBusy(false);
     }
   };
@@ -118,6 +136,7 @@ export default function ProfilePictureEditor() {
         <input
           ref={inputRef}
           type="file"
+          aria-label="Choose profile photo"
           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
           onChange={choose}
           className="sr-only"
@@ -132,6 +151,9 @@ export default function ProfilePictureEditor() {
             }
           >
             <section
+              ref={dialogRef}
+              tabIndex={-1}
+              aria-busy={busy}
               role="dialog"
               aria-modal="true"
               aria-labelledby="profile-picture-title"
@@ -154,9 +176,10 @@ export default function ProfilePictureEditor() {
                   onClick={() => close()}
                   className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
                 >
-                  <X />
+                  <X aria-hidden="true" />
                 </button>
               </div>
+              {busy && <p role="status">{removing ? "Removing profile picture..." : "Uploading profile picture..."}</p>}
               {removing ? (
                 <p className="mt-4 text-sm leading-6 text-slate-600">
                   Your profile will return to the default initial avatar.

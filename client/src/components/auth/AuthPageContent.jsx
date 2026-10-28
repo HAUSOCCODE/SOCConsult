@@ -1,119 +1,62 @@
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import Brand from "../Brand";
 import { useAuth } from "../../context/AuthContext";
-import { api } from "../../api/apiClient";
-import {
-  FACULTY_POSITIONS,
-  OTHER_POSITION,
-} from "../../config/facultyPositions";
 const labels = {
   student: "Student",
   faculty: "Faculty Member",
-  admin: "Administrator",
+  dean: "Dean",
 };
-const studentPrograms = [
-  "Bachelor of Science in Information Technology",
-  "Bachelor of Science in Computer Science",
-  "Bachelor of Science in Cybersecurity",
-  "Bachelor of Science in Data Science",
-];
-const pendingMessage =
-  "Your account has already been created. Please wait for an administrator to approve your registration before you can access SOCConsult. You do not need to register again.";
-const rejectedMessage =
-  "Your registration was not approved. Please contact the system administrator if you believe this requires review.";
 const inactiveMessage =
-  "Your account is currently inactive. Please contact the system administrator for assistance.";
+  "Your account is currently inactive. Please contact the Dean for assistance.";
+const expiredSessionMessage =
+  "Your session has expired. Please log in again.";
 const errorTitle = (message) => {
-  if (message === pendingMessage) return "Account Pending Approval";
-  if (message === rejectedMessage) return "Registration Not Approved";
   if (message === inactiveMessage) return "Account Inactive";
+  if (message === expiredSessionMessage) return "Session Expired";
   return "Unable to Continue";
 };
-export default function AuthPageContent({ mode, role: fixedRole }) {
+export default function AuthPageContent({ role: fixedRole }) {
   const { role: routeRole } = useParams();
   const role = fixedRole || routeRole;
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    identifier: "",
-    password: "",
-    studentId: "",
-    employeeId: "",
-    program: "",
-    position: "",
-    customPosition: "",
-  });
+  const { login, loading } = useAuth();
+  const pending = useRef(false);
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    setSuccess("");
-    setError("");
-  }, [mode, role]);
-  if (!labels[role] || (role === "admin" && mode === "register"))
+    let sessionMessage = "";
+    if (role === "student") {
+      sessionMessage =
+        sessionStorage.getItem("socconsult_student_session_message") || "";
+      sessionStorage.removeItem("socconsult_student_session_message");
+    }
+    setError(sessionMessage);
+  }, [role]);
+  if (!labels[role])
     return <Navigate to="/get-started" replace />;
   const domain = role === "student" ? "student.hau.edu.ph" : "hau.edu.ph";
   const submit = async (e) => {
     e.preventDefault();
+    if (pending.current || (role === "faculty" && loading)) return;
+    pending.current = true;
     setError("");
     setBusy(true);
     try {
-      if (mode === "register") {
-        if (role === "faculty" && !form.position) {
-          setError("Position / Designation is required.");
-          setBusy(false);
-          return;
-        }
-        if (
-          role === "faculty" &&
-          form.position === OTHER_POSITION &&
-          !form.customPosition.trim()
-        ) {
-          setError("Position / Designation is required.");
-          setBusy(false);
-          return;
-        }
-        const { customPosition, ...registrationForm } = form;
-        const normalized = {
-          ...registrationForm,
-          email: form.email.trim().toLowerCase(),
-          position:
-            role === "faculty"
-              ? form.position === OTHER_POSITION
-                ? customPosition.trim()
-                : form.position
-              : undefined,
-        };
-        await api(`/auth/register/${role}`, {
-          method: "POST",
-          body: JSON.stringify(normalized),
-        });
-        setSuccess(
-          "Your account has been created and your registration has been submitted. Please wait for an administrator to approve your account before logging in.",
-        );
-      } else {
-        const logged = await login(role, {
-          identifier: form.identifier.trim().toLowerCase(),
-          password: form.password,
-        });
-        navigate(`/${logged.role}/dashboard`, { replace: true });
-      }
+      const logged = await login(role, {
+        identifier: form.identifier.trim().toLowerCase(),
+        password: form.password,
+      });
+      navigate(`/${logged.role}/dashboard`, { replace: true });
     } catch (e) {
       setError(e.message);
     } finally {
+      pending.current = false;
       setBusy(false);
     }
-  };
-  const goToLogin = () => {
-    setSuccess("");
-    setError("");
-    setForm((current) => ({ ...current, password: "", identifier: "" }));
-    navigate(`/${role}/login`, { replace: true });
   };
   return (
     <main className="grid min-h-screen grid-cols-1 bg-white lg:grid-cols-2">
@@ -145,12 +88,10 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
             Back to role selection
           </Link>
           <h2 className="mt-8 break-words font-display text-2xl font-bold text-maroon-900 sm:text-3xl">
-            {labels[role]} {mode === "login" ? "Login" : "Registration"}
+            {labels[role]} Login
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            {mode === "login"
-              ? "Welcome back. Enter your account details."
-              : `Use your official @${domain} email to register.`}
+            Welcome back. Enter your account details.
           </p>
           {error && (
             <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -158,206 +99,48 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
               <p className="mt-1">{error}</p>
             </div>
           )}
-          {success ? (
-            <div className="mt-6 rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-800">
-              <p className="font-bold">Account Created Successfully</p>
-              <p className="mt-2">{success}</p>
-              <p className="mt-2">
-                You can return to the login page while waiting for approval.
-              </p>
-              <button
-                type="button"
-                onClick={goToLogin}
-                className="mt-4 font-bold underline"
-              >
-                Go to Login
-              </button>
-            </div>
-          ) : (
             <form onSubmit={submit} className="mt-7">
               <div className="grid gap-5 sm:grid-cols-2">
-                {mode === "register" && (
-                  <>
-                    <Field label="Full name">
-                      <input
-                        className="field"
-                        required
-                        minLength="2"
-                        value={form.name}
-                        onChange={(e) =>
-                          setForm({ ...form, name: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label={role === "student" ? "Student ID" : "Employee ID"}
-                    >
-                      <input
-                        className="field"
-                        required
-                        value={
-                          form[role === "student" ? "studentId" : "employeeId"]
-                        }
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            [role === "student" ? "studentId" : "employeeId"]:
-                              e.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label={
-                        role === "student"
-                          ? "Program"
-                          : "Position / Designation"
-                      }
-                    >
-                      {role === "student" ? (
-                        <select
-                          className="field"
-                          required
-                          value={form.program}
-                          onInvalid={(e) =>
-                            e.currentTarget.setCustomValidity(
-                              "Please select your program.",
-                            )
-                          }
-                          onChange={(e) => {
-                            e.currentTarget.setCustomValidity("");
-                            setForm({ ...form, program: e.target.value });
-                          }}
-                        >
-                          <option value="">Select your program</option>
-                          {studentPrograms.map((program) => (
-                            <option key={program} value={program}>
-                              {program}
-                            </option>
-                          ))}
-                        </select>
-                      ) : form.position === OTHER_POSITION ? (
-                        <span className="block">
-                          <input
-                            className="field"
-                            required
-                            autoFocus
-                            placeholder="Enter your position or designation"
-                            value={form.customPosition}
-                            onInvalid={(e) =>
-                              e.currentTarget.setCustomValidity(
-                                "Position / Designation is required.",
-                              )
-                            }
-                            onChange={(e) => {
-                              e.currentTarget.setCustomValidity("");
-                              setForm({
-                                ...form,
-                                customPosition: e.target.value,
-                              });
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setForm({
-                                ...form,
-                                position: "",
-                                customPosition: "",
-                              })
-                            }
-                            className="mt-1.5 text-xs font-semibold text-maroon-800 hover:underline"
-                          >
-                            Choose from list
-                          </button>
-                        </span>
-                      ) : (
-                        <select
-                          className="field"
-                          required
-                          value={form.position}
-                          onInvalid={(e) =>
-                            e.currentTarget.setCustomValidity(
-                              "Position / Designation is required.",
-                            )
-                          }
-                          onChange={(e) => {
-                            e.currentTarget.setCustomValidity("");
-                            setForm({
-                              ...form,
-                              position: e.target.value,
-                              customPosition: "",
-                            });
-                          }}
-                        >
-                          <option value="">
-                            Select position / designation
-                          </option>
-                          {FACULTY_POSITIONS.map((position) => (
-                            <option key={position} value={position}>
-                              {position}
-                            </option>
-                          ))}
-                          <option value={OTHER_POSITION}>
-                            {OTHER_POSITION}
-                          </option>
-                        </select>
-                      )}
-                    </Field>
-                  </>
-                )}
                 <Field
                   label={
-                    role === "admin"
+                    role === "dean"
                       ? "Username"
                       : `Official HAU ${role === "student" ? "Student" : "Faculty"} Email`
                   }
-                  wide={mode === "login"}
+                  wide
                 >
                   <input
                     className="field"
                     required
-                    type={role === "admin" ? "text" : "email"}
-                    value={mode === "login" ? form.identifier : form.email}
+                    type={role === "dean" ? "text" : "email"}
+                    value={form.identifier}
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        [mode === "login" ? "identifier" : "email"]:
-                          e.target.value,
+                        identifier: e.target.value,
                       })
                     }
                     placeholder={
-                      role === "admin"
-                        ? "Administrator username"
+                      role === "dean"
+                        ? "Dean username"
                         : `name@${domain}`
-                    }
-                    pattern={
-                      mode === "register"
-                        ? `[^@\\s]+@${domain.replaceAll(".", "\\.")}`
-                        : undefined
                     }
                   />
                 </Field>
                 <Field
                   label="Password"
-                  wide={
-                    mode === "login" ||
-                    (mode === "register" && role === "faculty")
-                  }
+                  wide
                 >
                   <div className="relative">
                     <input
                       className="field pr-12"
                       required
-                      minLength="8"
-                      pattern="(?=.*[A-Z])(?=.*[0-9])\S{8,}"
-                      title="Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed."
                       type={show ? "text" : "password"}
                       value={form.password}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          password: e.target.value.replace(/\s/g, ""),
+                          password: e.target.value,
                         })
                       }
                     />
@@ -372,54 +155,32 @@ export default function AuthPageContent({ mode, role: fixedRole }) {
                 </Field>
               </div>
               <button
-                disabled={busy}
+                disabled={busy || (role === "faculty" && loading)}
                 className="btn-primary mt-6 w-full disabled:opacity-50"
               >
-                {busy
-                  ? "Please wait..."
-                  : mode === "login"
-                    ? "Log In"
-                    : "Create Account"}
+                {busy ? "Please wait..." : "Log In"}
               </button>
               <p className="mt-5 text-center text-sm text-slate-500">
-                {mode === "login" && role !== "admin" ? (
-                  <>
-                    New to SOCConsult?{" "}
-                    <Link
-                      className="font-bold text-maroon-800"
-                      to={`/${role}/register`}
-                    >
-                      Register
-                    </Link>
-                  </>
-                ) : mode === "register" ? (
-                  <>
-                    Already registered?{" "}
-                    <Link
-                      className="font-bold text-maroon-800"
-                      to={`/${role}/login`}
-                    >
-                      Log in
-                    </Link>
-                  </>
-                ) : (
-                  <>Administrator accounts are issued privately.</>
-                )}
+                Accounts are provided by the School of Computing. Contact the Dean for access assistance.
               </p>
             </form>
-          )}
         </div>
       </section>
     </main>
   );
 }
-function Field({ label, children, wide = false }) {
+function Field({ label, children, wide = false, error = "" }) {
   return (
     <label
       className={`block text-sm font-semibold ${wide ? "sm:col-span-2" : ""}`}
     >
       <span className="mb-2 block">{label}</span>
       {children}
+      {error && (
+        <span className="mt-1.5 block text-xs font-medium text-red-700">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

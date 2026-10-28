@@ -1,5 +1,8 @@
+import PersonalConsultationDetails from "./PersonalConsultationDetails";
+import { formatManilaDisplay } from "../../utils/formatDateTime";
+import useDialogFocus from "../../hooks/useDialogFocus";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
@@ -11,7 +14,7 @@ const safeDate = (value, options) => {
   if (!value) return "Not scheduled";
   const date = new Date(value);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila", ...options })
+    ? formatManilaDisplay(date, { timeZone: "Asia/Manila", ...options }, "timestamp")
     : "Not provided";
 };
 const clock = (value) =>
@@ -20,37 +23,30 @@ const clock = (value) =>
 export default function FacultyAppointmentDetailsModal({
   appointment,
   onClose,
-  onComplete,
   showFacultyInfo = false,
+  personal = false,
+  children,
+  opener,
+  onAttendanceSubmitted,
 }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [onClose]);
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, { onClose, restoreTarget: opener });
 
-  const canComplete =
-    typeof onComplete === "function" &&
-    ["Approved", "Rescheduled"].includes(appointment.status);
+
+
+  if (personal) return <PersonalConsultationDetails appointment={appointment} opener={opener} onClose={onClose} onAttendanceSubmitted={onAttendanceSubmitted}>{children}</PersonalConsultationDetails>;
 
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex h-[100dvh] w-full min-w-0 items-center justify-center bg-black/50 p-3 sm:p-4"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <section
+      <section ref={dialogRef} tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="faculty-appointment-title"
         onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
       >
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <div className="min-w-0">
@@ -64,7 +60,7 @@ export default function FacultyAppointmentDetailsModal({
               {appointment.subject || "Consultation"}
             </p>
             <div className="mt-2">
-              <StatusBadge status={appointment.status} />
+              <StatusBadge allowWrap appointment status={appointment.status} />
             </div>
           </div>
           <button
@@ -74,7 +70,7 @@ export default function FacultyAppointmentDetailsModal({
             aria-label="Close appointment details"
             className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-slate-100"
           >
-            <X />
+            <X aria-hidden="true" />
           </button>
         </header>
 
@@ -123,6 +119,7 @@ export default function FacultyAppointmentDetailsModal({
                 wide
               />
               <Detail label="Status" value={appointment.status} />
+              <Detail label="Final attendance outcome" value={appointment.attendanceSummary?.finalOutcome || "Unresolved / not verified"} />
               <Detail
                 label="Date Request Was Submitted"
                 value={safeDate(appointment.createdAt)}
@@ -200,38 +197,33 @@ export default function FacultyAppointmentDetailsModal({
             </Section>
           )}
 
-          {(appointment.rescheduleRequestStatus ||
-            appointment.rescheduleRequested) && (
-            <Section title="Reschedule Information">
-              <Detail
-                label="Status"
-                value={
-                  appointment.rescheduleRequestStatus ||
-                  (appointment.rescheduleRequested ? "Pending" : "Not provided")
-                }
-              />
-              <Detail
-                label="Requested"
-                value={safeDate(appointment.rescheduleRequestedAt)}
-              />
-              <Detail
-                label="Reason"
-                value={appointment.rescheduleRequestNote}
-                wide
-              />
-              {appointment.rescheduleReviewedAt && (
-                <Detail
-                  label="Reviewed"
-                  value={safeDate(appointment.rescheduleReviewedAt)}
-                />
-              )}
-              {appointment.rescheduleDecisionNote && (
-                <Detail
-                  label="Faculty Decision"
-                  value={appointment.rescheduleDecisionNote}
-                  wide
-                />
-              )}
+          {appointment.scheduleHistory?.length > 0 && (
+            <Section title="Reschedule History">
+              {appointment.scheduleHistory
+                .slice()
+                .reverse()
+                .map((entry) => (
+                  <div
+                    key={entry._id || entry.createdAt}
+                    className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <p className="font-bold text-amber-900">
+                      Rescheduled by {entry.initiatedByRole || "Faculty"}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      <strong>Previous:</strong>{" "}
+                      {safeDate(entry.previous?.startAt)} –{" "}
+                      {clock(entry.previous?.endAt)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      <strong>New:</strong> {safeDate(entry.next?.startAt)} –{" "}
+                      {clock(entry.next?.endAt)}
+                    </p>
+                    <p className="mt-1 break-words text-sm text-slate-700">
+                      <strong>Reason:</strong> {entry.reason}
+                    </p>
+                  </div>
+                ))}
             </Section>
           )}
 
@@ -246,11 +238,6 @@ export default function FacultyAppointmentDetailsModal({
           <button type="button" onClick={onClose} className="btn-secondary">
             Close
           </button>
-          {canComplete && (
-            <button type="button" onClick={onComplete} className="btn-primary">
-              Complete Consultation
-            </button>
-          )}
         </footer>
       </section>
     </div>,

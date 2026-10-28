@@ -1,113 +1,170 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import AttendanceReview from "./pages/Dean/AttendanceReview";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LandingPage from "./pages/Public/LandingPage";
 import RoleSelectionPage from "./pages/Public/RoleSelectionPage";
 import StudentLogin from "./pages/Auth/StudentLogin";
-import StudentRegister from "./pages/Auth/StudentRegister";
 import FacultyLogin from "./pages/Auth/FacultyLogin";
-import FacultyRegister from "./pages/Auth/FacultyRegister";
-import AdminLogin from "./pages/Auth/AdminLogin";
+import DeanLogin from "./pages/Auth/DeanLogin";
 import StudentLayout from "./layouts/StudentLayout";
 import StudentDashboard from "./pages/Student/StudentDashboard";
-import BookConsultation from "./pages/Student/BookConsultation";
+import FindFaculty from "./pages/Student/FindFaculty";
 import StudentAppointments from "./pages/Student/StudentAppointments";
 import StudentHistory from "./pages/Student/StudentConsultationHistory";
 import StudentNotifications from "./pages/Student/StudentNotifications";
-import StudentProfile from "./pages/Student/StudentProfile";
-import StudentSecuritySettings from "./pages/Student/StudentSecuritySettings";
+import StudentAvailability from "./pages/Student/StudentAvailability";
+import StudentCalendar from "./pages/Student/StudentCalendar";
+import StudentAccountSettings from "./pages/Student/StudentAccountSettings";
 import FacultyLayout from "./layouts/FacultyLayout";
 import FacultyDashboard from "./pages/Faculty/FacultyDashboard";
 import FacultyAppointments from "./pages/Faculty/FacultyAppointments";
+import FacultyConsultationCalendar from "./pages/Faculty/FacultyConsultationCalendar";
 import AppointmentRequests from "./pages/Faculty/AppointmentRequests";
 import FacultyHistory from "./pages/Faculty/FacultyConsultationHistory";
-import ManageAvailability from "./pages/Faculty/ManageAvailability";
+import FacultyReports from "./pages/Faculty/FacultyReports";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
-import FacultyProfile from "./pages/Faculty/FacultyProfile";
-import FacultySecuritySettings from "./pages/Faculty/FacultySecuritySettings";
-import AdminLayout from "./layouts/AdminLayout";
-import AdminDashboard from "./pages/Admin/AdminDashboard";
-import UserManagement from "./pages/Admin/UserManagement";
-import ConsultationOverview from "./pages/Admin/ConsultationOverview";
-import AppointmentsManagement from "./pages/Admin/AppointmentsManagement";
-import ReportsAnalytics from "./pages/Admin/ReportsAnalytics";
-import SystemSettings from "./pages/Admin/SystemSettings";
-import AdminNotifications from "./pages/Admin/AdminNotifications";
+import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
+import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
+import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
+import CsvImport from "./pages/Dean/CsvImport";
+import DeanLayout from "./layouts/DeanLayout";
+import DeanDashboard from "./pages/Dean/DeanDashboard";
+import UserManagement from "./pages/Dean/UserManagement";
+import ConsultationMonitoring from "./pages/Dean/ConsultationMonitoring";
+import { monitoringQuery } from "./utils/deanWorkspace";
+import ReportsAnalytics from "./pages/Dean/ReportsAnalytics";
+import DeanAccountSettings from "./pages/Dean/DeanAccountSettings";
+import DeanNotifications from "./pages/Dean/DeanNotifications";
+import AuditLogs from "./pages/Dean/AuditLogs";
 import NotFoundPage from "./pages/Public/NotFoundPage";
 import RouteDocumentTitle from "./components/RouteDocumentTitle";
+function DeanRouteRedirect({ to }) {
+  const location = useLocation();
+  return <Navigate to={to + location.search + location.hash} replace />;
+}
+function ConsultationMonitoringRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/dean/consultations${monitoringQuery(location.search)}`} replace />;
+}
 export default function App() {
   return (
     <>
       <RouteDocumentTitle />
       <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/get-started" element={<RoleSelectionPage />} />
-      <Route path="/student/login" element={<StudentLogin />} />
-      <Route path="/student/register" element={<StudentRegister />} />
-      <Route path="/faculty/login" element={<FacultyLogin />} />
-      <Route path="/faculty/register" element={<FacultyRegister />} />
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route
-        path="/admin/register"
-        element={<Navigate to="/get-started" replace />}
-      />
-      <Route element={<ProtectedRoute role="student" />}>
-        <Route path="student" element={<StudentLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<StudentDashboard />} />
-          <Route path="book" element={<BookConsultation />} />
-          <Route path="appointments" element={<StudentAppointments />} />
-          <Route path="history" element={<StudentHistory />} />
-          <Route path="notifications" element={<StudentNotifications />} />
-          <Route path="profile" element={<StudentProfile />} />
-          <Route path="security" element={<StudentSecuritySettings />} />
-          <Route
-            path="*"
-            element={<NotFoundPage dashboard="/student/dashboard" />}
-          />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/get-started" element={<RoleSelectionPage />} />
+        <Route path="/student/login" element={<StudentLogin />} />
+        <Route path="/faculty/login" element={<FacultyLogin />} />
+        <Route path="/dean/login" element={<DeanLogin />} />
+        <Route element={<ProtectedRoute role="student" />}>
+          <Route path="student" element={<StudentLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<StudentDashboard />} />
+            <Route path="faculty" element={<FindFaculty />} />
+            <Route path="availability" element={<StudentAvailability />} />
+            <Route path="consultations" element={<StudentAppointments />} />
+            <Route path="calendar" element={<StudentCalendar />} />
+            <Route path="history" element={<StudentHistory />} />
+            <Route path="notifications" element={<StudentNotifications />} />
+            <Route path="account" element={<StudentAccountSettings />} />
+            <Route path="book" element={<Navigate to="/student/faculty" replace />} />
+            <Route path="appointments" element={<Navigate to="/student/consultations" replace />} />
+            <Route path="profile" element={<Navigate to="/student/account" replace />} />
+            <Route path="security" element={<Navigate to="/student/account" replace />} />
+            <Route
+              path="*"
+              element={<NotFoundPage dashboard="/student/dashboard" />}
+            />
+          </Route>
         </Route>
-      </Route>
-      <Route element={<ProtectedRoute role="faculty" />}>
-        <Route path="faculty" element={<FacultyLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<FacultyDashboard />} />
-          <Route path="appointments" element={<FacultyAppointments />} />
-          <Route path="requests" element={<AppointmentRequests />} />
-          <Route path="history" element={<FacultyHistory />} />
-          <Route path="availability" element={<ManageAvailability />} />
-          <Route path="notifications" element={<FacultyNotifications />} />
-          <Route path="profile" element={<FacultyProfile />} />
-          <Route path="security" element={<FacultySecuritySettings />} />
-          <Route
-            path="*"
-            element={<NotFoundPage dashboard="/faculty/dashboard" />}
-          />
+        <Route element={<ProtectedRoute role={["faculty", "dean"]} />}>
+          <Route path="faculty" element={<FacultyLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<FacultyDashboard />} />
+            <Route path="consultations" element={<FacultyAppointments />} />
+            <Route path="appointments" element={<DeanRouteRedirect to="/faculty/consultations" />} />
+            <Route path="calendar" element={<FacultyConsultationCalendar />} />
+            <Route path="requests" element={<AppointmentRequests />} />
+            <Route path="history" element={<FacultyHistory />} />
+            <Route path="availability" element={<FacultyAvailabilityCalendar />} />
+            <Route path="reports" element={<FacultyReports />} />
+            <Route path="account" element={<FacultyAccountSettings />} />
+            <Route path="notifications" element={<FacultyNotifications />} />
+            <Route path="profile" element={<DeanRouteRedirect to="/faculty/account" />} />
+            <Route path="security" element={<DeanRouteRedirect to="/faculty/account" />} />
+            <Route
+              path="*"
+              element={<NotFoundPage dashboard="/faculty/dashboard" />}
+            />
+          </Route>
         </Route>
-      </Route>
-      <Route element={<ProtectedRoute role="admin" />}>
-        <Route path="admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="users" element={<UserManagement />} />
-          <Route
-            path="registrations"
-            element={<UserManagement initialTab="Pending Registrations" />}
-          />
-          <Route path="consultations" element={<ConsultationOverview />} />
-          <Route path="appointments" element={<AppointmentsManagement />} />
-          <Route path="reports" element={<ReportsAnalytics />} />
-          <Route path="notifications" element={<AdminNotifications />} />
-          <Route
-            path="logs"
-            element={<Navigate to="/admin/dashboard" replace />}
-          />
-          <Route path="settings" element={<SystemSettings />} />
-          <Route
-            path="*"
-            element={<NotFoundPage dashboard="/admin/dashboard" />}
-          />
+        <Route element={<ProtectedRoute role="dean" />}>
+          <Route path="dean" element={<DeanLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<DeanDashboard />} />
+            <Route path="users" element={<UserManagement />} />
+            <Route path="consultations" element={<ConsultationMonitoring />} />
+            <Route path="appointments" element={<ConsultationMonitoringRedirect />} />
+            <Route path="consultation-overview" element={<ConsultationMonitoringRedirect />} />
+            <Route path="reports" element={<ReportsAnalytics />} />
+            <Route path="notifications" element={<DeanNotifications />} />
+            <Route path="audit-logs" element={<AuditLogs />} />
+            <Route
+              path="logs"
+              element={<Navigate to="/dean/dashboard" replace />}
+            />
+            <Route
+              path="settings"
+              element={<DeanRouteRedirect to="/dean/account" />}
+            />
+            <Route path="account" element={<DeanAccountSettings />} />
+            <Route path="import" element={<CsvImport />} />
+            <Route
+              path="attendance-review"
+              element={<AttendanceReview />}
+            />
+            <Route path="attendance-review/:reviewId" element={<AttendanceReview />} />
+            <Route path="faculty">
+              <Route
+                index
+                element={<DeanRouteRedirect to="/dean/faculty/dashboard" />}
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <FacultyDashboard
+                    routeBase="/dean/faculty"
+                    consultationsPath="/dean/faculty/consultations"
+                  />
+                }
+              />
+              <Route path="requests" element={<AppointmentRequests />} />
+              <Route path="availability" element={<FacultyAvailabilityCalendar routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
+              <Route path="consultations" element={<FacultyAppointments />} />
+              <Route path="history" element={<FacultyHistory />} />
+              <Route path="reports" element={<FacultyReports />} />
+              <Route
+                path="calendar"
+                element={
+                  <FacultyConsultationCalendar consultationsPath="/dean/faculty/consultations" />
+                }
+              />
+              <Route
+                path="appointments"
+                element={<DeanRouteRedirect to="/dean/faculty/consultations" />}
+              />
+              <Route
+                path="*"
+                element={<NotFoundPage dashboard="/dean/faculty/dashboard" />}
+              />
+            </Route>
+            <Route
+              path="*"
+              element={<NotFoundPage dashboard="/dean/dashboard" />}
+            />
+          </Route>
         </Route>
-      </Route>
-      <Route path="*" element={<NotFoundPage dashboard="/" />} />
+        <Route path="*" element={<NotFoundPage dashboard="/" />} />
       </Routes>
     </>
   );

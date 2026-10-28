@@ -7,7 +7,7 @@ export async function getPublicStats(_req, res) {
   const [activeRequests, completedConsultations, facultyCount, next] =
     await Promise.all([
       Appointment.countDocuments({
-        status: { $in: ["Pending", "Approved", "Rescheduled"] },
+        status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
       }),
       Appointment.countDocuments({ status: "Completed" }),
       User.countDocuments({

@@ -10,6 +10,7 @@ import {
   markNotificationRead,
 } from "../controllers/notificationController.js";
 const router = Router();
+router.use((_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate);
 router.get("/", getNotifications);
 router.put("/read-all", markAllNotificationsRead);

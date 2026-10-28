@@ -11,7 +11,7 @@ export default function UserAvatar({ user, className = "" }) {
     return (
       <img
         src={source}
-        alt={`${formatPersonName(user?.name) || "User"} profile`}
+        alt={`${formatPersonName(user) || "User"} profile`}
         onError={() => setFailed(true)}
         className={`${className} object-cover`}
       />
@@ -19,7 +19,7 @@ export default function UserAvatar({ user, className = "" }) {
 
   return (
     <span className={`${className} grid place-items-center`} aria-hidden="true">
-      {user?.name?.trim()?.[0]?.toUpperCase() || "U"}
+      {formatPersonName(user)?.[0]?.toUpperCase() || "U"}
     </span>
   );
 }

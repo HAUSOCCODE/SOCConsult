@@ -1,20 +1,96 @@
+import { listFacultyConsultations, facultyConsultationDetails } from "../services/facultyConsultationService.js";
+import { listFacultyConsultationHistory } from "../services/facultyConsultationHistoryService.js";
+import { canReadAppointmentDocument } from "../services/appointmentDocumentAuthorizationService.js";
+import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import { Router } from "express";
 import mongoose from "mongoose";
-import crypto from "node:crypto";
-import path from "node:path";
 import Appointment from "../models/Appointment.js";
 import Availability from "../models/Availability.js";
 import User from "../models/User.js";
 import SupportingDocument from "../models/SupportingDocument.js";
-import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { classifyStudentAppointments } from "../services/appointmentClassificationService.js";
+import { monitoringAttendance } from "../services/attendancePrivacyService.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
-import { logActivity, notify } from "../services/activityService.js";
-import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
-import { destroyAsset, uploadBuffer } from "../services/cloudinaryStorage.js";
+import { logActivity } from "../services/activityService.js";
+import {
+  transitionAppointment,
+  createAppointmentRequest,
+} from "../services/appointmentTransitionService.js";
+import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
+import { destroyAsset } from "../services/cloudinaryStorage.js";
+import {
+  canExportCalendar,
+  consultationIcsFilename,
+  generateConsultationIcs,
+} from "../services/icsService.js";
+import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
+import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
+import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
+import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 const router = Router();
+router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
+  res.set("Cache-Control", "no-store"); next();
+});
 router.use(authenticate);
+
+const requestRead = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 404].includes(error.statusCode) ? error.statusCode : 503;
+    res.status(status).json({ message: status === 400 ? "Invalid request filters or reference." : status === 404 ? "Request or document not found or unavailable." : "Requests are temporarily unavailable. Please try again." });
+  }
+};
+// Static personal request routes precede all dynamic appointment routes.
+router.get("/requests", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyRequests({ faculty: req.user.id, input: req.query }));
+}));
+router.get("/requests/:id", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await facultyRequestDetails({ faculty: req.user.id, id: req.params.id, input: req.query }));
+}));
+const requestDocument = requestRead(async (req, res) => {
+  if (Object.keys(req.query).length) throw Object.assign(new Error(), { statusCode: 400 });
+  const document = await authorizedDocument({ id: req.params.id, documentId: req.params.documentId, user: req.user, personalFaculty: true });
+  const bytes = await documentContent(document);
+  res.set(documentHeaders(document)).send(bytes);
+});
+router.get("/requests/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
+router.get("/requests/:id/document", authorize("faculty", "dean"), requestDocument);
+
+// Static personal consultation routes precede dynamic appointment routes.
+router.get("/faculty-history", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyConsultationHistory({ faculty: req.user.id, input: req.query }));
+}));
+router.get("/consultations", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await listFacultyConsultations({ faculty: req.user.id, input: req.query, now: new Date() }));
+}));
+router.get("/consultations/:id", authorize("faculty", "dean"), requestRead(async (req, res) => {
+  res.json(await facultyConsultationDetails({ faculty: req.user.id, id: req.params.id, input: req.query, now: new Date(), actor: req.user }));
+}));
+router.get("/consultations/:id/documents/:documentId", authorize("faculty", "dean"), requestDocument);
+router.get("/consultations/:id/document", authorize("faculty", "dean"), requestDocument);
+
+const recordActor = req => ({ id: req.user.id, role: req.user.role, management: Boolean(req.deanManagementAccess) });
+const recordRequest = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 404, 409].includes(error.statusCode) ? error.statusCode : 503;
+    const message = status === 400 ? "Review the consultation record and try again."
+      : status === 404 ? "Consultation record not found or unavailable."
+        : status === 409 ? error.message : "Consultation records are temporarily unavailable. Please try again.";
+    res.status(status).json({ message });
+  }
+};
+router.get("/:id/consultation-record", authorize("student", "faculty", "dean"), recordRequest(async (req, res) => {
+  if (Object.keys(req.query).length || req.body && Object.keys(req.body).length) return res.status(400).json({ message: "Invalid consultation-record request." });
+  res.json(await readConsultationRecord({ appointmentId: req.params.id, actor: recordActor(req) }));
+}));
+router.put("/:id/consultation-record", authorize("faculty", "dean"), recordRequest(async (req, res) => {
+  const result = await saveConsultationRecord({ appointmentId: req.params.id, actor: recordActor(req), input: req.body });
+  res.json({ message: "Consultation record saved.", ...result });
+}));
 
 const documentSize = (data = "") => {
   const encoded = data.split(",")[1] || "";
@@ -58,74 +134,17 @@ const hydrateLegacyDocuments = async (appointments) => {
   });
   return appointments;
 };
-const safeOriginalName = (value = "") =>
-  path.basename(value.replaceAll("\\", "/")).slice(0, 255) || "document";
-const cloudinaryResourceType = (mimeType = "") =>
-  mimeType.startsWith("image/")
-    ? "image"
-    : mimeType.startsWith("video/")
-      ? "video"
-      : "raw";
 const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
-const conflictsWithOneTimeSchedule = (appointment, startAt, endAt) =>
-  OneTimeScheduleHold.exists({
-    appointment: { $ne: appointment._id },
-    minute: {
-      $gte: Math.floor(new Date(startAt).getTime() / 60000),
-      $lt: Math.ceil(new Date(endAt).getTime() / 60000),
-    },
-    $or: [{ faculty: appointment.faculty }, { student: appointment.student }],
-  });
 
-const capacitySummary = async (facultyId) => {
-  const appointments = await Appointment.find({
-    faculty: facultyId,
-    status: { $in: ["Pending", "Approved", "Rescheduled"] },
-  }).select("availability status estimatedDurationMinutes");
-  const availabilityIds = [
-    ...new Set(
-      appointments
-        .filter((item) => item.availability)
-        .map((item) => String(item.availability)),
-    ),
-  ];
-  const schedules = await Availability.find({
-    _id: { $in: availabilityIds },
-  }).select("startAt endAt");
-  return schedules.map((schedule) => {
-    const related = appointments.filter(
-      (item) => String(item.availability) === schedule.id,
-    );
-    const pending = related.filter((item) => item.status === "Pending");
-    const approved = related.filter((item) =>
-      ["Approved", "Rescheduled"].includes(item.status),
-    );
-    const sum = (items) =>
-      items.reduce(
-        (total, item) => total + (item.estimatedDurationMinutes || 0),
-        0,
-      );
-    return {
-      availabilityId: schedule.id,
-      startAt: schedule.startAt,
-      endAt: schedule.endAt,
-      capacityMinutes: Math.round((schedule.endAt - schedule.startAt) / 60000),
-      pendingCount: pending.length,
-      pendingEstimatedMinutes: sum(pending),
-      approvedEstimatedMinutes: sum(approved),
-      totalEstimatedMinutes: sum(related),
-    };
-  });
-};
-
-router.get("/mine", authorize("student", "faculty"), async (req, res) => {
+router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) => {
+  if (req.user.role !== "student" && Object.keys(req.query).length) return res.status(400).json({ message: "Invalid personal consultation filters." });
   const query =
     req.user.role === "student"
       ? { student: req.user.id }
       : { faculty: req.user.id };
   const appointments = await Appointment.find(query)
-    .select("+meetingLink")
+    .select("+meetingLink +attendance")
     .populate(
       "student",
       "name email studentId program yearLevel +profilePicture",
@@ -142,6 +161,8 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
     .lean();
   await hydrateLegacyDocuments(appointments);
   const safeAppointments = appointments.map((appointment) => {
+    appointment.attendanceSummary = monitoringAttendance(appointment);
+    delete appointment.attendance;
     normalizeProfilePicture(appointment.student);
     normalizeProfilePicture(appointment.faculty);
     const availability = appointment.availability;
@@ -152,9 +173,14 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
       appointment.meetingPlatform =
         appointment.meetingPlatform || platformFor(availability);
       const canAccessLink =
-        req.user.role === "faculty" ||
-        ["Approved", "Rescheduled", "Completed"].includes(appointment.status);
-      if (canAccessLink && availability?.meetingLink)
+        req.user.role === "student" ? ["Confirmed", "Completed"].includes(appointment.status) :
+        ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(appointment.status) &&
+        appointment.consultationMode === "Online" && appointment.startAt != null && appointment.endAt > appointment.startAt;
+      if (
+        canAccessLink &&
+        availability?.meetingLink &&
+        !appointment.meetingLink
+      )
         appointment.meetingLink = availability.meetingLink;
       if (!canAccessLink) delete appointment.meetingLink;
       if (availability) delete availability.meetingLink;
@@ -169,43 +195,76 @@ router.get("/mine", authorize("student", "faculty"), async (req, res) => {
   res.json({
     appointments: safeAppointments,
     ...(studentViews && { studentViews }),
-    ...(req.user.role === "faculty" && {
-      availabilityCapacity: await capacitySummary(req.user.id),
+    ...(["faculty", "dean"].includes(req.user.role) && {
+      // Retain the legacy response key without minute-based capacity behavior.
+      availabilityCapacity: [],
     }),
   });
+});
+
+router.get("/student-history", authorize("student"), async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await listStudentConsultationHistory({
+    student: req.user.id,
+    input: req.query,
+  }));
+});
+
+// One shared participant endpoint; never runs attendance processing or writes state.
+router.get("/:appointmentId/calendar.ics", authorize("student", "faculty", "dean"), async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.appointmentId) || Object.keys(req.query).length || (req.body && Object.keys(req.body).length))
+    return res.status(400).json({ message: "Invalid calendar request." });
+  try {
+    const appointment = await Appointment.findOne({
+      _id: req.params.appointmentId,
+      [req.user.role === "student" ? "student" : "faculty"]: req.user.id,
+      status: "Confirmed",
+    }).select("faculty startAt endAt subject consultationMode location meetingPlatform status +meetingLink")
+      .populate("faculty", "name").maxTimeMS(10000).lean();
+    if (!appointment) return res.status(404).json({ message: "Confirmed consultation not found or no longer available." });
+    const now = new Date();
+    if (!canExportCalendar(appointment, now)) return res.status(409).json({ message: "Calendar export requires a valid Confirmed consultation that has not ended." });
+    const calendar = generateConsultationIcs(appointment, now);
+    const filename = consultationIcsFilename(appointment.startAt);
+    res.set("Content-Type", "text/calendar; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="' + filename + '"');
+    return res.send(calendar);
+  } catch {
+    return res.status(503).json({ message: "Calendar download is temporarily unavailable. Please try again." });
+  }
 });
 router.post(
   "/",
   authorize("student"),
   supportingDocumentUpload,
   async (req, res) => {
+    if (!mongoose.isValidObjectId(req.body.availabilityId))
+      return res
+        .status(400)
+        .json({ message: "Select a valid consultation schedule." });
     const slot = await Availability.findOne({
       _id: req.body.availabilityId,
       isActive: true,
+      reservationToken: { $exists: false },
+      startAt: { $gt: new Date() },
     });
     const requestedStart = slot?.startAt;
     const requestedEnd = slot?.endAt;
-    const estimatedDurationMinutes = Number(req.body.estimatedDurationMinutes);
     const windowMinutes = slot
       ? Math.round((slot.endAt - slot.startAt) / 60000)
       : 0;
-    if (!slot || slot.endAt <= new Date())
-      return res.status(400).json({
-        message: "This faculty availability is unavailable or in the past.",
-      });
-    if (
-      !Number.isInteger(estimatedDurationMinutes) ||
-      estimatedDurationMinutes < 5 ||
-      estimatedDurationMinutes > windowMinutes
-    )
-      return res.status(400).json({
-        message: `Estimated consultation time must be between 5 and ${windowMinutes} minutes.`,
+    if (!slot || slot.endAt <= slot.startAt)
+      return res.status(409).json({
+        message: "This schedule is no longer available.",
       });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
-      role: "faculty",
-      registrationStatus: "Approved",
+      role: { $in: ["faculty", "dean"] },
       accountStatus: "Active",
+      $or: [
+        { registrationStatus: "Approved" },
+        { role: "dean" },
+      ],
     });
     if (!facultyIsAvailable)
       return res.status(400).json({
@@ -214,124 +273,98 @@ router.post(
     const existingActiveRequest = await Appointment.exists({
       student: req.user.id,
       availability: slot.id,
-      status: { $in: ["Pending", "Approved", "Rescheduled"] },
+      status: { $in: BLOCKING_STATUSES },
     });
     if (existingActiveRequest)
       return res.status(409).json({
         message:
           "You already have an active consultation request for this faculty schedule.",
       });
-    const subject = (req.body.subject || "").trim();
-    const reason = (req.body.reason || "").trim();
-    const yearLevel = (req.body.yearLevel || "").trim();
-    if (!subject || !reason)
-      return res
-        .status(400)
-        .json({ message: "Subject and reason are required." });
-    if (
-      !["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"].includes(
-        yearLevel,
-      )
-    )
-      return res
-        .status(400)
-        .json({ message: "Please select your year level." });
-    const appointment = await Appointment.create({
-      student: req.user.id,
-      faculty: slot.faculty,
-      availability: slot.id,
-      startAt: requestedStart,
-      endAt: requestedEnd,
-      estimatedDurationMinutes,
-      subject,
-      yearLevel,
-      reason,
-      consultationMode: slot.mode || "Online",
-      location: slot.mode === "Online" ? platformFor(slot) : slot.location,
-    });
-    const uploadedAssets = [];
-    try {
-      if (req.files?.length) {
-        for (const file of req.files) {
-          const resourceType = cloudinaryResourceType(file.mimetype);
-          const originalName = safeOriginalName(file.originalname);
-          const extension = path.extname(originalName).toLowerCase();
-          const uploaded = await uploadBuffer(file.buffer, {
-            folder: `consultio/consultation-documents/${appointment.id}`,
-            resource_type: resourceType,
-            public_id: `${crypto.randomUUID()}${resourceType === "raw" ? extension : ""}`,
-          });
-          uploadedAssets.push({
-            file,
-            originalName,
-            url: uploaded.secure_url,
-            publicId: uploaded.public_id,
-            resourceType: uploaded.resource_type,
-          });
-        }
-        appointment.supportingDocuments = uploadedAssets.map(
-          ({ file, originalName, url, publicId, resourceType }) => ({
-            _id: new mongoose.Types.ObjectId(),
-            originalName,
-            cloudinaryUrl: url,
-            cloudinaryPublicId: publicId,
-            resourceType,
-            mimeType: file.mimetype,
-            size: file.size,
-            uploadedAt: new Date(),
-          }),
-        );
-        await appointment.save();
-      }
-    } catch (documentError) {
-      await Promise.all([
-        ...uploadedAssets.map((asset) => destroyAsset(asset).catch(() => {})),
-        Appointment.deleteOne({ _id: appointment.id }),
-      ]);
-      throw documentError;
-    }
-    await Promise.all([
-      logActivity(
-        "appointment_created",
-        req.user.id,
-        "Appointment",
-        appointment.id,
-      ),
-      notify(
-        slot.faculty,
-        "appointment",
-        "New Consultation Request",
-        `${req.user.name} submitted a consultation request.`,
-        appointment.id,
-      ),
-      notify(
-        req.user.id,
-        "appointment",
-        "Consultation Request Submitted",
-        "Your consultation request was submitted and is awaiting the faculty member's decision.",
-        appointment.id,
-      ),
+    const [studentConflict, facultyConflict] = await Promise.all([
+      Appointment.exists({
+        student: req.user.id,
+        status: { $in: BLOCKING_STATUSES },
+        startAt: { $lt: requestedEnd },
+        endAt: { $gt: requestedStart },
+      }),
+      Appointment.exists({
+        faculty: slot.faculty,
+        status: { $in: BLOCKING_STATUSES },
+        startAt: { $lt: requestedEnd },
+        endAt: { $gt: requestedStart },
+      }),
     ]);
-    res.status(201).json({
-      message: "Consultation request submitted successfully.",
-      appointment,
-    });
+    if (studentConflict || facultyConflict)
+      return res.status(409).json({
+        message:
+          "This schedule conflicts with an active consultation and is no longer available.",
+      });
+    const subject =
+      typeof req.body.subject === "string" ? req.body.subject.trim() : "";
+    const reason =
+      typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+    if (!subject)
+      return res.status(400).json({ message: "Subject or Course is required." });
+    if (subject.length > 150)
+      return res.status(400).json({
+        message: "Subject or Course must be 150 characters or fewer.",
+      });
+    if (!reason)
+      return res
+        .status(400)
+        .json({ message: "Consultation Concern is required." });
+    if (reason.length > 1000)
+      return res.status(400).json({
+        message: "Consultation Concern must be 1,000 characters or fewer.",
+      });
+    const validYearLevels = new Set([
+      "1st Year",
+      "2nd Year",
+      "3rd Year",
+      "4th Year",
+      "5th Year",
+    ]);
+    const yearLevel = validYearLevels.has(req.user.yearLevel)
+      ? req.user.yearLevel
+      : undefined;
+    const appointmentId = new mongoose.Types.ObjectId();
+    const documents = await uploadAppointmentDocuments(req.files || [], appointmentId);
+    let appointment;
+    try {
+      appointment = await createAppointmentRequest({ actor: req.user, data: {
+        _id: appointmentId, student: req.user.id, faculty: slot.faculty,
+        availability: slot._id, bookingMethod: "published_slot",
+        startAt: slot.startAt, endAt: slot.endAt, estimatedDurationMinutes: windowMinutes,
+        subject, yearLevel, reason, consultationMode: slot.mode || "Online",
+        meetingPlatform: slot.mode === "Online" ? platformFor(slot) : undefined,
+        location: slot.mode === "Face-to-Face" ? slot.location : "",
+        supportingDocuments: documents.entries,
+      } });
+    } catch (error) { await documents.cleanup(); throw error; }
+    res.status(201).json({ message: "Consultation request submitted successfully.", appointment });
+
   },
 );
 
-router.get(
+export const appointmentDocumentRoutes = Router();
+appointmentDocumentRoutes.use((req, res, next) => {
+  if (!/^\/[^/]+\/(?:documents\/[^/]+|document)\/?$/.test(req.path)) return next();
+  const parts = req.path.split("/");
+  if (![parts[1], ...(parts[2] === "documents" ? [parts[3]] : [])].every(id => /^[a-f\d]{24}$/i.test(id)))
+    return res.status(400).json({ message: "Invalid document reference." });
+  res.set("Cache-Control", "no-store");
+  next();
+});
+appointmentDocumentRoutes.get(
   "/:id/documents/:documentId",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
     const appointment = await Appointment.findById(req.params.id).select(
       "student faculty supportingDocuments",
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.user.role === "admin" ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)
@@ -363,13 +396,6 @@ router.get(
       try {
         const check = await fetch(url, { method: "HEAD" });
         if (check.status === 404) {
-          if (embedded) {
-            appointment.supportingDocuments =
-              appointment.supportingDocuments.filter(
-                (item) => String(item?._id || item) !== req.params.documentId,
-              );
-            await appointment.save();
-          }
           return res
             .status(404)
             .json({ message: "Document is no longer available." });
@@ -391,19 +417,17 @@ router.get(
     });
   },
 );
-router.delete(
+appointmentDocumentRoutes.delete(
   "/:id/documents/:documentId",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
+    if (req.deanManagementAccess) return res.status(403).json({ message: "Dean management access is read-only." });
     const appointment = await Appointment.findById(req.params.id).select(
       "student faculty supportingDocuments",
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.user.role === "admin" ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)
@@ -438,22 +462,26 @@ router.delete(
       (document) => String(document?._id || document) !== req.params.documentId,
     );
     await appointment.save();
+    await logActivity(
+      "supporting_document_removed",
+      req.user.id,
+      "Appointment",
+      appointment.id,
+      { documentCount: 1 },
+    );
     res.json({ message: "Supporting document removed." });
   },
 );
-router.get(
+appointmentDocumentRoutes.get(
   "/:id/document",
-  authorize("student", "faculty", "admin"),
+  authorize("student", "faculty", "dean"),
   async (req, res) => {
     const appointment = await Appointment.findById(req.params.id).select(
       "+supportingDocument.data student faculty",
     );
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found." });
-    const allowed =
-      req.user.role === "admin" ||
-      String(appointment.student) === req.user.id ||
-      String(appointment.faculty) === req.user.id;
+    const allowed = canReadAppointmentDocument(appointment, req.user, req.deanManagementAccess);
     if (!allowed)
       return res
         .status(403)
@@ -467,368 +495,27 @@ router.get(
     res.json({ supportingDocument });
   },
 );
-router.put("/:id/status", authorize("faculty"), async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
-  const status = req.body.status;
-  if (!["Approved", "Rejected", "Completed", "Rescheduled"].includes(status))
-    return res.status(400).json({ message: "Invalid appointment status." });
-  const appointment = await Appointment.findOne({
-    _id: req.params.id,
-    faculty: req.user.id,
-  });
-  if (!appointment)
-    return res.status(404).json({ message: "Appointment not found." });
-  if (
-    appointment.bookingMethod === "schedule_request" &&
-    appointment.status === "Awaiting Faculty Schedule"
-  )
-    return res.status(409).json({
-      message:
-        "Decide this request from Appointment Requests by assigning a one-time schedule or rejecting it.",
-    });
-  if (["Rejected", "Completed", "No Show"].includes(appointment.status))
-    return res
-      .status(409)
-      .json({ message: "This appointment can no longer be updated." });
-  if (
-    status === "Approved" &&
-    !(await Availability.exists({
-      _id: appointment.availability,
-      faculty: req.user.id,
-      isActive: true,
-      endAt: { $gt: new Date() },
-    }))
-  )
-    return res.status(409).json({
-      message:
-        "This consultation schedule has expired or is no longer active. The Student must choose a new schedule.",
-    });
-  if (status === "Rescheduled") {
-    const slot = await Availability.findOne({
-      _id: req.body.availabilityId,
-      faculty: req.user.id,
-      isActive: true,
-      endAt: { $gt: new Date() },
-    });
-    if (!slot)
-      return res
-        .status(400)
-        .json({ message: "Select a valid future availability schedule." });
-    const proposedStart = slot.startAt;
-    const proposedEnd = slot.endAt;
-    const windowMinutes = Math.round((proposedEnd - proposedStart) / 60000);
-    if ((appointment.estimatedDurationMinutes || 0) > windowMinutes)
-      return res.status(400).json({
-        message:
-          "The availability window is shorter than the estimated consultation time.",
-      });
-    appointment.availability = slot.id;
-    appointment.startAt = proposedStart;
-    appointment.endAt = proposedEnd;
-    appointment.consultationMode = slot.mode || "Online";
-    appointment.location = slot.location;
-  }
-  if (
-    ["Approved", "Rescheduled"].includes(status) &&
-    (await conflictsWithOneTimeSchedule(
-      appointment,
-      appointment.startAt,
-      appointment.endAt,
-    ))
-  )
-    return res.status(409).json({
-      message:
-        "The Faculty Member or Student has a one-time consultation during this schedule.",
-    });
-  appointment.status = status;
-  appointment.responseNote = (req.body.note || "").trim();
-  if (status === "Rescheduled") {
-    appointment.rescheduleRequested = false;
-    appointment.rescheduleRequestNote = "";
-  }
-  await appointment.save();
-  if (
-    status === "Rescheduled" &&
-    appointment.bookingMethod === "schedule_request"
-  )
-    await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
-  const verb = status.toLowerCase();
-  const notificationTitles = {
-    Approved: "Consultation Approved",
-    Rejected: "Consultation Request Rejected",
-    Rescheduled: "Consultation Rescheduled",
-    Completed: "Consultation Completed",
-    "No Show": "Consultation Marked No Show",
-  };
-  await Promise.all([
-    logActivity(
-      `appointment_${verb}`,
-      req.user.id,
-      "Appointment",
-      appointment.id,
-    ),
-    notify(
-      appointment.student,
-      "appointment",
-      notificationTitles[status],
-      `Your consultation request is now ${status}.`,
-      appointment.id,
-    ),
-  ]);
-  res.json({ message: `Appointment ${verb}.`, appointment });
+router.use(appointmentDocumentRoutes);
+router.put("/:id/status", authorize("faculty", "dean"), async (req, res) => {
+  const action = { Confirmed: "confirm", Rejected: "reject", "Reschedule Proposed": "propose", Cancelled: "cancel" }[req.body.status];
+  if (!action) return res.status(400).json({ message: "Invalid appointment status. Direct completion is not permitted." });
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user, action,
+    reason: req.body.reason ?? req.body.note ?? "", availabilityId: req.body.availabilityId,
+    expectedVersion: req.body.expectedVersion });
+  res.json({ message: "Appointment status updated.", appointment });
 });
 router.put("/:id/cancel", authorize("student"), async (req, res) => {
-  const appointment = await Appointment.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      student: req.user.id,
-      status: "Pending",
-      startAt: { $gt: new Date() },
-    },
-    { status: "Cancelled" },
-    { new: true },
-  );
-  if (!appointment)
-    return res
-      .status(409)
-      .json({ message: "This appointment cannot be cancelled." });
-  await Promise.all([
-    logActivity(
-      "appointment_cancelled",
-      req.user.id,
-      "Appointment",
-      appointment.id,
-    ),
-    notify(
-      appointment.faculty,
-      "appointment",
-      "Consultation Cancelled",
-      `${req.user.name} cancelled a consultation.`,
-      appointment.id,
-    ),
-    notify(
-      req.user.id,
-      "appointment",
-      "Consultation Cancelled",
-      "Your consultation was cancelled.",
-      appointment.id,
-    ),
-  ]);
-  res.json({ message: "Appointment cancelled.", appointment });
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user, action: "cancel",
+    reason: req.body.reason ?? "", expectedVersion: req.body.expectedVersion });
+  res.json({ message: "Consultation cancelled.", appointment });
 });
-router.put(
-  "/:id/request-reschedule",
-  authorize("student"),
-  async (req, res) => {
-    if (!mongoose.isValidObjectId(req.params.id))
-      return res.status(400).json({ message: "Invalid appointment ID." });
-    const reason = (req.body.reason ?? req.body.note ?? "").trim();
-    if (reason.length < 5)
-      return res.status(400).json({
-        message:
-          "Please provide a meaningful reschedule reason of at least 5 characters.",
-      });
-    if (reason.length > 500)
-      return res.status(400).json({
-        message: "Reschedule reason cannot exceed 500 characters.",
-      });
-    const appointment = await Appointment.findOne({
-      _id: req.params.id,
-      student: req.user.id,
-    });
-    if (!appointment)
-      return res.status(404).json({ message: "Appointment not found." });
-    if (
-      appointment.rescheduleRequested ||
-      appointment.rescheduleRequestStatus === "Pending"
-    )
-      return res.status(409).json({
-        message: "A reschedule request is already awaiting Faculty review.",
-      });
-    if (
-      !["Approved", "Rescheduled"].includes(appointment.status) ||
-      appointment.startAt <= new Date()
-    )
-      return res.status(400).json({
-        message: "This appointment is not eligible for rescheduling.",
-      });
-    appointment.rescheduleRequested = true;
-    appointment.rescheduleRequestNote = reason;
-    appointment.rescheduleRequestStatus = "Pending";
-    appointment.rescheduleRequestedAt = new Date();
-    appointment.rescheduleReviewedAt = undefined;
-    appointment.rescheduleReviewedBy = undefined;
-    appointment.rescheduleDecisionNote = "";
-    await appointment.save();
-    await Promise.all([
-      logActivity(
-        "appointment_reschedule_requested",
-        req.user.id,
-        "Appointment",
-        appointment.id,
-      ),
-      notify(
-        appointment.faculty,
-        "appointment",
-        "Reschedule Request",
-        `${req.user.name} requested to reschedule an approved consultation.`,
-        appointment.id,
-      ),
-    ]);
-    res.json({
-      message: "Reschedule request sent to the faculty member.",
-      appointment,
-    });
-  },
-);
-router.put(
-  "/:id/reschedule-request",
-  authorize("faculty"),
-  async (req, res) => {
-    if (!mongoose.isValidObjectId(req.params.id))
-      return res.status(400).json({ message: "Invalid appointment ID." });
-    const decision = req.body.decision;
-    if (!["Approved", "Rejected"].includes(decision))
-      return res
-        .status(400)
-        .json({ message: "Select a valid reschedule decision." });
-    const decisionNote = (req.body.note || "").trim();
-    if (decisionNote.length > 500)
-      return res.status(400).json({
-        message: "Decision note cannot exceed 500 characters.",
-      });
-    const appointment = await Appointment.findOne({
-      _id: req.params.id,
-      faculty: req.user.id,
-    });
-    if (!appointment)
-      return res.status(404).json({ message: "Appointment not found." });
-    if (
-      !appointment.rescheduleRequested ||
-      appointment.rescheduleRequestStatus !== "Pending"
-    )
-      return res.status(409).json({
-        message: "This appointment has no pending reschedule request.",
-      });
-    if (!["Approved", "Rescheduled"].includes(appointment.status))
-      return res.status(400).json({
-        message: "This appointment is no longer eligible for rescheduling.",
-      });
-    appointment.rescheduleRequested = false;
-    appointment.rescheduleRequestStatus = decision;
-    appointment.rescheduleReviewedAt = new Date();
-    appointment.rescheduleReviewedBy = req.user.id;
-    appointment.rescheduleDecisionNote = decisionNote;
-    if (decision === "Approved") appointment.status = "Needs Reschedule";
-    await appointment.save();
-    if (
-      decision === "Approved" &&
-      appointment.bookingMethod === "schedule_request"
-    )
-      await OneTimeScheduleHold.deleteMany({ appointment: appointment.id });
-    const approved = decision === "Approved";
-    await Promise.all([
-      logActivity(
-        `appointment_reschedule_${decision.toLowerCase()}`,
-        req.user.id,
-        "Appointment",
-        appointment.id,
-      ),
-      notify(
-        appointment.student,
-        "appointment",
-        `Reschedule Request ${decision}`,
-        approved
-          ? "Your faculty member approved your reschedule request. Please select another available consultation schedule."
-          : "Your consultation reschedule request was not approved. Your current consultation schedule remains unchanged.",
-        appointment.id,
-      ),
-    ]);
-    res.json({
-      message: approved
-        ? "Reschedule request approved. The Student can now choose a new schedule."
-        : "Reschedule request rejected. The current schedule remains unchanged.",
-      appointment,
-    });
-  },
-);
-router.put("/:id/reschedule", authorize("student"), async (req, res) => {
-  if (
-    !mongoose.isValidObjectId(req.params.id) ||
-    !mongoose.isValidObjectId(req.body.availabilityId)
-  )
-    return res
-      .status(400)
-      .json({ message: "Invalid appointment or availability ID." });
-  const appointment = await Appointment.findOne({
-    _id: req.params.id,
-    student: req.user.id,
-    status: "Needs Reschedule",
-  });
-  if (!appointment)
-    return res.status(409).json({
-      message: "This appointment is not currently awaiting rescheduling.",
-    });
-  const slot = await Availability.findOne({
-    _id: req.body.availabilityId,
-    faculty: appointment.faculty,
-    isActive: true,
-    endAt: { $gt: new Date() },
-  });
-  if (!slot)
-    return res.status(400).json({
-      message:
-        "Select a valid future availability schedule for this faculty member.",
-    });
-  const windowMinutes = Math.round((slot.endAt - slot.startAt) / 60000);
-  const scheduled = await Appointment.find({
-    _id: { $ne: appointment.id },
-    availability: slot.id,
-    status: { $in: ["Approved", "Rescheduled"] },
-  }).select("estimatedDurationMinutes");
-  const occupiedMinutes = scheduled.reduce(
-    (total, item) => total + (item.estimatedDurationMinutes || 0),
-    0,
-  );
-  if (
-    occupiedMinutes + (appointment.estimatedDurationMinutes || 0) >
-    windowMinutes
-  )
-    return res.status(409).json({
-      message: "This schedule no longer has enough time for your consultation.",
-    });
-  appointment.availability = slot.id;
-  appointment.startAt = slot.startAt;
-  appointment.endAt = slot.endAt;
-  appointment.consultationMode = slot.mode || "Online";
-  appointment.location =
-    slot.mode === "Online" ? platformFor(slot) : slot.location;
-  appointment.status = "Rescheduled";
-  appointment.responseNote = "";
-  await appointment.save();
-  await Promise.all([
-    logActivity(
-      "appointment_rescheduled",
-      req.user.id,
-      "Appointment",
-      appointment.id,
-      { availabilityId: slot.id },
-    ),
-    notify(
-      appointment.faculty,
-      "appointment",
-      "Consultation Rescheduled",
-      `${req.user.name} selected a new consultation schedule.`,
-      appointment.id,
-    ),
-    notify(
-      req.user.id,
-      "appointment",
-      "Consultation Rescheduled",
-      "Your new consultation schedule has been saved.",
-      appointment.id,
-    ),
-  ]);
-  res.json({ message: "New consultation schedule selected.", appointment });
+router.put("/:id/reschedule-response", authorize("student"), async (req, res) => {
+  const decision = req.body.decision;
+  if (!["accept", "reject"].includes(decision)) return res.status(400).json({ message: "Select a valid proposal response." });
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
+    action: decision === "accept" ? "accept_proposal" : "reject_proposal",
+    expectedProposalAt: req.body.proposedAt, expectedVersion: req.body.expectedVersion });
+  res.json({ message: decision === "accept" ? "Reschedule proposal accepted. Your consultation is confirmed."
+    : "Reschedule proposal rejected. The consultation is pending Faculty action.", appointment });
 });
 export default router;

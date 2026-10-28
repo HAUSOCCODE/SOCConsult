@@ -1,14 +1,27 @@
+import CalendarDownload from "./CalendarDownload";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import {
+  canStudentCancelAppointment,
   getAppointmentDisplayStatus,
-  isAwaitingFacultyUpdate,
 } from "../../utils/appointmentStatus";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { api } from "../../api/apiClient";
+import StudentAttendanceResponseForm from "../attendance/StudentAttendanceResponseForm";
+import AttendanceResponseSummary from "../attendance/AttendanceResponseSummary";
+import { safeStudentError } from "../../utils/studentUiErrors";
+import StudentConsultationRecord from "../consultations/StudentConsultationRecord";
+
+const ATTENDANCE_STATUSES = new Set([
+  "Awaiting Attendance Update",
+  "Attendance Review",
+  "Completed",
+  "Expired",
+]);
 
 const safeDate = (value, options) => {
   if (!value) return "Not scheduled yet";
@@ -22,8 +35,69 @@ const clock = (value) =>
 export default function StudentAppointmentDetailsModal({
   appointment,
   onClose,
+  onRespondToProposal,
+  onCancelConsultation,
+  onAttendanceUpdated,
+  readOnly = false,
+  historyMode = false,
 }) {
   const displayStatus = getAppointmentDisplayStatus(appointment);
+  const [attendance, setAttendance] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+  const appointmentId = appointment?._id || appointment?.id;
+  const shouldLoadAttendance =
+    Boolean(appointmentId) && ATTENDANCE_STATUSES.has(appointment?.status);
+  const appointmentEnd = new Date(appointment?.endAt);
+  const consultationEnded =
+    Number.isFinite(appointmentEnd.getTime()) && Date.now() >= appointmentEnd.getTime();
+  const loadAttendance = async () => {
+    if (!shouldLoadAttendance) return null;
+    setAttendanceLoading(true);
+    setAttendanceError("");
+    try {
+      const data = await api(`/appointments/${appointmentId}/attendance`);
+      setAttendance(data.attendance || null);
+      return data.attendance || null;
+    } catch (error) {
+      setAttendanceError(safeStudentError(error, "Unable to load attendance information. Please try again."));
+      return null;
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+  const submitAttendance = async (input) => {
+    try {
+      await api(`/appointments/${appointmentId}/attendance-responses`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    } catch (error) {
+      if (error.status === 409) {
+        const current = await loadAttendance();
+        if (current?.ownResponse) {
+          await onAttendanceUpdated?.();
+          return;
+        }
+      }
+      throw error;
+    }
+    setAttendance((current) => ({
+      ...(current || {}),
+      status: current?.status || appointment.status,
+      eligible: false,
+      waiting: true,
+      ownResponse: {
+        outcome: input.outcome,
+        reason: input.reason,
+        submittedAt: new Date().toISOString(),
+      },
+    }));
+    const refreshed = await loadAttendance();
+    if (!refreshed)
+      setAttendanceError("Your response was submitted, but the latest attendance status could not be refreshed.");
+    await onAttendanceUpdated?.();
+  };
   useEffect(() => {
     const previous = document.body.style.overflow;
     const escape = (event) => event.key === "Escape" && onClose();
@@ -34,6 +108,11 @@ export default function StudentAppointmentDetailsModal({
       document.removeEventListener("keydown", escape);
     };
   }, [onClose]);
+  useEffect(() => {
+    setAttendance(null);
+    setAttendanceError("");
+    if (shouldLoadAttendance) void loadAttendance();
+  }, [appointmentId, appointment?.status]);
 
   return createPortal(
     <div
@@ -53,13 +132,13 @@ export default function StudentAppointmentDetailsModal({
               id="student-appointment-title"
               className="text-xl font-bold text-maroon-900"
             >
-              Consultation Details
+              {historyMode ? "Historical Consultation Details" : "Consultation Details"}
             </h2>
             <p className="mt-1 font-semibold text-slate-700">
               {appointment.subject || "Consultation"}
             </p>
             <div className="mt-2">
-              <StatusBadge status={displayStatus} />
+              <StatusBadge appointment status={displayStatus} />
             </div>
           </div>
           <button
@@ -76,25 +155,14 @@ export default function StudentAppointmentDetailsModal({
         <div className="space-y-6 px-5 py-5 sm:px-6">
           <div className="grid min-w-0 gap-6 md:grid-cols-2">
             <Section title="Consultation Information">
-              <Detail label="Subject / Topic" value={appointment.subject} />
+              <Detail label="Subject or Course" value={appointment.subject} />
               <Detail
-                label="Year Level"
-                value={appointment.yearLevel || appointment.student?.yearLevel}
-              />
-              <Detail
-                label="Estimated Consultation Time"
-                value={
-                  appointment.estimatedDurationMinutes
-                    ? `${appointment.estimatedDurationMinutes} minutes`
-                    : "Not provided"
-                }
-              />
-              <Detail
-                label="Reason for Consultation"
+                label="Consultation Concern"
                 value={appointment.reason}
                 wide
               />
               <Detail label="Status" value={displayStatus} />
+              <Detail label="Final attendance outcome" value={appointment.attendanceSummary?.finalOutcome || "Unresolved / not verified"} />
               <Detail
                 label="Date Submitted"
                 value={safeDate(appointment.createdAt)}
@@ -117,12 +185,6 @@ export default function StudentAppointmentDetailsModal({
             </Section>
           </div>
 
-          {appointment.status === "Awaiting Faculty Schedule" && (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              Your request is awaiting the Faculty Member's decision. No date or
-              time has been confirmed.
-            </p>
-          )}
           <Section title="Schedule">
             <Detail
               label="Consultation Date"
@@ -134,11 +196,7 @@ export default function StudentAppointmentDetailsModal({
               })}
             />
             <Detail
-              label={
-                appointment.bookingMethod === "schedule_request"
-                  ? "Consultation Time"
-                  : "Faculty Availability Window"
-              }
+              label="Consultation Time"
               value={
                 appointment.startAt
                   ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
@@ -154,20 +212,37 @@ export default function StudentAppointmentDetailsModal({
             )}
           </Section>
 
-          {isAwaitingFacultyUpdate(appointment) && (
-            <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
-              The consultation schedule has ended and is awaiting an update from
-              your faculty member.
+          {shouldLoadAttendance && attendanceLoading && !attendance && (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700" role="status">Loading attendance information...</p>
+          )}
+          {shouldLoadAttendance && attendanceError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
+              <p className="break-words">{attendanceError}</p>
+              {!attendance?.ownResponse && <button type="button" onClick={loadAttendance} className="mt-3 font-bold underline">Try again</button>}
+            </div>
+          )}
+          {!readOnly && appointment.status === "Awaiting Attendance Update" && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
+            <StudentAttendanceResponseForm onSubmit={submitAttendance} />
+          )}
+          {appointment.status === "Awaiting Attendance Update" && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
+            <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
+              Attendance submission is not currently available. Responses open after the consultation ends and remain subject to the backend response window.
             </p>
           )}
+          {attendance?.ownResponse && <AttendanceResponseSummary attendance={attendance} />}
+          {!attendance?.ownResponse && ["Attendance Review", "Completed", "Expired"].includes(appointment.status) && attendance && (
+            <AttendanceResponseSummary attendance={attendance} />
+          )}
+
+          <StudentConsultationRecord appointmentId={appointmentId} />
 
           <OnlineMeetingDetails
             appointment={appointment}
-            allowLink={["Approved", "Rescheduled", "Completed"].includes(
-              appointment.status,
-            )}
+            allowLink={["Confirmed", "Completed"].includes(appointment.status) && !historyMode}
             actionLabel="Join Meeting"
           />
+
+          {!historyMode && <CalendarDownload key={appointmentId} appointment={appointment} />}
 
           {appointment.status === "Rejected" && appointment.responseNote && (
             <Section title="Status Details">
@@ -182,16 +257,21 @@ export default function StudentAppointmentDetailsModal({
             <Section title="Status Details">
               <Detail
                 label="Cancellation Reason"
-                value={appointment.responseNote || "Not provided"}
+                value={appointment.cancellationReason || "Not provided"}
                 wide
               />
+            </Section>
+          )}
+          {appointment.status === "Expired" && (
+            <Section title="Status Details">
+              <Detail label="Expiration" value={appointment.expirationReason || "This consultation request expired before it could proceed."} wide />
             </Section>
           )}
           {appointment.status === "Completed" && (
             <Section title="Status Details">
               <Detail
-                label="Completion Date"
-                value={safeDate(appointment.updatedAt)}
+                label="Attendance Finalized"
+                value={appointment.attendanceSummary?.finalizedAt ? safeDate(appointment.attendanceSummary.finalizedAt) : "Historical Completed: attendance not verified"}
               />
               <Detail
                 label="Consultation Summary"
@@ -199,48 +279,96 @@ export default function StudentAppointmentDetailsModal({
               />
             </Section>
           )}
-          {appointment.status === "Rescheduled" && (
+          {appointment.status === "Reschedule Proposed" && (
             <Section title="Status Information">
               <Detail
-                label="Rescheduled Schedule"
+                label="Original Schedule"
                 value={`${safeDate(appointment.startAt)} – ${clock(appointment.endAt)}`}
                 wide
               />
             </Section>
           )}
-
-          {(appointment.rescheduleRequestStatus ||
-            appointment.rescheduleRequested) && (
-            <Section title="Reschedule Information">
+          {appointment.status === "Reschedule Proposed" && (
+            <Section title="Proposed Schedule">
               <Detail
-                label="Status"
-                value={
-                  appointment.rescheduleRequestStatus ||
-                  (appointment.rescheduleRequested ? "Pending" : "Not provided")
-                }
-              />
-              <Detail
-                label="Requested"
-                value={safeDate(appointment.rescheduleRequestedAt)}
-              />
-              <Detail
-                label="Reason"
-                value={appointment.rescheduleRequestNote}
+                label="Date and Time"
+                value={`${safeDate(appointment.proposedStartAt)} – ${clock(appointment.proposedEndAt)}`}
                 wide
               />
-              {appointment.rescheduleReviewedAt && (
-                <Detail
-                  label="Reviewed"
-                  value={safeDate(appointment.rescheduleReviewedAt)}
-                />
-              )}
-              {appointment.rescheduleDecisionNote && (
-                <Detail
-                  label="Faculty Decision"
-                  value={appointment.rescheduleDecisionNote}
-                  wide
-                />
-              )}
+              <Detail label="Mode" value={appointment.proposedConsultationMode} />
+              <Detail
+                label="Location / Platform"
+                value={
+                  appointment.proposedConsultationMode === "Face-to-Face"
+                    ? appointment.proposedLocation
+                    : appointment.proposedMeetingPlatform
+                }
+              />
+              <Detail label="Faculty Note / Reason" value={appointment.proposalNote} wide />
+            </Section>
+          )}
+
+          {appointment.scheduleHistory?.length > 0 && (
+            <Section title="Reschedule History">
+              {appointment.scheduleHistory
+                .slice()
+                .reverse()
+                .map((entry) => (
+                  <div
+                    key={entry._id || entry.createdAt}
+                    className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <p className="font-bold text-amber-900">
+                      Schedule changed by {entry.initiatedByRole || "Faculty"}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      <strong>Previous:</strong>{" "}
+                      {safeDate(entry.previous?.startAt)} –{" "}
+                      {clock(entry.previous?.endAt)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      <strong>New:</strong> {safeDate(entry.next?.startAt)} –{" "}
+                      {clock(entry.next?.endAt)}
+                    </p>
+                    <p className="mt-1 break-words text-sm text-slate-700">
+                      <strong>Changed from:</strong> {entry.previous?.mode}
+                      {entry.previous?.mode === "Face-to-Face"
+                        ? ` · ${entry.previous?.location || "Location not provided"}`
+                        : ` · ${entry.previous?.meetingPlatform || "Online meeting"}`}
+                    </p>
+                    <p className="mt-1 break-words text-sm text-slate-700">
+                      <strong>Changed to:</strong> {entry.next?.mode}
+                      {entry.next?.mode === "Face-to-Face"
+                        ? ` · ${entry.next?.location || "Location not provided"}`
+                        : ` · ${entry.next?.meetingPlatform || "Online meeting"}`}
+                    </p>
+                    <p className="mt-1 break-words text-sm text-slate-700">
+                      <strong>Reason:</strong> {entry.reason}
+                    </p>
+                    {entry.response && (
+                      <p className="mt-1 break-words text-sm font-semibold text-slate-700">
+                        Student response: {entry.response}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </Section>
+          )}
+
+          {historyMode && appointment.statusHistory?.length > 0 && (
+            <Section title="Status History">
+              <ol className="sm:col-span-2 space-y-3">
+                {appointment.statusHistory.map((entry, index) => (
+                  <li key={`${entry.changedAt}-${index}`} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="break-words text-sm font-bold text-slate-900">
+                      {entry.previousStatus || "Previous state"} → {entry.newStatus}
+                    </p>
+                    <p className="mt-1 break-words text-xs text-slate-600">
+                      {safeDate(entry.changedAt)} · {entry.changedByRole || "System"}
+                    </p>
+                  </li>
+                ))}
+              </ol>
             </Section>
           )}
 
@@ -250,7 +378,17 @@ export default function StudentAppointmentDetailsModal({
             </div>
           </Section>
         </div>
-        <footer className="sticky bottom-0 flex justify-end border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+        <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
+          {!readOnly && canStudentCancelAppointment(appointment) && onCancelConsultation && (
+            <button type="button" onClick={onCancelConsultation} className="min-h-10 w-full rounded-lg bg-red-700 px-4 text-sm font-bold text-white hover:bg-red-800 sm:w-auto">
+              Cancel Consultation
+            </button>
+          )}
+          {!readOnly && appointment.status === "Reschedule Proposed" && onRespondToProposal && (
+            <button type="button" onClick={onRespondToProposal} className="btn-primary w-full sm:w-auto">
+              View Proposal / Respond
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

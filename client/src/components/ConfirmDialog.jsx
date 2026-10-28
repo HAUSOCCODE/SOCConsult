@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from "react";
+import useDialogFocus from "../hooks/useDialogFocus";
+import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -15,48 +16,19 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   inputLabel,
+  inputRequired = false,
+  inputError,
   inputValue = "",
   onInputChange,
   inputPlaceholder,
   inputMaxLength = 500,
+  portalTarget,
 }) {
   const titleId = useId();
   const descriptionId = useId();
+  const inputErrorId = useId();
   const dialogRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const previouslyFocused = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    const dialog = dialogRef.current;
-    document.body.style.overflow = "hidden";
-    dialog?.querySelector("textarea, button")?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === "Escape" && !loading) {
-        event.preventDefault();
-        onCancel();
-        return;
-      }
-      if (event.key !== "Tab" || !dialog) return;
-      const controls = [...dialog.querySelectorAll("button:not(:disabled), textarea:not(:disabled)")];
-      if (!controls.length) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      previouslyFocused?.focus?.();
-    };
-  }, [loading, open]);
+  useDialogFocus(dialogRef, { open, onClose: onCancel, busy: loading, initialFocus: inputLabel ? "textarea" : "button" });
 
   if (!open) return null;
   const confirmClass =
@@ -73,12 +45,14 @@ export default function ConfirmDialog({
     >
       <section
         ref={dialogRef}
+        tabIndex={-1}
+        aria-busy={loading}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6"
+        className="content-wrap max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6"
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="min-w-0 text-xl font-bold text-maroon-900">
@@ -91,7 +65,7 @@ export default function ConfirmDialog({
             aria-label="Close confirmation dialog"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-maroon-200 disabled:opacity-50"
           >
-            <X size={19} />
+            <X size={19} aria-hidden="true" />
           </button>
         </div>
         <div id={descriptionId} className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
@@ -101,7 +75,7 @@ export default function ConfirmDialog({
         {inputLabel && (
           <label className="mt-5 block text-sm font-semibold text-slate-700">
             {inputLabel}
-            <textarea
+            <textarea required={inputRequired} aria-invalid={Boolean(inputError)} aria-describedby={inputError ? inputErrorId : undefined}
               value={inputValue}
               onChange={(event) => onInputChange?.(event.target.value)}
               disabled={loading}
@@ -110,6 +84,7 @@ export default function ConfirmDialog({
               placeholder={inputPlaceholder}
               className="field mt-2 min-h-24 resize-y"
             />
+            {inputError && <span id={inputErrorId} role="alert" className="mt-1 block text-sm text-red-700">{inputError}</span>}
           </label>
         )}
         <div className="mt-6 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-end">
@@ -132,6 +107,6 @@ export default function ConfirmDialog({
         </div>
       </section>
     </div>,
-    document.body,
+    portalTarget || document.body,
   );
 }

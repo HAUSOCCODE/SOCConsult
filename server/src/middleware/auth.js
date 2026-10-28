@@ -1,3 +1,4 @@
+import { eligibleRegistrationState } from "../services/accountEligibility.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { env } from "../config/env.js";
@@ -14,13 +15,8 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ message: "Account no longer exists." });
     if (user.accountStatus !== "Active")
       return res.status(403).json({ message: "This account is inactive." });
-    if (user.role !== "admin" && user.registrationStatus !== "Approved")
-      return res.status(403).json({
-        message:
-          user.registrationStatus === "Rejected"
-            ? "Your registration request was rejected. Please contact the School of Computing administrator."
-            : "Your registration is awaiting administrator approval.",
-      });
+    if (!["student", "faculty", "dean"].includes(user.role) || !eligibleRegistrationState(user))
+      return res.status(403).json({ message: "Account access is unavailable. Please contact the Dean for assistance." });
     req.user = user;
     next();
   } catch {

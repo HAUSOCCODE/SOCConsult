@@ -1,9 +1,5 @@
-export const STUDENT_TERMINAL_STATUSES = Object.freeze([
-  "Completed",
-  "Cancelled",
-  "Rejected",
-  "No Show",
-]);
+import { TERMINAL_STATUSES as STUDENT_TERMINAL_STATUSES } from "../config/appointmentStatus.js";
+export { TERMINAL_STATUSES as STUDENT_TERMINAL_STATUSES } from "../config/appointmentStatus.js";
 
 const timestamp = (value) => {
   if (!value) return NaN;
@@ -18,17 +14,11 @@ export function isAppointmentPast(appointment, now = new Date()) {
 }
 
 export function isStudentCurrentAppointment(appointment, now = new Date()) {
-  return (
-    !STUDENT_TERMINAL_STATUSES.includes(appointment?.status) &&
-    !isAppointmentPast(appointment, now)
-  );
+  return !STUDENT_TERMINAL_STATUSES.includes(appointment?.status);
 }
 
-export function isStudentHistoryAppointment(appointment, now = new Date()) {
-  return (
-    STUDENT_TERMINAL_STATUSES.includes(appointment?.status) ||
-    isAppointmentPast(appointment, now)
-  );
+export function isStudentHistoryAppointment(appointment) {
+  return STUDENT_TERMINAL_STATUSES.includes(appointment?.status);
 }
 
 export function classifyStudentAppointments(appointments, now = new Date()) {

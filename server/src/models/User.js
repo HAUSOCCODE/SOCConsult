@@ -3,6 +3,23 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    firstName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      required: function () {
+        return Boolean(this.firstName || this.lastName);
+      },
+    },
+    middleName: { type: String, default: "", trim: true, maxlength: 80 },
+    lastName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      required: function () {
+        return Boolean(this.firstName || this.lastName);
+      },
+    },
     email: {
       type: String,
       trim: true,
@@ -20,12 +37,16 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, select: false },
     role: {
       type: String,
-      enum: ["student", "faculty", "admin"],
+      enum: ["student", "faculty", "dean"],
       required: true,
       index: true,
     },
     studentId: { type: String, trim: true },
     employeeId: { type: String, trim: true },
+    // Unique index is deployed explicitly by the account-import preflight, never startup.
+    institutionalId: { type: String, trim: true },
+    accountSource: { type: String, enum: ["csv", "manual", "self_registration"] },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     program: { type: String, trim: true },
     position: { type: String, trim: true, maxlength: 100 },
     // Legacy Faculty data may still contain department. New Faculty flows use position.
@@ -38,6 +59,7 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       select: false,
     },
+    // Legacy/internal eligibility and provenance; no public approval workflow.
     registrationStatus: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],
@@ -54,7 +76,7 @@ const userSchema = new mongoose.Schema(
     emailVerifiedAt: Date,
     approvalMethod: {
       type: String,
-      enum: ["admin", "email_verification", "system"],
+      enum: ["dean", "email_verification", "system"],
       default: null,
     },
     approvedAt: Date,
@@ -62,7 +84,9 @@ const userSchema = new mongoose.Schema(
     rejectedAt: Date,
     rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     rejectionReason: { type: String, trim: true, maxlength: 500 },
+    schedulingRevision: { type: Number, select: false },
     passwordChangedAt: Date,
+    passwordResetAt: Date,
     // Kept temporarily for safe migration of records created by the initial version.
     isActive: Boolean,
     isApproved: Boolean,

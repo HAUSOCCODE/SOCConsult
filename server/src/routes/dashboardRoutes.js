@@ -1,193 +1,93 @@
+import { countRequiredAttendance } from "../services/attendanceRequiredService.js";
+import { visibleNotifications } from "../services/notificationService.js";
+import { attendanceCounts } from "../services/attendanceReportingService.js";
 import { Router } from "express";
-import User from "../models/User.js";
+import { getFacultyDashboard } from "../controllers/facultyDashboardController.js";
 import Appointment from "../models/Appointment.js";
 import Notification from "../models/Notification.js";
-import Task from "../models/Task.js";
-import Availability from "../models/Availability.js";
+
 import { authenticate, authorize } from "../middleware/auth.js";
-import { processExpiredAvailability } from "../services/availabilityExpirationService.js";
-import { getDateRangeFilter } from "../services/aiReportingService.js";
+import { getDeanDashboard } from "../controllers/deanDashboardController.js";
 const router = Router();
-router.use(authenticate);
-router.get("/admin", authorize("admin"), async (_req, res) => {
-  const statuses = [
-    "Pending",
-    "Approved",
-    "Rescheduled",
-    "Completed",
-    "Cancelled",
-    "Rejected",
-  ];
-  const [
-    students,
-    faculty,
-    users,
-    appointments,
-    pendingRegistrations,
-    statusCounts,
-    recentRegistrations,
-    recentAppointments,
-  ] = await Promise.all([
-    User.countDocuments({ role: "student", registrationStatus: "Approved" }),
-    User.countDocuments({ role: "faculty", registrationStatus: "Approved" }),
-    User.countDocuments({ role: { $in: ["student", "faculty"] } }),
-    Appointment.countDocuments(),
-    User.countDocuments({
-      role: { $in: ["student", "faculty"] },
-      registrationStatus: "Pending",
-    }),
-    Promise.all(
-      statuses.map((status) =>
-        Appointment.countDocuments(
-          status === "Pending"
-            ? { status: { $in: ["Pending", "Awaiting Faculty Schedule"] } }
-            : { status },
-        ),
-      ),
-    ),
-    User.find({
-      role: { $in: ["student", "faculty"] },
-      registrationStatus: "Pending",
-    })
-      .select("name email role createdAt")
-      .sort({ createdAt: -1 })
-      .limit(5),
-    Appointment.find()
-      .populate("student faculty", "name")
-      .sort({ createdAt: -1 })
-      .limit(5),
-  ]);
-  res.json({
-    stats: {
-      totalStudents: students,
-      totalFaculty: faculty,
-      totalUsers: users,
-      totalAppointments: appointments,
-      pendingRegistrations,
-      pendingAppointments: statusCounts[0],
-      approvedAppointments: statusCounts[1],
-      rescheduledAppointments: statusCounts[2],
-      completedConsultations: statusCounts[3],
-      cancelledAppointments: statusCounts[4],
-      rejectedAppointments: statusCounts[5],
-    },
-    recentRegistrations,
-    recentAppointments,
-  });
+router.use(["/dean", "/faculty"], (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
 });
-router.get("/student", authorize("student"), async (req, res) => {
+router.use(authenticate);
+router.get("/dean", authorize("dean"), getDeanDashboard);
+export async function getStudentDashboard(req, res) {
   const now = new Date();
-  const weekRange = getDateRangeFilter("this_week", now);
   const [
-    upcoming,
-    pending,
-    completed,
-    tasks,
-    unread,
+    upcomingCount,
+    pendingCount,
+    attendanceRequiredCount,
+    unreadNotificationCount,
+    nextConsultation,
+    recentConsultations,
     recentNotifications,
-    recentAppointments,
-    weeklyStatusCounts,
   ] = await Promise.all([
     Appointment.countDocuments({
       student: req.user.id,
-      status: { $in: ["Approved", "Rescheduled"] },
+      status: "Confirmed",
+      startAt: { $gte: now },
       endAt: { $gt: now },
     }),
     Appointment.countDocuments({
       student: req.user.id,
-      $or: [
-        { status: "Pending", endAt: { $gt: now } },
-        { status: "Awaiting Faculty Schedule" },
-      ],
+      status: "Pending",
     }),
-    Appointment.countDocuments({ student: req.user.id, status: "Completed" }),
-    Task.countDocuments({ student: req.user.id, status: "Pending" }),
-    Notification.countDocuments({ recipient: req.user.id, isRead: false }),
-    Notification.find({ recipient: req.user.id })
-      .sort({ createdAt: -1 })
-      .limit(5),
-    Appointment.find({ student: req.user.id })
-      .populate("faculty", "name")
-      .sort({ createdAt: -1 })
-      .limit(5),
-    Appointment.aggregate([
-      {
-        $match: {
-          student: req.user._id,
-          ...weekRange,
-          status: { $in: ["Completed", "Pending", "Cancelled", "No Show"] },
-        },
+    countRequiredAttendance(req.user.id, "student", now),
+    Notification.countDocuments({ ...visibleNotifications(req.user), isRead: false }),
+    Appointment.findOne({
+      student: req.user.id,
+      status: "Confirmed",
+      startAt: { $gte: now },
+      endAt: { $gt: now },
+    })
+      .select(
+        "faculty subject startAt endAt consultationMode location meetingPlatform status",
+      )
+      .populate("faculty", "name firstName middleName lastName")
+      .sort({ startAt: 1, _id: 1 })
+      .lean(),
+    Appointment.find({
+      student: req.user.id,
+      status: {
+        $in: [
+          "Pending",
+          "Reschedule Proposed",
+          "Confirmed",
+          "Rejected",
+          "Cancelled",
+          "Expired",
+          "Awaiting Attendance Update",
+          "Completed",
+          "Attendance Review",
+        ],
       },
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-    ]),
+    })
+      .select("faculty subject startAt endAt status createdAt")
+      .populate("faculty", "name firstName middleName lastName")
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(5)
+      .lean(),
+    Notification.find(visibleNotifications(req.user))
+      .select("title message isRead createdAt")
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(5)
+      .lean(),
   ]);
-  const weeklyOverview = Object.fromEntries(
-    ["Completed", "Pending", "Cancelled", "No Show"].map((status) => [
-      status,
-      weeklyStatusCounts.find((item) => item._id === status)?.count || 0,
-    ]),
-  );
   res.json({
-    stats: {
-      upcomingAppointments: upcoming,
-      pendingAppointments: pending,
-      completedConsultations: completed,
-      assignedTasks: tasks,
-      unreadNotifications: unread,
-    },
+    upcomingCount,
+    pendingCount,
+    attendanceRequiredCount,
+    unreadNotificationCount,
+    nextConsultation: nextConsultation || null,
+    recentConsultations,
     recentNotifications,
-    recentAppointments,
-    weeklyOverview,
+    attendanceSummary: await attendanceCounts({ student: req.user.id }),
   });
-});
-router.get("/faculty", authorize("faculty"), async (req, res) => {
-  await processExpiredAvailability({ facultyId: req.user.id });
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(start);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const week = new Date(start);
-  week.setDate(week.getDate() + 7);
-  const [today, pending, weekly, completed, recentRequests, availability] =
-    await Promise.all([
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        status: { $in: ["Approved", "Rescheduled"] },
-        startAt: { $gte: start, $lt: tomorrow },
-      }),
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
-      }),
-      Appointment.countDocuments({
-        faculty: req.user.id,
-        status: { $in: ["Approved", "Completed", "Rescheduled"] },
-        startAt: { $gte: start, $lt: week },
-      }),
-      Appointment.countDocuments({ faculty: req.user.id, status: "Completed" }),
-      Appointment.find({
-        faculty: req.user.id,
-        status: { $in: ["Pending", "Awaiting Faculty Schedule"] },
-      })
-        .populate("student", "name email")
-        .sort({ createdAt: -1 })
-        .limit(5),
-      Availability.countDocuments({
-        faculty: req.user.id,
-        isActive: true,
-        endAt: { $gt: now },
-      }),
-    ]);
-  res.json({
-    stats: {
-      todayAppointments: today,
-      pendingRequests: pending,
-      weeklyConsultations: weekly,
-      completedConsultations: completed,
-      availableSchedules: availability,
-    },
-    recentRequests,
-  });
-});
+}
+router.get("/student", authorize("student"), getStudentDashboard);
+router.get("/faculty", authorize("faculty", "dean"), getFacultyDashboard);
 export default router;
