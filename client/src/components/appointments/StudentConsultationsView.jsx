@@ -17,6 +17,7 @@ import { isRecoverableStudentError, safeStudentError } from "../../utils/student
 import ConfirmDialog from "../ConfirmDialog";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import StudentRescheduleResponseModal from "./StudentRescheduleResponseModal";
+import FacultyRequestResponseModal from "./FacultyRequestResponseModal";
 
 const TABS = [
   { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultations." },
@@ -46,6 +47,7 @@ export default function StudentConsultationsView() {
   const [tab, setTab] = useState("active");
   const [details, setDetails] = useState(null);
   const [proposalTarget, setProposalTarget] = useState(null);
+  const [facultyRequestTarget, setFacultyRequestTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -138,6 +140,7 @@ export default function StudentConsultationsView() {
                 <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <h2 className="break-words text-base font-bold text-slate-900">{appointment.subject || "Subject not provided"}</h2>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-wide text-maroon-700">{appointment.initiatedByRole === "faculty" ? "Requested by Faculty" : "Requested by You"}</p>
                     <p className="mt-1 flex min-w-0 items-center gap-1.5 text-sm text-slate-600"><UserRound size={15} className="shrink-0 text-maroon-700" /><span className="break-words">{providerName}</span></p>
                   </div>
                   <StatusBadge appointment status={getAppointmentDisplayStatus(appointment)} compact allowWrap />
@@ -150,7 +153,8 @@ export default function StudentConsultationsView() {
                 </div>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> {appointment.status === "Awaiting Attendance Update" ? "View Attendance" : "View Details"}</button>
-                  {appointment.status === "Reschedule Proposed" && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
+                  {appointment.status === "Pending" && appointment.initiatedByRole === "faculty" && <button type="button" onClick={() => setFacultyRequestTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Faculty Request</button>}
+                  {appointment.status === "Reschedule Proposed" && String(appointment.proposedBy || "") !== String(appointment.student?._id || "") && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
                   {canStudentCancelAppointment(appointment) && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel Consultation</button>}
                 </div>
               </article>
@@ -160,6 +164,7 @@ export default function StudentConsultationsView() {
       )}
       {details && <StudentAppointmentDetailsModal appointment={details} onClose={closeDetails} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
       {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
+      {facultyRequestTarget && <FacultyRequestResponseModal appointment={facultyRequestTarget} onClose={() => setFacultyRequestTarget(null)} onSuccess={async () => { setFacultyRequestTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
 }

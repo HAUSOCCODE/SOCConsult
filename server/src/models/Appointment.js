@@ -90,6 +90,13 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Missing legacy values are interpreted as Student-initiated by workflow services.
+    initiatedByRole: {
+      type: String,
+      enum: ["student", "faculty"],
+      default: "student",
+      index: true,
+    },
     availability: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Availability",

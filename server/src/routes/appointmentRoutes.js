@@ -28,11 +28,50 @@ import { listStudentConsultationHistory } from "../services/studentConsultationH
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
+import { createFacultyInitiatedConsultation, searchEligibleStudents } from "../services/facultyInitiatedConsultationService.js";
 const router = Router();
 router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
   res.set("Cache-Control", "no-store"); next();
 });
 router.use(authenticate);
+
+const facultyRequestWrite = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 403, 404, 409].includes(error.statusCode) ? error.statusCode : 503;
+    res.status(status).json({ code: error.code, message: status === 503 ? "Consultation requests are temporarily unavailable. Please try again." : error.message });
+  }
+};
+router.get("/faculty-request/students", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  res.json(await searchEligibleStudents({ faculty: req.user.id, input: req.query }));
+}));
+router.post("/faculty-request", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  const appointment = await createFacultyInitiatedConsultation({ actor: req.user, input: req.body, now: new Date() });
+  res.status(201).json({ message: "Consultation request sent to the Student.", appointment });
+}));
+router.put("/:id/respond", authorize("student"), facultyRequestWrite(async (req, res) => {
+  if (!req.body || !["accept", "decline", "propose"].includes(req.body.decision)) return res.status(400).json({ message: "Select a valid response." });
+  const allowed = req.body.decision === "propose"
+    ? ["decision", "reason", "startAt", "endAt", "mode", "location", "meetingPlatform", "meetingLink", "expectedVersion"]
+    : ["decision", "reason", "expectedVersion"];
+  if (Object.keys(req.body).some(key => !allowed.includes(key))) return res.status(400).json({ message: "Invalid consultation response." });
+  const schedule = req.body.decision === "propose" ? { startAt: new Date(req.body.startAt), endAt: new Date(req.body.endAt),
+    mode: req.body.mode, location: req.body.location, meetingPlatform: req.body.meetingPlatform, meetingLink: req.body.meetingLink } : undefined;
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
+    action: req.body.decision === "accept" ? "confirm" : req.body.decision === "decline" ? "reject" : "propose",
+    reason: req.body.reason ?? "", schedule, expectedVersion: req.body.expectedVersion });
+  res.json({ message: req.body.decision === "accept" ? "Consultation request accepted." : req.body.decision === "decline" ? "Consultation request declined." : "Another schedule was proposed.", appointment });
+}));
+router.put("/:id/proposal-response", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  if (!req.body || !["accept", "reject"].includes(req.body.decision)) return res.status(400).json({ message: "Select a valid proposal response." });
+  if (Object.keys(req.body).some(key => !["decision", "proposedAt", "expectedVersion"].includes(key)))
+    return res.status(400).json({ message: "Invalid proposal response." });
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
+    action: req.body.decision === "accept" ? "accept_proposal" : "reject_proposal",
+    expectedProposalAt: req.body.proposedAt, expectedVersion: req.body.expectedVersion });
+  res.json({ message: req.body.decision === "accept" ? "Student proposal accepted." : "Student proposal rejected.", appointment });
+}));
 
 const requestRead = work => async (req, res) => {
   res.set("Cache-Control", "no-store");

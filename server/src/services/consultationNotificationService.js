@@ -1,9 +1,11 @@
 import Notification from "../models/Notification.js";
 import User from "../models/User.js";
+import Appointment from "../models/Appointment.js";
 import { env } from "../config/env.js";
 import { sendEmail } from "./emailService.js";
 
 export const STUDENT_CONSULTATION_EVENTS = Object.freeze({
+  faculty_request_received: ["New Consultation Request from Your Faculty Member", "Your Faculty member requested a consultation. Please review the proposed schedule.", false],
   request_submitted: ["Consultation Request Submitted", "We received your consultation request.", false],
   confirmed: ["Consultation Confirmed", "Your consultation has been confirmed.", false],
   rejected: ["Consultation Rejected", "Your consultation request was rejected.", true],
@@ -29,6 +31,9 @@ export const FACULTY_CONSULTATION_EVENTS = Object.freeze({
   faculty_finalized: ["Appointment finalized", "The attendance record was reviewed and finalized.", "history"],
   faculty_attendance_review: ["Attendance review required", "This attendance record requires review.", "history"],
   faculty_expired: ["Consultation expired", "The consultation request or attendance reporting period has expired.", "history"],
+  faculty_request_accepted: ["Consultation request accepted", "The student accepted your consultation request.", "consultations"],
+  faculty_request_declined: ["Consultation request declined", "The student declined your consultation request.", "history"],
+  faculty_student_reschedule_proposed: ["Student proposed another schedule", "The student proposed another consultation schedule for your review.", "consultations"],
 });
 
 const id = value => String(value?._id || value?.id || value || "");
@@ -38,8 +43,44 @@ export function studentConsultationPath(appointmentId, historical = false) {
   return `/student/${historical ? "history" : "consultations"}?appointment=${value}`;
 }
 export function consultationEmailUrl(path) {
-  if (!env.clientUrl || !/^\/student\/(?:consultations|history)\?appointment=[a-f\d]{24}$/i.test(path)) return undefined;
+  if (!env.clientUrl || !/^\/(?:student\/(?:consultations|history)|faculty\/(?:requests|consultations|history)|dean\/faculty\/(?:requests|consultations|history))\?appointment=[a-f\d]{24}$/i.test(path)) return undefined;
   return new URL(path, `${env.clientUrl.replace(/\/$/, "")}/`).toString();
+}
+
+const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+})[character]);
+const personName = value => String(value?.name || "Unavailable").trim() || "Unavailable";
+const manila = (value, options) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", ...options }).format(new Date(value));
+
+export function buildConsultationEmail({ appointment, recipientRole, subject, message, url, request = false }) {
+  const faculty = personName(appointment.faculty), student = personName(appointment.student);
+  const requestedBy = appointment.initiatedByRole === "faculty" ? faculty : student;
+  const date = manila(appointment.startAt, { month: "long", day: "numeric", year: "numeric" });
+  const start = manila(appointment.startAt, { hour: "numeric", minute: "2-digit" });
+  const end = manila(appointment.endAt, { hour: "numeric", minute: "2-digit" });
+  const details = [
+    ["Requested by", requestedBy], ["Faculty member", faculty], ["Student", student],
+    ["Consultation subject", appointment.subject], ["Reason for consultation", appointment.reason],
+    ["Date", date], ["Start time", start], ["End time", end],
+    ["Consultation mode", appointment.consultationMode],
+    [appointment.consultationMode === "Online" ? "Meeting information" : "Location",
+      appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
+    ["Status", appointment.status],
+  ].filter(([, value]) => value != null && String(value).trim());
+  const button = request ? "View Consultation Request" : "View Consultation";
+  const greeting = recipientRole === "student" ? "Hello, Student!" : "Hello, Professor!";
+  const textDetails = details.map(([label, value]) => `${label}: ${value}`).join("\n");
+  const text = `SOCConsult\nSchool of Computing — Holy Angel University\n\n${subject}\n\n${greeting}\n\n${message}\n\nConsultation Details\n${textDetails}\n\nPlease review this consultation in SOCConsult.\n\n${button}: ${url}\n\nThis is an automated SOCConsult notification.`;
+  const rows = details.map(([label, value]) => `<tr><th style="padding:8px;text-align:left;vertical-align:top;color:#6e1423">${escapeHtml(label)}</th><td style="padding:8px;overflow-wrap:anywhere">${escapeHtml(value)}</td></tr>`).join("");
+  const html = `<div style="margin:0 auto;max-width:640px;font-family:Arial,sans-serif;color:#1f2937"><div style="background:#6e1423;padding:22px;color:#fff"><strong style="font-size:22px">SOCConsult</strong><div>School of Computing</div><div>Holy Angel University</div></div><div style="padding:24px;border:1px solid #e5e7eb"><h1 style="color:#6e1423;font-size:24px">${escapeHtml(subject)}</h1><p>${escapeHtml(greeting)}</p><p>${escapeHtml(message)}</p><h2 style="font-size:18px">Consultation Details</h2><table role="presentation" style="width:100%;border-collapse:collapse;background:#f8fafc">${rows}</table><p style="margin-top:22px">Please review this consultation in SOCConsult.</p><p style="margin:28px 0 8px;text-align:center"><a href="${escapeHtml(url)}" style="display:inline-block;border-radius:6px;background:#6e1423;color:#fff;padding:13px 22px;text-decoration:none;font-weight:bold">${button}</a></p></div><div style="padding:16px;text-align:center;color:#64748b;font-size:12px">Automated notification from SOCConsult — School of Computing, Holy Angel University.</div></div>`;
+  return { subject, text, html };
+}
+
+async function appointmentEmail(appointmentId, appointment) {
+  if (appointment) return appointment;
+  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform status")
+    .populate("student", "name").populate("faculty", "name").lean();
 }
 
 export function facultyConsultationPath(appointmentId, destination = "consultations", dean = false) {
@@ -75,16 +116,20 @@ export async function createStudentConsultationNotification({ student, appointme
     title, message, relatedEntityId, actionUrl, deduplicationKey: `${event}:${id(relatedEntityId)}${transitionVersion == null ? "" : `:v${transitionVersion}`}` };
   return Notification.create([data], { session });
 }
-export async function sendStudentConsultationEmail({ student, appointmentId, event }) {
+export async function sendStudentConsultationEmail({ student, appointmentId, event, appointment: loadedAppointment }) {
   const definition = STUDENT_CONSULTATION_EVENTS[event];
   if (!definition) return false;
   const user = await User.findById(student).select("email").lean();
   const path = studentConsultationPath(appointmentId, definition[2]);
   const url = consultationEmailUrl(path);
   if (!user?.email || !url) return false;
+  let appointment;
+  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return false; }
+  if (!appointment) return false;
   const [subject, message] = definition;
-  const result = await sendEmail({ to: user.email, subject, text: `${message}\n\nView Consultation: ${url}`,
-    html: `<p>${message}</p><p><a href="${url}">View Consultation</a></p>` });
+  const content = buildConsultationEmail({ appointment, recipientRole: "student", subject, message, url,
+    request: event === "faculty_request_received" });
+  const result = await sendEmail({ to: user.email, ...content });
   return result.delivered;
 }
 export async function bestEffortStudentConsultationEmail(input) {
@@ -92,17 +137,20 @@ export async function bestEffortStudentConsultationEmail(input) {
   catch { console.warn("[Email] Consultation delivery failed."); return false; }
 }
 
-export async function sendFacultyConsultationEmail({ faculty, appointmentId, event }) {
+export async function sendFacultyConsultationEmail({ faculty, appointmentId, event, appointment: loadedAppointment }) {
   const definition = FACULTY_CONSULTATION_EVENTS[event];
   if (!definition) return false;
   const user = await User.findById(faculty).select("email role").lean();
   if (!user?.email || !["faculty", "dean"].includes(user.role)) return false;
   const [subject, message, destination] = definition;
   const path = facultyConsultationPath(appointmentId, destination, user.role === "dean");
-  if (!env.clientUrl) return false;
-  const url = new URL(path, `${env.clientUrl.replace(/\/$/, "")}/`).toString();
-  const result = await sendEmail({ to: user.email, subject, text: `${message}\n\nView in SOCConsult: ${url}`,
-    html: `<p>${message}</p><p><a href="${url}">View in SOCConsult</a></p>` });
+  const url = consultationEmailUrl(path);
+  let appointment;
+  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return false; }
+  if (!url || !appointment) return false;
+  const content = buildConsultationEmail({ appointment, recipientRole: "faculty", subject, message, url,
+    request: event === "faculty_request_submitted" });
+  const result = await sendEmail({ to: user.email, ...content });
   return result.delivered;
 }
 
@@ -117,14 +165,18 @@ export async function bestEffortFacultyConsultationEmail(input) {
   }
 }
 
-export function appointmentEvent(action) {
-  return ({ request: "request_submitted", confirm: "confirmed", reject: "rejected", propose: "reschedule_proposed",
+export function appointmentEvent(action, appointment, actorRole) {
+  if (action === "request") return appointment?.initiatedByRole === "faculty" ? "faculty_request_received" : "request_submitted";
+  if (appointment?.initiatedByRole === "faculty" && actorRole === "student") return undefined;
+  return ({ confirm: "confirmed", reject: "rejected", propose: "reschedule_proposed",
     accept_proposal: "reschedule_response_recorded", reject_proposal: "reschedule_response_recorded",
     cancel: "cancelled", expire: "expired" })[action];
 }
 
-export function facultyAppointmentEvent(action, actorRole) {
-  if (action === "request") return "faculty_request_submitted";
+export function facultyAppointmentEvent(action, actorRole, appointment) {
+  if (action === "request") return appointment?.initiatedByRole === "faculty" ? undefined : "faculty_request_submitted";
+  if (appointment?.initiatedByRole === "faculty" && actorRole === "student")
+    return ({ confirm: "faculty_request_accepted", reject: "faculty_request_declined", propose: "faculty_student_reschedule_proposed", cancel: "faculty_cancelled" })[action];
   if (action === "accept_proposal") return "faculty_proposal_accepted";
   if (action === "reject_proposal") return "faculty_proposal_declined";
   if (action === "cancel" && actorRole === "student") return "faculty_cancelled";

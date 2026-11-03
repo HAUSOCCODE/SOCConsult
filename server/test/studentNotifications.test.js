@@ -12,7 +12,7 @@ import { CONSULTATION_REMINDER_LEAD_MS, processConsultationReminders } from "../
 import { newId } from "./helpers/appointmentHarness.js";
 
 test("Student lifecycle catalog is complete, privacy-safe, and uses bounded internal deep links", async () => {
-  assert.deepEqual(Object.keys(STUDENT_CONSULTATION_EVENTS), ["request_submitted", "confirmed", "rejected",
+  assert.deepEqual(Object.keys(STUDENT_CONSULTATION_EVENTS), ["faculty_request_received", "request_submitted", "confirmed", "rejected",
     "reschedule_proposed", "reschedule_response_recorded", "cancelled", "upcoming_reminder", "expired",
     "attendance_update_required", "attendance_response_received", "attendance_review", "finalized"]);
   const appointmentId = newId(), student = newId(), records = [], original = Notification.create;
@@ -20,7 +20,7 @@ test("Student lifecycle catalog is complete, privacy-safe, and uses bounded inte
   try {
     for (const event of Object.keys(STUDENT_CONSULTATION_EVENTS))
       await createStudentConsultationNotification({ student, appointmentId, event });
-    assert.equal(records.length, 12);
+    assert.equal(records.length, 13);
     assert.ok(records.every(row => row.recipient === student && String(row.relatedEntityId) === appointmentId));
     assert.ok(records.every(row => /^\/student\/(consultations|history)\?appointment=[a-f\d]{24}$/i.test(row.actionUrl)));
     assert.doesNotMatch(JSON.stringify(records), /reservationToken|meetingLink|proposedMeetingLink|faculty.*reason|reviewNotes|password/i);
@@ -59,8 +59,10 @@ test("24-hour reminder processor is bounded, Confirmed-only, idempotent, and kee
     assert.deepEqual(filter.status, "Confirmed");
     assert.equal(+filter.startAt.$gt, +now);
     assert.equal(+filter.startAt.$lte, +now + CONSULTATION_REMINDER_LEAD_MS);
-    const chain = { select() { return chain; }, sort() { return chain; }, limit() { return chain; },
-      async lean() { return [{ _id: appointmentId, student, startAt: new Date(+now + 3600000) }]; } };
+    const chain = { select() { return chain; }, populate() { return chain; }, sort() { return chain; }, limit() { return chain; },
+      async lean() { return [{ _id: appointmentId, student, status: "Confirmed", subject: "Consultation",
+        reason: "Scheduled review", consultationMode: "Online", meetingPlatform: "SOCConsult",
+        startAt: new Date(+now + 3600000), endAt: new Date(+now + 5400000) }]; } };
     return chain;
   };
   Notification.create = async rows => {

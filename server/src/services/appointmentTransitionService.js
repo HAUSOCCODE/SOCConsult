@@ -32,6 +32,16 @@ export function assertTransition({ appointment, action, actor, now = new Date(),
   if (!(rule.actor === "system" ? actor.role === "system" && !actor.id
     : rule.actor === "student" ? student : rule.actor === "faculty" ? faculty : student || faculty))
     fail("Unauthorized for this appointment action.", 403);
+  const initiatorRole = appointment.initiatedByRole === "faculty" ? "faculty" : "student";
+  const actorParticipantRole = student ? "student" : faculty ? "faculty" : "";
+  if (["confirm", "reject"].includes(action) && actorParticipantRole === initiatorRole)
+    fail("The request initiator cannot decide their own request.", 403);
+  if (action === "propose" && appointment.status === "Pending" && actorParticipantRole === initiatorRole)
+    fail("The request initiator cannot respond to their own request.", 403);
+  if (action === "propose" && appointment.status === "Confirmed" && !faculty)
+    fail("Only the assigned Faculty consultant can propose a confirmed-consultation change.", 403);
+  if (action.endsWith("_proposal") && idOf(appointment.proposedBy) === idOf(actor.id))
+    fail("The proposal initiator cannot respond to their own proposal.", 403);
   if (["reject", "propose"].includes(action) && !safeReason(reason)) fail("A decision reason is required.", 400);
   if (action === "cancel") {
     if (hasAttendanceResponse || appointment.attendance?.studentResponded || appointment.attendance?.facultyResponded ||
@@ -133,10 +143,10 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
     changes: { before: { status: from }, after: { status: to } },
     metadata: { source: action }, createdAt: now,
   }], { session });
-  const facultyEvent = facultyAppointmentEvent(action, actor.role);
+  const facultyEvent = facultyAppointmentEvent(action, actor.role, appointment);
   if (facultyEvent) await createFacultyConsultationNotification({ faculty: appointment.faculty,
     appointmentId: appointment._id, event: facultyEvent, session, transitionVersion });
-  const event = appointmentEvent(action);
+  const event = appointmentEvent(action, appointment, actor.role);
   if (event) await createStudentConsultationNotification({ student: appointment.student, appointmentId: appointment._id, event, session, transitionVersion });
 }
 
@@ -206,7 +216,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
         if (!next || !["Online", "Face-to-Face"].includes(next.mode)) fail("This reschedule proposal is incomplete.", 400);
         push.scheduleHistory = { previous: previous || undefined, previousScheduleUnavailable: !previous, next,
           reason: safeReason(appointment.proposalNote || "Faculty schedule proposal"),
-          initiatedByRole: "Faculty", initiatedBy: appointment.proposedBy || appointment.faculty,
+          initiatedByRole: idOf(appointment.proposedBy) === idOf(appointment.student) ? "Student" : "Faculty",
+          initiatedBy: appointment.proposedBy || appointment.faculty,
           createdAt: appointment.proposedAt, respondedAt: changedAt, respondedBy: actor.id,
           response: action === "accept_proposal" ? "Accepted" : "Rejected" };
         for (const field of proposalFields) unset[field] = 1;
@@ -249,7 +260,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
             const previous = scheduleSnapshot(appointment), next = scheduleSnapshot(appointment, true);
             if (!next) fail("This proposal requires repair before cancellation.");
             push.scheduleHistory = { previous: previous || undefined, previousScheduleUnavailable: !previous, next,
-              reason: safeReason(appointment.proposalNote || "Faculty schedule proposal"), initiatedByRole: "Faculty",
+              reason: safeReason(appointment.proposalNote || "Schedule proposal"),
+              initiatedByRole: idOf(appointment.proposedBy) === idOf(appointment.student) ? "Student" : "Faculty",
               initiatedBy: appointment.proposedBy || appointment.faculty, createdAt: appointment.proposedAt,
               response: "Cancelled", respondedAt: changedAt, respondedBy: actor.id };
             for (const field of proposalFields) unset[field] = 1;
@@ -273,24 +285,36 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
     if (error.code === 11000) fail("The schedule conflicts with another active request.");
     throw error;
   } finally { await session.endSession(); }
-  const event = appointmentEvent(action);
+  const event = appointmentEvent(action, result, actor.role);
   if (event) await bestEffortStudentConsultationEmail({ student: result.student, appointmentId: result._id, event });
-  const facultyEvent = facultyAppointmentEvent(action, actor.role);
+  const facultyEvent = facultyAppointmentEvent(action, actor.role, result);
   if (facultyEvent) await bestEffortFacultyConsultationEmail({ faculty: result.faculty, appointmentId: result._id, event: facultyEvent });
   return safeAppointment(result, actor.role);
 }
 
 export async function createAppointmentRequest({ data, actor, now = new Date() }) {
-  if (actor.role !== "student" || idOf(data.student) !== idOf(actor.id)) fail("Only the owning Student can book.", 403);
+  const studentInitiated = actor.role === "student" && idOf(data.student) === idOf(actor.id);
+  const facultyInitiated = ["faculty", "dean"].includes(actor.role) && idOf(data.faculty) === idOf(actor.id);
+  if (!studentInitiated && !facultyInitiated) fail("Only an appointment participant can create this request.", 403);
   const session = await mongoose.startSession();
   const requestId = data._id || new mongoose.Types.ObjectId();
   let appointment;
   try {
     await session.withTransaction(async () => {
       await lockProviderSchedules([data.faculty], session);
-      const record = { ...data, _id: requestId, status: "Pending", __v: 0 };
+      const record = { ...data, _id: requestId, status: "Pending", __v: 0,
+        initiatedByRole: facultyInitiated ? "faculty" : "student" };
       delete record.reservationToken;
-      if (record.bookingMethod !== "schedule_request") {
+      if (facultyInitiated) {
+        record.bookingMethod = "schedule_request";
+        record.currentScheduleSource = "faculty_assigned";
+        const schedule = { startAt: record.startAt, endAt: record.endAt, mode: record.consultationMode,
+          location: record.location, meetingPlatform: record.meetingPlatform, meetingLink: record.meetingLink };
+        validSchedule(schedule, now);
+        await conflicts(record, schedule, session);
+        record.estimatedDurationMinutes = Math.round((date(record.endAt) - date(record.startAt)) / 60000);
+        await reserve(record, schedule, session);
+      } else if (record.bookingMethod !== "schedule_request") {
         const slot = await Availability.findOne({ _id: record.availability, faculty: record.faculty,
           isActive: true, reservationToken: { $exists: false } }).select("+meetingLink +reservationToken").session(session);
         if (!slot || !(date(slot.startAt) > date(now))) fail("This schedule is no longer available.");
@@ -316,7 +340,11 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
     if (error.code === 11000) fail("An active consultation request already exists.");
     throw error;
   } finally { await session.endSession(); }
-  await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "request_submitted" });
-  await bestEffortFacultyConsultationEmail({ faculty: appointment.faculty, appointmentId: appointment._id, event: "faculty_request_submitted" });
+  if (facultyInitiated)
+    await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "faculty_request_received" });
+  else {
+    await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "request_submitted" });
+    await bestEffortFacultyConsultationEmail({ faculty: appointment.faculty, appointmentId: appointment._id, event: "faculty_request_submitted" });
+  }
   return safeAppointment(appointment, actor.role);
 }
