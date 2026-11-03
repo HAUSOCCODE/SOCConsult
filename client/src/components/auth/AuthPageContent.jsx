@@ -1,6 +1,6 @@
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import Brand from "../Brand";
 import { useAuth } from "../../context/AuthContext";
 const labels = {
@@ -21,6 +21,7 @@ export default function AuthPageContent({ role: fixedRole }) {
   const { role: routeRole } = useParams();
   const role = fixedRole || routeRole;
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, loading } = useAuth();
   const pending = useRef(false);
   const [form, setForm] = useState({ identifier: "", password: "" });
@@ -50,7 +51,10 @@ export default function AuthPageContent({ role: fixedRole }) {
         identifier: form.identifier.trim().toLowerCase(),
         password: form.password,
       });
-      navigate(`/${logged.role}/dashboard`, { replace: true });
+      const from = typeof location.state?.from === "string" ? location.state.from : "";
+      const allowedDestination = logged.role === "dean" ? /^\/dean(?:\/|$)/.test(from)
+        : new RegExp(`^/${logged.role}(?:/|$)`).test(from);
+      navigate(allowedDestination ? from : `/${logged.role}/dashboard`, { replace: true });
     } catch (e) {
       setError(e.message);
     } finally {

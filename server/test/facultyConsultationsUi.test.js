@@ -22,7 +22,8 @@ async function harness(role = "faculty") {
     Loading: () => React.createElement("p", null, "Loading"), ErrorState: ({ message, onRetry }) => React.createElement("button", { onClick: onRetry }, message), EmptyState: ({ title }) => React.createElement("p", null, title),
     StatusBadge: ({ status }) => React.createElement("span", null, status), consultationTime: v => v || "Not scheduled",
     DetailLoadingDialog: ({ children }) => React.createElement("section", null, children),
-    FacultyAppointmentDetailsModal: ({ children }) => React.createElement("section", null, children), FacultyRescheduleModal: () => null, ConfirmDialog: () => null,
+    FacultyAppointmentDetailsModal: ({ children }) => React.createElement("section", null, children), FacultyRescheduleModal: () => null,
+    FacultyConsultationRequestModal: () => null, ConfirmDialog: () => null,
   };
   const Component = new Function("React", ...Object.keys(imports), `${compiled.code};return FacultyConsultationsView;`)(React, ...Object.values(imports));
   return { state, effects, pending, render: (props) => { slot = 0; refSlot = 0; effects.length = 0; return Component(props); }, html: renderToStaticMarkup };

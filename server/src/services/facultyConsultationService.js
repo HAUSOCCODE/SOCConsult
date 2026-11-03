@@ -32,7 +32,8 @@ const safeDate = value => Number.isFinite(stamp(value)) ? value : null;
 export function personalRecord(row) {
   return { _id: String(row._id), student: { name: typeof row.student?.name === "string" ? row.student.name : "Student unavailable" },
     subject: row.subject, status: row.status, startAt: safeDate(row.startAt), endAt: safeDate(row.endAt),
-    consultationMode: row.consultationMode, createdAt: row.createdAt };
+    consultationMode: row.consultationMode, createdAt: row.createdAt,
+    initiatedByRole: row.initiatedByRole === "faculty" ? "faculty" : "student" };
 }
 export async function listFacultyConsultations({ faculty, input, now = new Date() }) {
   const { section, page } = parseConsultationQuery(input);
@@ -69,6 +70,10 @@ export function detailRecord(row, actor, now, hasAttendanceResponse = false) {
     try { assertTransition({ appointment: row, actor, action, now, reason: "Eligibility check", hasAttendanceResponse }); actions[action] = Number.isInteger(row.__v); }
     catch { actions[action] = false; }
   }
+  for (const action of ["accept_proposal", "reject_proposal"]) {
+    try { assertTransition({ appointment: row, actor, action, now, expectedProposalAt: row.proposedAt, hasAttendanceResponse }); actions[action] = Number.isInteger(row.__v); }
+    catch { actions[action] = false; }
+  }
   return { ...personalRecord(row), estimatedDurationMinutes: validSchedule(row) ? Math.round((stamp(row.endAt) - stamp(row.startAt)) / 60000) : undefined, reason: row.reason, __v: row.__v, bookingMethod: row.bookingMethod,
     location: row.consultationMode === "Face-to-Face" ? row.location : null, meetingPlatform: row.meetingPlatform,
     meetingLink: owned && lifecycle && validSchedule(row) && row.consultationMode === "Online" && validMeetingLink(row.meetingLink) ? row.meetingLink : undefined,
@@ -83,7 +88,7 @@ export function detailRecord(row, actor, now, hasAttendanceResponse = false) {
 export async function facultyConsultationDetails({ faculty, id, input = {}, now = new Date(), actor }) {
   if (Object.keys(input).length) fail(400);
   if (!/^[a-f\d]{24}$/i.test(id)) fail(404);
-  const row = await Appointment.findOne({ _id: id, faculty }).select("student faculty subject reason status startAt endAt consultationMode location meetingPlatform +meetingLink createdAt __v bookingMethod statusHistory proposedStartAt proposedEndAt proposedConsultationMode proposedLocation proposedMeetingPlatform +attendance").populate("student", "name").maxTimeMS(10000).lean();
+  const row = await Appointment.findOne({ _id: id, faculty }).select("student faculty initiatedByRole subject reason status startAt endAt consultationMode location meetingPlatform +meetingLink createdAt __v bookingMethod statusHistory proposedStartAt proposedEndAt proposedConsultationMode proposedLocation proposedMeetingPlatform proposedAt proposedBy +attendance").populate("student", "name").maxTimeMS(10000).lean();
   if (!row) fail(404);
   const metadata = await facultyRequestDetails({ faculty, id });
   const hasAttendanceResponse = Boolean(await AttendanceResponse.exists({ appointment: row._id }).maxTimeMS(10000));

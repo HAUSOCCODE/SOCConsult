@@ -12,7 +12,8 @@ export async function processConsultationReminders({ now = new Date(), limit = 1
   const read = size => Appointment.find({ status: "Confirmed",
     startAt: { $gt: now, $lte: new Date(+now + CONSULTATION_REMINDER_LEAD_MS) },
     ...(cursor && { _id: { $gt: cursor } }) })
-    .select("student faculty startAt").sort({ _id: 1 }).limit(size).lean();
+    .select("student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform status")
+    .populate("student", "name").populate("faculty", "name").sort({ _id: 1 }).limit(size).lean();
   for (let batch = 0; batch < maxBatches; batch++) {
     let rows;
     try { rows = await read(limit); }
@@ -23,9 +24,9 @@ export async function processConsultationReminders({ now = new Date(), limit = 1
       let created = false, duplicate = false, failed = false;
       for (const delivery of [
         { create: () => createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event: "upcoming_reminder" }),
-          email: () => sendStudentConsultationEmail({ student: row.student, appointmentId: row._id, event: "upcoming_reminder" }) },
+          email: () => sendStudentConsultationEmail({ student: row.student, appointmentId: row._id, event: "upcoming_reminder", appointment: row }) },
         ...(row.faculty ? [{ create: () => createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id, event: "faculty_upcoming_reminder" }),
-          email: () => sendFacultyConsultationEmail({ faculty: row.faculty, appointmentId: row._id, event: "faculty_upcoming_reminder" }) }] : []),
+          email: () => sendFacultyConsultationEmail({ faculty: row.faculty, appointmentId: row._id, event: "faculty_upcoming_reminder", appointment: row }) }] : []),
       ]) {
         try { await delivery.create(); }
         catch (error) {
