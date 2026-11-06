@@ -4,8 +4,8 @@ import Appointment from "../models/Appointment.js";
 import AttendanceResponse, { assertAttendanceIndexes } from "../models/AttendanceResponse.js";
 import AuditLog from "../models/AuditLog.js";
 import User from "../models/User.js";
-import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS } from "../config/attendance.js";
-import { INITIATOR_ATTENDANCE_POLICY } from "../config/attendance.js";
+import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS,
+  INITIATOR_ATTENDANCE_POLICY, initiatorReportingRole } from "../config/attendance.js";
 import { safeReason, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { participation, participantAttendance } from "./attendancePrivacyService.js";
 import { ATTENDANCE_TRANSITIONS } from "../config/appointmentStatus.js";
@@ -62,7 +62,7 @@ async function transition(row, to, session, now) {
 }
 export async function readAttendance({ id, actor, now = new Date() }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
-  const row = await Appointment.findById(id).select("student faculty status startAt endAt +attendance").lean();
+  const row = await Appointment.findById(id).select("student faculty initiatedByRole status startAt endAt +attendance").lean();
   if (!row || !participation(row, actor)) fail("Appointment not found.", 404);
   // Read only the author's private reason; never fetch the counterpart's reason.
   const initiatorWorkflow = row.attendance?.policyVersion === INITIATOR_ATTENDANCE_POLICY;
@@ -121,14 +121,15 @@ async function processInitiatorOutcome({ id, actor, input, proofFile, now }) {
   await assertAttendanceIndexes();
   const preflight = await Appointment.findById(id).select("+attendance").lean();
   const role = preflight && participation(preflight, actor);
+  const existingResponse = preflight && await AttendanceResponse.exists({ appointment: id });
+  const initiatorRole = initiatorReportingRole(preflight, { hasResponses: Boolean(existingResponse) });
   if (!preflight || !role) fail("Appointment not found.", 404);
-  if (!validAttendance(preflight) || preflight.attendance?.policyVersion !== INITIATOR_ATTENDANCE_POLICY ||
+  if (!validAttendance(preflight) || !initiatorRole ||
       !["Confirmed", "Awaiting Attendance Update"].includes(preflight.status)) fail("Outcome reporting is unavailable.");
-  if (role !== preflight.attendance.initiatorRole) fail("Only the original consultation initiator can report the outcome.", 403);
+  if (role !== initiatorRole) fail("Only the original consultation initiator can report the outcome.", 403);
   if (now < new Date(preflight.endAt)) fail("Outcome reporting has not opened.");
   if (now >= new Date(preflight.attendance.responseDeadlineAt)) fail("The outcome reporting deadline has passed.");
-  if (input.outcome === "Completed" && !proofFile) fail("A consultation proof photo is required for Completed outcomes.", 400);
-  if (await AttendanceResponse.exists({ appointment: id })) fail("The consultation outcome has already been submitted.");
+  if (existingResponse) fail("The consultation outcome has already been submitted.");
   const proof = await uploadProof(proofFile, id);
   const session = await mongoose.startSession();
   let studentId, facultyId;
@@ -136,11 +137,17 @@ async function processInitiatorOutcome({ id, actor, input, proofFile, now }) {
     await session.withTransaction(async () => {
       const row = await Appointment.findById(id).select("+attendance").session(session).lean();
       const currentRole = row && participation(row, actor);
-      if (!row || currentRole !== row.attendance?.initiatorRole || row.attendance?.policyVersion !== INITIATOR_ATTENDANCE_POLICY ||
+      const responseExists = row && await AttendanceResponse.exists({ appointment: id }).session(session);
+      const currentInitiator = initiatorReportingRole(row, { hasResponses: Boolean(responseExists) });
+      if (!row || currentRole !== currentInitiator ||
           !["Confirmed", "Awaiting Attendance Update"].includes(row.status) || now < new Date(row.endAt) ||
           now >= new Date(row.attendance.responseDeadlineAt)) fail("The consultation outcome is no longer available.");
-      if (await AttendanceResponse.exists({ appointment: id }).session(session)) fail("The consultation outcome has already been submitted.");
+      if (responseExists) fail("The consultation outcome has already been submitted.");
       studentId = row.student; facultyId = row.faculty;
+      if (row.attendance.policyVersion === ATTENDANCE_POLICY) {
+        row.attendance.policyVersion = INITIATOR_ATTENDANCE_POLICY;
+        row.attendance.initiatorRole = currentInitiator;
+      }
       await AttendanceResponse.create([{ appointment: row._id, participant: actor.id, participantRole: currentRole,
         outcome: input.outcome, reason: safeReason(input.reason ?? ""), submittedAt: now,
         policyVersion: row.attendance.policyVersion, ...(proof && { proof }) }], { session });
@@ -171,8 +178,9 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
   if (submitting && input.reason !== undefined && (typeof input.reason !== "string" || input.reason.length > 500)) fail("Reason must be text of 500 characters or fewer.", 400);
   const reason = submitting ? safeReason(input.reason ?? "") : "";
   if (submitting) {
-    const policy = await Appointment.findById(id).select("attendance.policyVersion").lean();
-    if (policy?.attendance?.policyVersion === INITIATOR_ATTENDANCE_POLICY)
+    const policy = await Appointment.findById(id).select("initiatedByRole +attendance").lean();
+    const hasResponses = policy && await AttendanceResponse.exists({ appointment: id });
+    if (initiatorReportingRole(policy, { hasResponses: Boolean(hasResponses) }))
       return processInitiatorOutcome({ id, actor, input, proofFile: input.proofFile, now });
   }
   await assertAttendanceIndexes();
@@ -217,9 +225,14 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
           facultyEmailEvents.add("faculty_student_attendance_submitted");
         }
       }
-      const decision = row.attendance.policyVersion === INITIATOR_ATTENDANCE_POLICY
-        ? deadlinePassed ? { status: "Attendance Review", reviewReason: `${row.attendance.initiatorRole}_response_missing`,
-          missingRoles: [row.attendance.initiatorRole] } : null
+      const effectiveInitiator = initiatorReportingRole(row, { hasResponses: responses.length > 0 });
+      if (effectiveInitiator && row.attendance.policyVersion === ATTENDANCE_POLICY) {
+        row.attendance.policyVersion = INITIATOR_ATTENDANCE_POLICY;
+        row.attendance.initiatorRole = effectiveInitiator;
+      }
+      const decision = effectiveInitiator
+        ? deadlinePassed ? { status: "Attendance Review", reviewReason: `${effectiveInitiator}_response_missing`,
+          missingRoles: [effectiveInitiator] } : null
         : attendanceDecision(responses, deadlinePassed);
       if (decision) {
         if (decision.status === "Completed") Object.assign(row.attendance, { finalOutcome: decision.finalOutcome, finalizedAt: now, finalizationSource: "participant_agreement" });
