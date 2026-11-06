@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 // One stack for custom dialogs, native dialogs and drawers. Only the top layer
 // handles keys, including when a confirmation is portalled inside a native dialog.
 const layers = [];
-let scrollLocks = 0;
+const scrollLocks = new Set();
 let originalOverflow;
 const controls = 'a[href], button, input, select, textarea, [tabindex]';
 export function focusableControls(panel) {
@@ -25,9 +25,11 @@ export default function useDialogFocus(ref, {
     if (!open || !panel) return undefined;
     const previous = latest.current.restoreTarget || document.activeElement;
     const layer = { panel };
+    const scrollLock = Symbol("dialog-scroll-lock");
     layers.push(layer);
     if (lockScroll) {
-      if (scrollLocks++ === 0) originalOverflow = document.body.style.overflow;
+      if (scrollLocks.size === 0) originalOverflow = document.body.style.overflow;
+      scrollLocks.add(scrollLock);
       document.body.style.overflow = "hidden";
     }
     const focusInitial = () => {
@@ -67,7 +69,13 @@ export default function useDialogFocus(ref, {
       layers.splice(layers.indexOf(layer), 1);
       document.removeEventListener("keydown", keydown, true);
       document.removeEventListener("focusin", focusin);
-      if (lockScroll && --scrollLocks === 0) document.body.style.overflow = originalOverflow;
+      if (lockScroll) {
+        scrollLocks.delete(scrollLock);
+        if (scrollLocks.size === 0) {
+          document.body.style.overflow = originalOverflow ?? "";
+          originalOverflow = undefined;
+        }
+      }
       // A parent may become uninert in the same React commit.
       queueMicrotask(() => {
         if ((wasTop || !layers.length) && previous?.isConnected && !previous.closest?.('[inert], [hidden]') &&

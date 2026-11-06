@@ -36,19 +36,20 @@ const personal = [
     label: "Dashboard",
     path: "/dean/faculty/dashboard",
   },
-  {
-    icon: ClipboardList,
-    label: "Appointment Requests",
-    path: "/dean/faculty/requests",
-  },
+  { icon: Users, label: "Find Student", path: "/dean/faculty/students" },
   {
     icon: CalendarClock,
-    label: "Availability & Calendar",
+    label: "Availability",
     path: "/dean/faculty/availability",
   },
   {
     icon: CalendarDays,
-    label: "My Consultations",
+    label: "Calendar",
+    path: "/dean/faculty/calendar",
+  },
+  {
+    icon: CalendarDays,
+    label: "Consultations / Requests",
     path: "/dean/faculty/consultations",
   },
   {
@@ -58,7 +59,7 @@ const personal = [
   },
   {
     icon: FileBarChart,
-    label: "My Faculty PDF Reports",
+    label: "Reports",
     path: "/dean/faculty/reports",
   },
 ];

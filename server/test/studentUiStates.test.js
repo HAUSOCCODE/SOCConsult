@@ -45,9 +45,9 @@ test("Student pages expose required loading, empty, retry, and stale-slot states
   ].map(source));
   const all = files.join("\n");
   for (const copy of [
-    "No Faculty found.", "No available consultation slots.",
-    "No private availability entered.", "No active consultations.",
-    "No attendance update required.", "No consultations are currently under review.",
+    "No Faculty found.", "No Matching Consultation Schedules",
+    "No private availability entered.", "No active consultation requests.",
+    "No incoming Faculty requests.", "No upcoming confirmed consultations.",
     "No consultation history yet.", "No notifications yet.",
     "No consultations scheduled for this period.",
     "This consultation slot is no longer available. Please choose another time.",

@@ -97,8 +97,8 @@ test("acceptance exchanges reservations or creates custom holds and rejects dupl
       assert.equal(h.state.appointments[0].scheduleHistory[0].response, "Accepted");
       assert.equal(h.state.slots[0].reservationToken, undefined);
       assert.equal(h.state.holds.length, 30);
-      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
-      assert.ok(h.state.notifications.some(notification => notification.recipient === record.student && notification.type === "reschedule_response_recorded"));
+      assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 1);
+      assert.ok(h.state.notifications.some(notification => notification.recipient === record.faculty && notification.type === "faculty_proposal_accepted"));
     } finally { h.restore(); }
   }
 });

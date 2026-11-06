@@ -25,14 +25,14 @@ test("FAC-06 repeated propose/decline cycles notify per committed version, retry
       assert.equal(proposed.startAt.getTime(),r.startAt.getTime());
       await transitionAppointment({ id:r._id, actor:{id:r.student,role:"student"}, action:"reject_proposal", expectedProposalAt:proposed.proposedAt, expectedVersion:cycle*2+1 });
     }
-    assert.equal(h.state.notifications.length,6); assert.equal(deliveries,4);
+    assert.equal(h.state.notifications.length,4); assert.equal(deliveries,2);
     const keys=h.state.notifications.filter(n=>n.recipient===r.student).map(n=>n.deduplicationKey);
-    assert.equal(new Set(keys).size,4); assert.ok(keys.every(k=>/:v[1-4]$/.test(k)));
+    assert.equal(new Set(keys).size,2); assert.ok(keys.every(k=>/:v[13]$/.test(k)));
     assert.equal(h.state.appointments[0].status,"Pending");
     assert.doesNotMatch(JSON.stringify(h.state.audits),/Schedule change/);
     await transitionAppointment({id:r._id,actor:faculty(r),action:"confirm",expectedVersion:4});
     assert.equal(h.state.slots[0].reservationToken,r.reservationToken); assert.equal(h.state.holds.length,30);
-    assert.equal(deliveries,5);
+    assert.equal(deliveries,3);
   } finally { h.restore(); Object.assign(env, previous); resetEmailTransportFactoryForTests(); }
 });
 

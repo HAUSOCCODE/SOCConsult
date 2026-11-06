@@ -1,6 +1,6 @@
 import CalendarDownload from "./CalendarDownload";
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
@@ -15,6 +15,8 @@ import StudentAttendanceResponseForm from "../attendance/StudentAttendanceRespon
 import AttendanceResponseSummary from "../attendance/AttendanceResponseSummary";
 import { safeStudentError } from "../../utils/studentUiErrors";
 import StudentConsultationRecord from "../consultations/StudentConsultationRecord";
+import OutcomeReportSummary from "../attendance/OutcomeReportSummary";
+import useDialogFocus from "../../hooks/useDialogFocus";
 
 const ATTENDANCE_STATUSES = new Set([
   "Awaiting Attendance Update",
@@ -38,6 +40,7 @@ export default function StudentAppointmentDetailsModal({
   onRespondToProposal,
   onCancelConsultation,
   onAttendanceUpdated,
+  outcomeMode = false,
   readOnly = false,
   historyMode = false,
 }) {
@@ -45,12 +48,14 @@ export default function StudentAppointmentDetailsModal({
   const [attendance, setAttendance] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
+  const dialogRef = useRef(null);
   const appointmentId = appointment?._id || appointment?.id;
-  const shouldLoadAttendance =
-    Boolean(appointmentId) && ATTENDANCE_STATUSES.has(appointment?.status);
   const appointmentEnd = new Date(appointment?.endAt);
   const consultationEnded =
     Number.isFinite(appointmentEnd.getTime()) && Date.now() >= appointmentEnd.getTime();
+  const shouldLoadAttendance = Boolean(appointmentId) &&
+    (ATTENDANCE_STATUSES.has(appointment?.status) || appointment?.status === "Confirmed" && consultationEnded);
+  useDialogFocus(dialogRef, { onClose });
   const loadAttendance = async () => {
     if (!shouldLoadAttendance) return null;
     setAttendanceLoading(true);
@@ -68,9 +73,12 @@ export default function StudentAppointmentDetailsModal({
   };
   const submitAttendance = async (input) => {
     try {
+      const body = new FormData(); body.append("outcome", input.outcome);
+      if (input.reason) body.append("reason", input.reason);
+      if (input.proof) body.append("proof", input.proof);
       await api(`/appointments/${appointmentId}/attendance-responses`, {
         method: "POST",
-        body: JSON.stringify(input),
+        body,
       });
     } catch (error) {
       if (error.status === 409) {
@@ -99,16 +107,6 @@ export default function StudentAppointmentDetailsModal({
     await onAttendanceUpdated?.();
   };
   useEffect(() => {
-    const previous = document.body.style.overflow;
-    const escape = (event) => event.key === "Escape" && onClose();
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", escape);
-    };
-  }, [onClose]);
-  useEffect(() => {
     setAttendance(null);
     setAttendanceError("");
     if (shouldLoadAttendance) void loadAttendance();
@@ -120,6 +118,8 @@ export default function StudentAppointmentDetailsModal({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="student-appointment-title"
@@ -132,7 +132,7 @@ export default function StudentAppointmentDetailsModal({
               id="student-appointment-title"
               className="text-xl font-bold text-maroon-900"
             >
-              {historyMode ? "Historical Consultation Details" : "Consultation Details"}
+              {outcomeMode ? "Report Consultation Outcome" : historyMode ? "Historical Consultation Details" : "Consultation Details"}
             </h2>
             <p className="mt-1 font-semibold text-slate-700">
               {appointment.subject || "Consultation"}
@@ -221,15 +221,16 @@ export default function StudentAppointmentDetailsModal({
               {!attendance?.ownResponse && <button type="button" onClick={loadAttendance} className="mt-3 font-bold underline">Try again</button>}
             </div>
           )}
-          {!readOnly && appointment.status === "Awaiting Attendance Update" && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
-            <StudentAttendanceResponseForm onSubmit={submitAttendance} />
+          {!readOnly && ["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
+            <StudentAttendanceResponseForm onSubmit={submitAttendance} requireProof={attendance.workflow === "initiator_report"} />
           )}
-          {appointment.status === "Awaiting Attendance Update" && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
+          {["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
             <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
               Attendance submission is not currently available. Responses open after the consultation ends and remain subject to the backend response window.
             </p>
           )}
           {attendance?.ownResponse && <AttendanceResponseSummary attendance={attendance} />}
+          <OutcomeReportSummary appointmentId={appointmentId} attendance={attendance} viewerRole="student" onChanged={onAttendanceUpdated} />
           {!attendance?.ownResponse && ["Attendance Review", "Completed", "Expired"].includes(appointment.status) && attendance && (
             <AttendanceResponseSummary attendance={attendance} />
           )}

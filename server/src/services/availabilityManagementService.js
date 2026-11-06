@@ -60,6 +60,8 @@ export async function mutateAvailability({ actor, id, input = {}, action, now = 
       if (action !== "create") {
         slot = await Availability.findOne({ _id: id, faculty: actor.id }).select("+meetingLink +reservationToken").session(session).lean();
         if (!slot) fail("Availability not found.", 404);
+        if (new Date(slot.endAt) <= now)
+          fail("This availability period has already ended. Please create a new schedule.");
         if (!(new Date(slot.startAt) > now)) fail("Only availability that starts in the future can be changed.");
         if (input.expectedVersion !== undefined && input.expectedVersion !== (slot.__v ?? 0)) stale();
         if (slot.reservationToken || await Appointment.exists({ availability: id, status: { $in: BLOCKING_STATUSES } }).session(session)) fail(protectedMessage);

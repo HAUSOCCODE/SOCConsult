@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import useDialogFocus from "../hooks/useDialogFocus";
 import { isLegacyAppointmentStatus } from "../utils/appointmentStatus";
 export const StatusBadge = ({ status, compact = false, allowWrap = false, appointment = false }) => {
@@ -65,24 +66,24 @@ export const ErrorState = ({
     )}
   </div>
 );
-export function Modal({ title, children, onClose, actions, busy = false }) {
+export function Modal({ title, children, onClose, actions, busy = false, maxWidth = "lg" }) {
   const panel = useRef(null);
   const titleId = useId();
   useDialogFocus(panel, { onClose, busy });
-  return (
+  const widths = { lg: "max-w-lg", xl: "max-w-xl", "2xl": "max-w-2xl" };
+  return createPortal(
     <div
-      className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/55 p-3 sm:p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/55 p-3 sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
-      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} className="content-wrap max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6">
-        <h2 id={titleId} className="break-words text-xl font-bold text-maroon-900">
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} className={`content-wrap flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] ${widths[maxWidth] || widths.lg}`}>
+        <h2 id={titleId} className="shrink-0 break-words border-b border-slate-100 px-4 py-4 text-xl font-bold text-maroon-900 sm:px-6 sm:py-5">
           {title}
         </h2>
-        <div className="mt-4 text-sm text-slate-600">{children}</div>
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          {actions}
-        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 text-sm text-slate-600 sm:px-6 sm:py-5">{children}</div>
+        {actions && <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-slate-100 bg-white px-4 py-4 sm:flex-row sm:justify-end sm:px-6">{actions}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

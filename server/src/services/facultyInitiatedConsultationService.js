@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import User from "../models/User.js";
-import StudentAvailability from "../models/StudentAvailability.js";
 import { createAppointmentRequest } from "./appointmentTransitionService.js";
 
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
@@ -8,15 +7,27 @@ const clean = (value, max) => typeof value === "string" ? value.trim().slice(0, 
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export async function searchEligibleStudents({ faculty, input = {} }) {
-  if (!faculty || Object.keys(input).some(key => key !== "q")) fail("Invalid Student search.");
+  if (!faculty || Object.keys(input).some(key => !["q", "page"].includes(key))) fail("Invalid Student search.");
   const q = clean(input.q, 80);
-  if (q.length < 2) return { students: [] };
-  const pattern = new RegExp(escapeRegex(q), "i");
-  const rows = await User.find({ role: "student", accountStatus: "Active", registrationStatus: "Approved",
-    $or: [{ name: pattern }, { firstName: pattern }, { middleName: pattern }, { lastName: pattern }, { studentId: pattern }, { institutionalId: pattern }],
-  }).select("name studentId institutionalId").sort({ name: 1, _id: 1 }).limit(10).lean();
+  if (q && q.length < 2) fail("Enter at least two search characters.");
+  const pageValue = input.page ?? "1";
+  if (typeof pageValue !== "string" || !/^[1-9]\d*$/.test(pageValue) || +pageValue > 10000) fail("Invalid Student search.");
+  const page = +pageValue, limit = 12;
+  const filter = { role: "student", accountStatus: "Active", registrationStatus: "Approved" };
+  if (q) {
+    const pattern = new RegExp(escapeRegex(q), "i");
+    filter.$or = [{ name: pattern }, { firstName: pattern }, { middleName: pattern }, { lastName: pattern },
+      { program: pattern }, { yearLevel: pattern }, { studentId: pattern }, { institutionalId: pattern }];
+  }
+  const [rows, total] = await Promise.all([
+    User.find(filter).select("name program yearLevel studentId institutionalId").sort({ name: 1, _id: 1 })
+      .skip((page - 1) * limit).limit(limit).lean(),
+    User.countDocuments(filter).maxTimeMS(10000),
+  ]);
   return { students: rows.map(row => ({ id: String(row._id), name: row.name,
-    institutionalId: row.studentId || row.institutionalId || "Not available" })) };
+    program: row.program || undefined, yearLevel: row.yearLevel || undefined,
+    institutionalId: row.studentId || row.institutionalId || "Not available" })),
+  pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
 }
 
 export async function createFacultyInitiatedConsultation({ actor, input, now = new Date() }) {
@@ -32,10 +43,6 @@ export async function createFacultyInitiatedConsultation({ actor, input, now = n
   if (!reason || reason.length > 1000) fail("Enter a valid consultation reason.");
   const startAt = new Date(input.startAt), endAt = new Date(input.endAt);
   if (!Number.isFinite(+startAt) || !Number.isFinite(+endAt)) fail("Choose a valid consultation schedule.");
-  const activeAvailability = await StudentAvailability.find({ student: student._id, isActive: true, endAt: { $gt: now } })
-    .select("startAt endAt").lean();
-  if (activeAvailability.length && !activeAvailability.some(period => period.startAt <= startAt && period.endAt >= endAt))
-    fail("The proposed schedule is outside the Student's published availability.", 409);
   const mode = input.mode;
   const location = clean(input.location, 150), meetingPlatform = clean(input.meetingPlatform, 100);
   const meetingLink = clean(input.meetingLink, 500);

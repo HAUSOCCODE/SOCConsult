@@ -12,9 +12,11 @@ import { useToast } from "../../context/ToastContext";
 import ProfileImagePreview from "../../components/profile/ProfileImagePreview";
 import FacultyCard from "../../components/student/FacultyCard";
 import ConsultationRequestForm from "../../components/student/ConsultationRequestForm";
+import AlternativeScheduleRequestForm from "../../components/student/AlternativeScheduleRequestForm";
 import { useNavigate } from "react-router-dom";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
+import useDialogFocus from "../../hooks/useDialogFocus";
 
 const time = (value) =>
   new Date(value).toLocaleTimeString("en-PH", {
@@ -27,6 +29,8 @@ export default function FindFaculty() {
   const toast = useToast();
   const navigate = useNavigate();
   const availabilityRequest = useRef(0);
+  const availabilityDialog = useRef(null);
+  const requestDialog = useRef(null);
   const scheduleCache = useRef(new Map());
   const [faculty, setFaculty] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -39,6 +43,7 @@ export default function FindFaculty() {
     useState(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [chosenSchedule, setChosenSchedule] = useState(null);
+  const [alternativeOpen, setAlternativeOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
@@ -61,21 +66,14 @@ export default function FindFaculty() {
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
-  useEffect(() => {
-    if (!chosenSchedule && !availabilityOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    const closeOnEscape = (event) => {
-      if (event.key !== "Escape") return;
-      if (chosenSchedule) setChosenSchedule(null);
-      else setAvailabilityOpen(false);
-    };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [availabilityOpen, chosenSchedule]);
+  useDialogFocus(availabilityDialog, {
+    open: availabilityOpen,
+    onClose: () => setAvailabilityOpen(false),
+  });
+  useDialogFocus(requestDialog, {
+    open: Boolean(chosenSchedule),
+    onClose: () => setChosenSchedule(null),
+  });
 
   const viewAvailability = async (member) => {
     const requestId = ++availabilityRequest.current;
@@ -235,6 +233,8 @@ export default function FindFaculty() {
             }
           >
             <section
+              ref={availabilityDialog}
+              tabIndex={-1}
               role="dialog"
               aria-modal="true"
               aria-labelledby="faculty-availability-title"
@@ -335,12 +335,9 @@ export default function FindFaculty() {
                   <ErrorState message={scheduleError} onRetry={() => void viewAvailability(selected)} retryable={scheduleRetryable} />
                 ) : schedules.length === 0 ? (
                   <EmptyState
-                    title="No available consultation slots."
-                    text={
-                      hasActiveStudentAvailability
-                        ? "You may adjust My Availability or check another Faculty provider."
-                        : "This provider has no currently bookable Faculty schedules."
-                    }
+                    title="No Matching Consultation Schedules"
+                    text="Your availability does not overlap with this Faculty member's currently bookable times."
+                    action={<button type="button" className="btn-primary" onClick={() => { setAvailabilityOpen(false); setAlternativeOpen(true); }}>Request Another Schedule</button>}
                   />
                 ) : (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -412,6 +409,7 @@ export default function FindFaculty() {
       {chosenSchedule &&
         createPortal(
           <div
+            ref={requestDialog}
             className="fixed inset-0 z-[9999] flex h-[100dvh] w-full min-w-0 items-center justify-center overflow-hidden bg-black/50 p-3 sm:p-4"
             onMouseDown={(event) =>
               event.target === event.currentTarget && setChosenSchedule(null)
@@ -442,6 +440,16 @@ export default function FindFaculty() {
           </div>,
           document.body,
         )}
+      {selected && alternativeOpen &&
+        <AlternativeScheduleRequestForm
+          provider={selected}
+          onClose={() => setAlternativeOpen(false)}
+          onSuccess={(data) => {
+            setAlternativeOpen(false);
+            toast.success(data.message || "Alternative schedule request sent.");
+            navigate("/student/consultations");
+          }}
+        />}
     </div>
   );
 }

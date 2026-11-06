@@ -38,11 +38,13 @@ test("canonical Student consultations UI uses revised groups and no legacy actio
   ]);
   assert.match(page, /StudentConsultationsView/);
   for (const text of [
-    "Active Requests",
-    "Attendance Required",
-    "Under Review",
+    "Incoming Requests",
+    "Sent Requests",
+    "Upcoming Consultations",
+    "Reschedule Proposals",
     "Consultation Concern",
     "View Details",
+    "Report Outcome",
   ]) assert.match(view, new RegExp(text));
   for (const legacy of [
     "Approved",

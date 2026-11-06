@@ -8,6 +8,13 @@ const schema = new mongoose.Schema({
   reason: { type: String, maxlength: 500, immutable: true, select: false },
   submittedAt: { type: Date, required: true, immutable: true },
   policyVersion: { type: String, required: true, immutable: true },
+  proof: {
+    originalName: { type: String, maxlength: 255, immutable: true },
+    cloudinaryPublicId: { type: String, maxlength: 500, immutable: true, select: false },
+    resourceType: { type: String, enum: ["image"], immutable: true, select: false },
+    mimeType: { type: String, enum: ["image/jpeg", "image/png", "image/webp"], immutable: true },
+    size: { type: Number, min: 1, max: 5 * 1024 * 1024, immutable: true },
+  },
 }, { versionKey: false });
 schema.index({ appointment: 1, participant: 1 }, { unique: true });
 schema.index({ appointment: 1, participantRole: 1 }, { unique: true });

@@ -29,6 +29,8 @@ import { listFacultyRequests, facultyRequestDetails } from "../services/facultyR
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 import { createFacultyInitiatedConsultation, searchEligibleStudents } from "../services/facultyInitiatedConsultationService.js";
+import StudentAvailability from "../models/StudentAvailability.js";
+import { MINIMUM_CONSULTATION_MINUTES } from "../services/availabilityMatchingService.js";
 const router = Router();
 router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
   res.set("Cache-Control", "no-store"); next();
@@ -287,15 +289,26 @@ router.post(
       reservationToken: { $exists: false },
       startAt: { $gt: new Date() },
     });
-    const requestedStart = slot?.startAt;
-    const requestedEnd = slot?.endAt;
-    const windowMinutes = slot
-      ? Math.round((slot.endAt - slot.startAt) / 60000)
-      : 0;
     if (!slot || slot.endAt <= slot.startAt)
       return res.status(409).json({
         message: "This schedule is no longer available.",
       });
+    const suppliedStart = req.body.startAt, suppliedEnd = req.body.endAt;
+    if ((suppliedStart && !suppliedEnd) || (!suppliedStart && suppliedEnd))
+      return res.status(400).json({ message: "Select a complete consultation time range." });
+    const requestedStart = suppliedStart ? new Date(suppliedStart) : slot.startAt;
+    const requestedEnd = suppliedEnd ? new Date(suppliedEnd) : slot.endAt;
+    const windowMinutes = Math.floor((requestedEnd - requestedStart) / 60000);
+    if (!Number.isFinite(requestedStart.getTime()) || !Number.isFinite(requestedEnd.getTime()) ||
+      requestedStart < slot.startAt || requestedEnd > slot.endAt || requestedStart <= new Date() ||
+      requestedEnd <= requestedStart || windowMinutes < MINIMUM_CONSULTATION_MINUTES)
+      return res.status(409).json({ message: "This matching schedule is no longer available." });
+    const studentPeriods = await StudentAvailability.find({
+      student: req.user.id, isActive: true, endAt: { $gt: new Date() },
+    }).select("startAt endAt").lean();
+    if (studentPeriods.length && !studentPeriods.some(period =>
+      period.startAt <= requestedStart && period.endAt >= requestedEnd))
+      return res.status(409).json({ message: "This time is outside your current availability." });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
       role: { $in: ["faculty", "dean"] },
@@ -373,7 +386,7 @@ router.post(
       appointment = await createAppointmentRequest({ actor: req.user, data: {
         _id: appointmentId, student: req.user.id, faculty: slot.faculty,
         availability: slot._id, bookingMethod: "published_slot",
-        startAt: slot.startAt, endAt: slot.endAt, estimatedDurationMinutes: windowMinutes,
+        startAt: requestedStart, endAt: requestedEnd, estimatedDurationMinutes: windowMinutes,
         subject, yearLevel, reason, consultationMode: slot.mode || "Online",
         meetingPlatform: slot.mode === "Online" ? platformFor(slot) : undefined,
         location: slot.mode === "Face-to-Face" ? slot.location : "",

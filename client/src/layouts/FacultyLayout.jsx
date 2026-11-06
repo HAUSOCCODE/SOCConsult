@@ -2,7 +2,6 @@ import {
   Bell,
   CalendarClock,
   CalendarDays,
-  ClipboardList,
   History,
   LayoutDashboard,
   UserRound,
@@ -14,20 +13,20 @@ import { useAuth } from "../context/AuthContext";
 import RoleLayout from "../components/RoleLayout";
 const navigation = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/faculty/dashboard" },
-  {
-    icon: ClipboardList,
-    label: "Consultation Requests",
-    path: "/faculty/requests",
-  },
+  { icon: UserRound, label: "Find Student", path: "/faculty/students" },
   {
     icon: CalendarClock,
-    label: "Availability & Calendar",
+    label: "Availability",
     path: "/faculty/availability",
-    activePaths: ["/faculty/calendar"],
   },
   {
     icon: CalendarDays,
-    label: "My Consultations",
+    label: "Calendar",
+    path: "/faculty/calendar",
+  },
+  {
+    icon: CalendarDays,
+    label: "Consultations / Requests",
     path: "/faculty/consultations",
   },
   { icon: History, label: "Consultation History", path: "/faculty/history" },
