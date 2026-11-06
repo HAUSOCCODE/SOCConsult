@@ -25,7 +25,7 @@ export default function ConsultationDetailsDialog({ recordId, onClose }) {
     <div className="flex items-center justify-between gap-3"><h2 id="consultation-detail-title" className="text-xl font-bold">Consultation details</h2><button autoFocus type="button" className="btn-secondary" onClick={onClose}>Close</button></div>
     {error ? <div role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></div> : !data ? <p role="status">Loading details…</p> : <div className="mt-5 space-y-5">
       <dl className="grid gap-3 sm:grid-cols-2">{[
-        ["Attendance verification", data.attendance?.verification === "two_party_workflow" ? "Two-party workflow" : "Not verified by two-party workflow"],
+        ["Attendance verification", data.attendance?.verification === "two_party_workflow" ? "Legacy two-party workflow" : data.attendance?.verification === "initiator_report" ? "Initiator outcome report" : "Not verified"],
         ["Final attendance outcome", data.attendance?.finalOutcome || "Unresolved / not verified"],
         ["Attendance review category", data.attendance?.reviewReason],
         ["Missing response roles", data.attendance?.missingRoles?.join(", ")],

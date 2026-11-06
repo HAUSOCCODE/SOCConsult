@@ -7,7 +7,7 @@ import { sendEmail } from "./emailService.js";
 export const STUDENT_CONSULTATION_EVENTS = Object.freeze({
   faculty_request_received: ["New Consultation Request from Your Faculty Member", "Your Faculty member requested a consultation. Please review the proposed schedule.", false],
   request_submitted: ["Consultation Request Submitted", "We received your consultation request.", false],
-  confirmed: ["Consultation Confirmed", "Your consultation has been confirmed.", false],
+  confirmed: ["SOCConsult — Your Consultation Has Been Confirmed", "Your consultation request has been confirmed by your Faculty member.", false],
   rejected: ["Consultation Rejected", "Your consultation request was rejected.", true],
   reschedule_proposed: ["Reschedule Proposed", "A new consultation schedule has been proposed. Review it in SOCConsult.", false],
   reschedule_response_recorded: ["Reschedule Response Recorded", "Your reschedule response has been recorded.", false],
@@ -66,6 +66,8 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
     ["Consultation mode", appointment.consultationMode],
     [appointment.consultationMode === "Online" ? "Meeting information" : "Location",
       appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
+    ["Meeting link", appointment.consultationMode === "Online" && ["Confirmed", "Completed"].includes(appointment.status)
+      ? appointment.meetingLink : undefined],
     ["Status", appointment.status],
   ].filter(([, value]) => value != null && String(value).trim());
   const button = request ? "View Consultation Request" : "View Consultation";
@@ -79,7 +81,7 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
 
 async function appointmentEmail(appointmentId, appointment) {
   if (appointment) return appointment;
-  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform status")
+  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform +meetingLink status")
     .populate("student", "name").populate("faculty", "name").lean();
 }
 
@@ -168,8 +170,9 @@ export async function bestEffortFacultyConsultationEmail(input) {
 export function appointmentEvent(action, appointment, actorRole) {
   if (action === "request") return appointment?.initiatedByRole === "faculty" ? "faculty_request_received" : "request_submitted";
   if (appointment?.initiatedByRole === "faculty" && actorRole === "student") return undefined;
+  if (action === "accept_proposal") return actorRole === "faculty" || actorRole === "dean" ? "confirmed" : undefined;
+  if (action === "reject_proposal") return actorRole === "faculty" || actorRole === "dean" ? "reschedule_response_recorded" : undefined;
   return ({ confirm: "confirmed", reject: "rejected", propose: "reschedule_proposed",
-    accept_proposal: "reschedule_response_recorded", reject_proposal: "reschedule_response_recorded",
     cancel: "cancelled", expire: "expired" })[action];
 }
 
@@ -177,8 +180,8 @@ export function facultyAppointmentEvent(action, actorRole, appointment) {
   if (action === "request") return appointment?.initiatedByRole === "faculty" ? undefined : "faculty_request_submitted";
   if (appointment?.initiatedByRole === "faculty" && actorRole === "student")
     return ({ confirm: "faculty_request_accepted", reject: "faculty_request_declined", propose: "faculty_student_reschedule_proposed", cancel: "faculty_cancelled" })[action];
-  if (action === "accept_proposal") return "faculty_proposal_accepted";
-  if (action === "reject_proposal") return "faculty_proposal_declined";
+  if (action === "accept_proposal" && actorRole === "student") return "faculty_proposal_accepted";
+  if (action === "reject_proposal" && actorRole === "student") return "faculty_proposal_declined";
   if (action === "cancel" && actorRole === "student") return "faculty_cancelled";
   if (action === "expire") return "faculty_expired";
   return undefined;

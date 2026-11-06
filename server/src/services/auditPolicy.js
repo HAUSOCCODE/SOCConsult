@@ -19,7 +19,7 @@ add("ai_generation_started", { attemptId: ref });
 add("ai_generation_attempt", { attemptId: ref, outcome: member(["success", "failed", "uncertain"]), stage: member(["provider", "persistence"]), code: member(["GENERATED", "PROVIDER_FAILED", "PROVIDER_UNCERTAIN", "PERSISTENCE_FAILED", "COMMIT_UNCERTAIN"]) });
 add("attendance_review_resolved attendance_review_retained", { reviewId: ref, action: member(["confirm_completed", "confirm_student_no_show", "confirm_faculty_no_show", "leave_under_review"]) });
 const transitions = "request confirm reject propose accept_proposal reject_proposal cancel expire".split(" ");
-const attendance = "attendance_open attendance_finalize attendance_review attendance_response_submitted".split(" ");
+const attendance = "attendance_open attendance_finalize attendance_review attendance_response_submitted attendance_outcome_disputed".split(" ");
 add([...transitions.map(value => "appointment_" + value), ...attendance].join(" "), { source: member([...transitions, ...attendance]) });
 add("profile_updated", { fieldNames: value => Array.isArray(value) && value.length <= 20 && value.every(member(["firstName", "middleName", "lastName", "name", "email", "yearLevel", "program", "position", "office", "specialization", "contactNumber", "profilePicture"])) });
 add("profile_picture_updated profile_picture_removed task_assigned task_completed supporting_document_uploaded supporting_document_removed");

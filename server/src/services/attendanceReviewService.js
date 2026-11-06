@@ -58,7 +58,8 @@ export async function reviewDetails(id, actor) {
     state: row.status === "Attendance Review" ? "Unresolved" : "Resolved",
     responses: Object.fromEntries(["student", "faculty"].map(role => {
       const response = responses.find(item => item.participantRole === role);
-      return [role, response ? { responseId: String(response._id), outcome: response.outcome, reason: response.reason || "", submittedAt: response.submittedAt } : null];
+      return [role, response ? { responseId: String(response._id), outcome: response.outcome, reason: response.reason || "", submittedAt: response.submittedAt,
+        proofAvailable: Boolean(response.proof?.mimeType) } : null];
     })),
     actions: actions.map(action => ({ reviewId: String(action._id), deanId: String(action.dean), action: action.action, reason: action.reason,
       reviewedAt: action.reviewedAt, previousStatus: action.previousStatus, resultingStatus: action.resultingStatus,

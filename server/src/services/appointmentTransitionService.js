@@ -115,10 +115,11 @@ async function reserve(appointment, schedule, session) {
     const owned = idOf(schedule.availability) === idOf(appointment.availability) && appointment.reservationToken;
     const token = owned || crypto.randomUUID();
     const slot = await Availability.findOneAndUpdate({ _id: schedule.availability, faculty: appointment.faculty,
-      isActive: true, startAt: schedule.startAt, endAt: schedule.endAt,
+      isActive: true,
       ...(owned ? { reservationToken: appointment.reservationToken } : { reservationToken: { $exists: false } }),
     }, { $set: { reservationToken: token } }, { new: true, session });
-    if (!slot) fail("This schedule is no longer available.");
+    if (!slot || date(schedule.startAt) < date(slot.startAt) || date(schedule.endAt) > date(slot.endAt))
+      fail("This schedule is no longer available.");
     return token;
   }
   return undefined;
@@ -189,8 +190,9 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
           if (!slot) fail("Select a valid future availability schedule.");
           // Confirmation must not silently adopt an edited published schedule.
           if (action === "confirm" && appointment.startAt &&
-            (date(slot.startAt) !== date(appointment.startAt) || date(slot.endAt) !== date(appointment.endAt))) fail("The booked schedule changed.");
-          schedule = { startAt: slot.startAt, endAt: slot.endAt, mode: slot.mode,
+            (date(appointment.startAt) < date(slot.startAt) || date(appointment.endAt) > date(slot.endAt))) fail("The booked schedule changed.");
+          schedule = { startAt: action === "confirm" ? appointment.startAt || slot.startAt : slot.startAt,
+            endAt: action === "confirm" ? appointment.endAt || slot.endAt : slot.endAt, mode: slot.mode,
             location: slot.location, meetingPlatform: slot.meetingPlatform, meetingLink: slot.meetingLink, availability: slot._id };
         }
         if (action === "confirm" && !schedule && appointment.currentScheduleSource === "faculty_assigned")
@@ -236,7 +238,7 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
             (slot.meetingLink || "") !== (schedule.meetingLink || "")) fail("The proposed slot changed. Request a new reschedule proposal.");
         }
         validSchedule(schedule, now);
-        set.attendance = attendanceEnrollment(schedule.endAt);
+        set.attendance = attendanceEnrollment(schedule.endAt, { initiatedByRole: appointment.initiatedByRole || "student" });
         if (action === "accept_proposal") await conflicts(appointment, schedule, session);
         const sameSlot = schedule.availability && idOf(schedule.availability) === idOf(appointment.availability);
         if (!sameSlot) await release(appointment, session, false);
@@ -313,18 +315,19 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
         validSchedule(schedule, now);
         await conflicts(record, schedule, session);
         record.estimatedDurationMinutes = Math.round((date(record.endAt) - date(record.startAt)) / 60000);
-        await reserve(record, schedule, session);
+        // A Faculty alternative remains Pending and is reserved only after the
+        // Student accepts and the schedule is revalidated.
       } else if (record.bookingMethod !== "schedule_request") {
         const slot = await Availability.findOne({ _id: record.availability, faculty: record.faculty,
           isActive: true, reservationToken: { $exists: false } }).select("+meetingLink +reservationToken").session(session);
         if (!slot || !(date(slot.startAt) > date(now))) fail("This schedule is no longer available.");
-        // Do not book an edited time after the Student selected the old schedule.
-        if (date(slot.startAt) !== date(record.startAt) || date(slot.endAt) !== date(record.endAt))
+        // The selected overlap must still be contained by the published window.
+        if (date(record.startAt) < date(slot.startAt) || date(record.endAt) > date(slot.endAt))
           fail("This schedule changed. Refresh and choose a schedule again.");
-        Object.assign(record, { startAt: slot.startAt, endAt: slot.endAt, consultationMode: slot.mode,
+        Object.assign(record, { consultationMode: slot.mode,
           location: slot.mode === "Face-to-Face" ? slot.location : "",
           meetingPlatform: slot.mode === "Online" ? slot.meetingPlatform : "",
-          estimatedDurationMinutes: Math.round((date(slot.endAt) - date(slot.startAt)) / 60000) });
+          estimatedDurationMinutes: Math.round((date(record.endAt) - date(record.startAt)) / 60000) });
         record.currentScheduleSource = "published_slot";
         const schedule = { startAt: record.startAt, endAt: record.endAt, mode: record.consultationMode,
           location: record.location, meetingPlatform: record.meetingPlatform, meetingLink: slot.meetingLink, availability: record.availability };

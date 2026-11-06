@@ -13,7 +13,7 @@ import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 const filters = ["Pending", "Reschedule Proposed", "Confirmed", "Rejected", "Cancelled", "Expired", "All"];
 const timestamp = value => value && Number.isFinite(new Date(value).getTime()) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
 
-export default function AppointmentRequests() {
+export default function AppointmentRequests({ embedded = false }) {
   const toast = useToast();
   const searchParams = new URLSearchParams(window.location?.search || "");
   const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
@@ -91,13 +91,13 @@ export default function AppointmentRequests() {
   const appointment = detail.appointment;
   const pending = appointment?.status === "Pending";
   return <div className="min-w-0 space-y-5">
-    <h1 className="text-2xl font-bold text-maroon-900">Appointment Requests</h1>
-    <p className="text-sm text-slate-600">Review your Student requests. Times are shown in Asia/Manila.</p>
-    <label className="block text-sm font-semibold">Status
+    {!embedded && <><h1 className="text-2xl font-bold text-maroon-900">Appointment Requests</h1>
+    <p className="text-sm text-slate-600">Review your Student requests. Times are shown in Asia/Manila.</p></>}
+    {!embedded && <label className="block text-sm font-semibold">Status
       <select className="field mt-1" value={status} onChange={event => { close(); setStatus(event.target.value); setPage(1); }}>
         {filters.map(value => <option key={value}>{value}</option>)}
       </select>
-    </label>
+    </label>}
     {status === "All" && <p className="text-sm text-slate-600">All includes attendance, finalized, and retained legacy records.</p>}
     {status === "Pending" && <p className="text-sm text-slate-600">Earliest requested schedule first. Unscheduled requests appear last.</p>}
     {list.loading ? <Loading message="Loading consultation requests..." /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(value => value + 1)} retryable={isRecoverableUiError(list.requestError)} /> : <>

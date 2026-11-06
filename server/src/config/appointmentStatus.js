@@ -24,7 +24,8 @@ export const TRANSITION_RULES = Object.freeze({
 
 // Executed only by the transactional attendance service, never participant status input.
 export const ATTENDANCE_TRANSITIONS = Object.freeze({
-  "Confirmed": ["Awaiting Attendance Update"],
+  "Confirmed": ["Awaiting Attendance Update", "Completed"],
   "Awaiting Attendance Update": ["Completed", "Attendance Review"],
+  "Completed": ["Attendance Review"],
   "Attendance Review": [], // Only the separate Dean review service can resolve this state.
 });

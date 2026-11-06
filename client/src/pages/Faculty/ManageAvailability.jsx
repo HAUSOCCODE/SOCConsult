@@ -531,7 +531,7 @@ function ScheduleCard({
     day: "numeric",
   };
   const timeOptions = { hour: "numeric", minute: "2-digit" };
-  const expired = item.status === "expired" || new Date(item.startAt) <= new Date();
+  const expired = item.status === "expired" || new Date(item.endAt) <= new Date();
   const statusLabel = expired
     ? "Expired"
     : item.isActive

@@ -23,7 +23,7 @@ async function harness(role = "faculty") {
     StatusBadge: ({ status }) => React.createElement("span", null, status), consultationTime: v => v || "Not scheduled",
     DetailLoadingDialog: ({ children }) => React.createElement("section", null, children),
     FacultyAppointmentDetailsModal: ({ children }) => React.createElement("section", null, children), FacultyRescheduleModal: () => null,
-    FacultyConsultationRequestModal: () => null, ConfirmDialog: () => null,
+    FacultyConsultationRequestModal: () => null, AppointmentRequests: () => null, ConfirmDialog: () => null,
   };
   const Component = new Function("React", ...Object.keys(imports), `${compiled.code};return FacultyConsultationsView;`)(React, ...Object.values(imports));
   return { state, effects, pending, render: (props) => { slot = 0; refSlot = 0; effects.length = 0; return Component(props); }, html: renderToStaticMarkup };
@@ -32,10 +32,10 @@ const result = { appointments: [{ _id: "first", student: { name: "Student <scrip
 test("personal list escapes text, paginates, exposes required sections and loads fresh abortable details", async () => {
   const h = await harness(); assert.match(h.html(h.render()), /Loading/);
   const cleanup = h.effects[0](); h.effects[1]();
-  assert.equal(h.pending[0].path, "/appointments/consultations?section=Upcoming&page=1");
+  assert.equal(h.pending[0].path, "/appointments/consultations?section=All&page=1");
   h.pending[0].resolve(result); await settle(); let tree = h.render();
   assert.match(h.html(tree), /Student &lt;script&gt;/); assert.match(h.html(tree), /&lt;img&gt;/);
-  for (const section of ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"]) assert.ok(button(tree, section));
+  for (const section of ["All", "Incoming Requests", "Sent Requests", "Upcoming Consultations", "Reschedule Proposals"]) assert.ok(button(tree, section));
   button(tree, "View Details").props.onClick({ currentTarget: { focus() {} } });
   assert.equal(h.pending[1].path, "/appointments/consultations/first"); assert.equal(h.pending[1].options.cache, "no-store");
   tree = h.render(); assert.match(h.html(tree), /Loading consultation details/);

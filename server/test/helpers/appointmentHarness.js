@@ -7,6 +7,7 @@ import OneTimeScheduleHold from "../../src/models/OneTimeScheduleHold.js";
 import AuditLog from "../../src/models/AuditLog.js";
 import Notification from "../../src/models/Notification.js";
 import User from "../../src/models/User.js";
+import StudentAvailability from "../../src/models/StudentAvailability.js";
 
 export const newId = () => String(new mongoose.Types.ObjectId());
 export const clone = (value) => value instanceof Date ? new Date(value) : value?._bsontype === "ObjectId" ? String(value)
@@ -59,7 +60,7 @@ const update = (record, changes) => {
 export function appointmentHarness() {
   const restores = [];
   const lockCalls = [];
-  const state = { appointments: [], slots: [], holds: [], audits: [], notifications: [], users: [], responses: [], reviews: [] };
+  const state = { appointments: [], slots: [], studentAvailability: [], holds: [], audits: [], notifications: [], users: [], responses: [], reviews: [] };
   let failAt, retryOnce = false, queue = Promise.resolve();
   const patch = (object, key, value) => { const old = object[key]; object[key] = value; restores.push(() => { object[key] = old; }); };
   const failure = (name) => { if (failAt === name) throw new Error(`Injected ${name} failure`); };
@@ -75,7 +76,7 @@ export function appointmentHarness() {
       } catch (error) { Object.assign(state, before); throw error; } finally { done(); }
     }, endSession: async () => {},
   }));
-  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [OneTimeScheduleHold, "holds"], [User, "users"], [AttendanceResponse, "responses"], [AttendanceReview, "reviews"]]) {
+  for (const [model, key] of [[Appointment, "appointments"], [Availability, "slots"], [StudentAvailability, "studentAvailability"], [OneTimeScheduleHold, "holds"], [User, "users"], [AttendanceResponse, "responses"], [AttendanceReview, "reviews"]]) {
     patch(model, "findOne", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));
     patch(model, "findById", (id) => query(() => clone(state[key].find((record) => same(record._id, id)) || null)));
     patch(model, "exists", (filter) => query(() => clone(state[key].find((record) => matches(record, filter)) || null)));

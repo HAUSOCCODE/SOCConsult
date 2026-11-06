@@ -6,6 +6,11 @@ export const availabilityStatus = (availability, now = new Date()) => {
   return availability.isActive ? "active" : "inactive";
 };
 
+export const availabilityWithStatus = (availability, now = new Date()) => {
+  const value = availability?.toObject ? availability.toObject() : { ...availability };
+  return { ...value, status: availabilityStatus(value, now) };
+};
+
 // Explicit processor entry point. Never called from reads or application startup.
 // UTC instants correspond to Asia/Manila schedules; no invented duration deadline.
 export async function processExpiredAvailability({ facultyId, now = new Date(), limit = 100, afterId } = {}) {

@@ -21,12 +21,13 @@ test("Faculty creates one Pending participant-owned request and only the Student
     assert.equal(created.initiatedByRole, "faculty");
     assert.equal(String(created.faculty), faculty); assert.equal(String(created.student), student);
     assert.equal(h.state.notifications.filter(item => String(item.recipient) === student)[0].type, "faculty_request_received");
-    assert.equal(h.state.holds.length, 30);
+    assert.equal(h.state.holds.length, 0, "a Pending alternative must not reserve schedule minutes");
     await assert.rejects(transitionAppointment({ id: created._id, actor: { id: faculty, role: "faculty" }, action: "confirm", expectedVersion: 0,
       now: new Date("2099-05-01T00:00:00Z") }), error => error.statusCode === 403);
     const accepted = await transitionAppointment({ id: created._id, actor: { id: student, role: "student" }, action: "confirm", expectedVersion: 0,
       now: new Date("2099-05-01T00:00:00Z") });
     assert.equal(accepted.status, "Confirmed");
+    assert.equal(h.state.holds.length, 30, "acceptance reserves the revalidated schedule");
     assert.equal(h.state.notifications.some(item => item.type === "faculty_request_accepted" && String(item.recipient) === faculty), true);
   } finally { h.restore(); }
 });

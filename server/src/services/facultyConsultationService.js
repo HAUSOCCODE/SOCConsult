@@ -6,7 +6,7 @@ import { facultyRequestDetails } from "./facultyRequestService.js";
 import { readAttendance } from "./attendanceService.js";
 import { assertTransition } from "./appointmentTransitionService.js";
 
-export const SECTIONS = ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
+export const SECTIONS = ["All", "Sent Requests", "Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
 const fail = code => { throw Object.assign(new Error("Consultation unavailable."), { statusCode: code }); };
 const stamp = value => value == null ? NaN : +new Date(value);
 export const validSchedule = row => Number.isFinite(stamp(row.startAt)) && stamp(row.endAt) > stamp(row.startAt);
@@ -19,7 +19,7 @@ export function sectionFor(row, now) {
 }
 export function parseConsultationQuery(input = {}) {
   if (Object.keys(input).some(key => !["section", "page"].includes(key))) fail(400);
-  const section = input.section ?? "Upcoming", page = input.page ?? "1";
+  const section = input.section ?? "All", page = input.page ?? "1";
   if (!SECTIONS.includes(section) || typeof page !== "string" || !/^[1-9]\d*$/.test(page) || +page > 10000) fail(400);
   if (["Recently Finalized", "Compatibility"].includes(section) && page !== "1") fail(400);
   return { section, page: +page };
@@ -33,7 +33,8 @@ export function personalRecord(row) {
   return { _id: String(row._id), student: { name: typeof row.student?.name === "string" ? row.student.name : "Student unavailable" },
     subject: row.subject, status: row.status, startAt: safeDate(row.startAt), endAt: safeDate(row.endAt),
     consultationMode: row.consultationMode, createdAt: row.createdAt,
-    initiatedByRole: row.initiatedByRole === "faculty" ? "faculty" : "student" };
+    initiatedByRole: row.initiatedByRole === "faculty" ? "faculty" : "student",
+    attendanceWorkflow: row.attendance?.initiatorRole ? "initiator_report" : "two_party" };
 }
 export async function listFacultyConsultations({ faculty, input, now = new Date() }) {
   const { section, page } = parseConsultationQuery(input);
@@ -44,17 +45,21 @@ export async function listFacultyConsultations({ faculty, input, now = new Date(
     { case: { $in: ["$status", [...TERMINAL_STATUSES, "No Show"]] }, then: "Recently Finalized" },
   ];
   const bounded = ["Recently Finalized", "Compatibility"].includes(section);
-  const sort = section === "Upcoming" ? { startAt: 1, _id: 1 } : section === "Pending" ? { unscheduled: 1, startAt: 1, createdAt: 1, _id: 1 }
+  const sort = section === "Upcoming" ? { startAt: 1, _id: 1 } : ["Pending", "Sent Requests"].includes(section) ? { unscheduled: 1, startAt: 1, createdAt: 1, _id: 1 }
     : section === "Reschedule Proposed" ? { proposedAt: -1, _id: -1 } : section === "Awaiting Attendance Update" ? { endAt: 1, _id: 1 }
       : section === "Attendance Review" ? { reviewSort: 1, _id: 1 } : { finalizedSort: -1, _id: -1 };
+  const sectionMatch = section === "All" ? { personalSection: { $in: ["Pending", "Reschedule Proposed", "Upcoming", "Awaiting Attendance Update", "Attendance Review"] } }
+    : section === "Sent Requests" ? { personalSection: "Pending", initiatedByRole: "faculty" }
+      : { personalSection: section };
   const pipeline = [{ $match: { faculty: new mongoose.Types.ObjectId(faculty) } }, { $set: {
     personalSection: { $switch: { branches, default: "Compatibility" } },
     unscheduled: { $cond: [{ $eq: [{ $type: "$startAt" }, "date"] }, 0, 1] },
     reviewSort: { $ifNull: ["$attendance.reviewStartedAt", "$endAt"] },
     finalizedSort: { $ifNull: [{ $max: { $map: { input: { $filter: { input: { $ifNull: ["$statusHistory", []] }, as: "event", cond: { $in: ["$$event.newStatus", [...TERMINAL_STATUSES, "No Show"]] } } }, as: "event", in: "$$event.changedAt" } } }, "$attendance.finalizedAt", "$updatedAt", "$endAt", "$createdAt"] },
-  } }, { $match: { personalSection: section } }, { $facet: {
+  } }, { $match: sectionMatch }, { $facet: {
     count: [{ $count: "total" }], records: [{ $sort: sort }, { $skip: (page - 1) * 20 }, { $limit: 20 },
-      { $project: { student: 1, subject: 1, status: 1, startAt: 1, endAt: 1, consultationMode: 1, createdAt: 1 } }],
+      { $project: { student: 1, initiatedByRole: 1, subject: 1, status: 1, startAt: 1, endAt: 1, consultationMode: 1, createdAt: 1,
+        "attendance.initiatorRole": 1 } }],
   } }];
   const [result] = await Appointment.aggregate(pipeline).option({ maxTimeMS: 10000 });
   const rows = await Appointment.populate(result?.records || [], { path: "student", select: "name" });

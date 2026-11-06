@@ -65,7 +65,7 @@ export default function StudentAvailability() {
   return (
     <div className="w-full min-w-0 space-y-5 pb-16">
       <header>
-        <h1 className="text-2xl font-bold text-slate-900">My Availability</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Availability</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
           Your availability is private and is used only to suggest compatible
           Faculty consultation schedules. You may still book a Faculty slot

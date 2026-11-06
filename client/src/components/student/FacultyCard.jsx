@@ -53,8 +53,8 @@ export default function FacultyCard({
         <div className="flex min-w-0 flex-col gap-2 border-t border-slate-200 pt-3 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
           <p className="text-center text-sm font-bold text-maroon-900">
             {count > 0
-              ? `${count} Available ${count === 1 ? "Slot" : "Slots"}`
-              : "No Available Slots"}
+              ? `${count} Matching ${count === 1 ? "Schedule" : "Schedules"}`
+              : "No Matching Schedules"}
           </p>
           <button
             type="button"

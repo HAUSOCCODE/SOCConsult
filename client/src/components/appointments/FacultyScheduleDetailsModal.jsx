@@ -94,7 +94,7 @@ export default function FacultyScheduleDetailsModal({
               id="schedule-details-title"
               className="text-xl font-bold text-maroon-900"
             >
-              Appointment Requests
+              Consultations / Requests
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               Review requests assigned to this exact schedule.

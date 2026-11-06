@@ -32,7 +32,7 @@ test("Student lifecycle catalog is complete, privacy-safe, and uses bounded inte
 test("SMTP adapter is optional, supports mocked delivery, and hides provider failures", async () => {
   const previous = { smtpHost: env.smtpHost, smtpUser: env.smtpUser, smtpPass: env.smtpPass, emailFrom: env.emailFrom,
     smtpPort: env.smtpPort, smtpSecure: env.smtpSecure, clientUrl: env.clientUrl };
-  const warning = console.warn;
+  const warning = console.warn, info = console.info;
   try {
     Object.assign(env, { smtpHost: undefined, smtpUser: undefined, smtpPass: undefined, emailFrom: undefined });
     assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "unavailable" });
@@ -44,11 +44,13 @@ test("SMTP adapter is optional, supports mocked delivery, and hides provider fai
     assert.equal(consultationEmailUrl(`/student/consultations?appointment=${newId()}`).startsWith("https://socconsult.example.test/student/"), true);
     assert.equal(consultationEmailUrl("https://evil.test"), undefined);
     const warnings = []; console.warn = value => warnings.push(value);
-    setEmailTransportFactoryForTests(() => ({ sendMail: async () => { throw new Error("EAUTH SECRET"); } }));
-    assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "delivery_failed" });
-    assert.deepEqual(warnings, ["[Email] Delivery failed."]);
+    setEmailTransportFactoryForTests(() => ({ sendMail: async () => {
+      throw Object.assign(new Error("provider detail must stay private"), { code: "EAUTH" });
+    } }));
+    assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "authentication_failed" });
+    assert.deepEqual(warnings, ["[Email] Delivery failed reason=authentication_failed."]);
     assert.doesNotMatch(JSON.stringify(warnings), /EAUTH|SECRET/);
-  } finally { Object.assign(env, previous); console.warn = warning; resetEmailTransportFactoryForTests(); }
+  } finally { Object.assign(env, previous); console.warn = warning; console.info = info; resetEmailTransportFactoryForTests(); }
 });
 
 test("24-hour reminder processor is bounded, Confirmed-only, idempotent, and keeps in-app delivery when email is unavailable", async () => {

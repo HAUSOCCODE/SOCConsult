@@ -24,7 +24,7 @@ async function load(path, imports) {
     `${code}; return ${name}`,
   )(React, ...Object.values(imports));
 }
-test("Faculty sidebar has exactly eight canonical entries and the calendar alias", async () => {
+test("Faculty sidebar has separate canonical Availability and Calendar entries", async () => {
   const raw = await source("layouts/FacultyLayout.jsx");
   const icons = Object.fromEntries(
     [...raw.matchAll(/icon: (\w+)/g)].map(([, name]) => [name, () => null]),
@@ -38,9 +38,10 @@ test("Faculty sidebar has exactly eight canonical entries and the calendar alias
   const navigation = React.Children.toArray(Component().props.children).find(child => child.props?.navigation).props.navigation;
   const labels = [
     "Dashboard",
-    "Consultation Requests",
-    "Availability & Calendar",
-    "My Consultations",
+    "Find Student",
+    "Availability",
+    "Calendar",
+    "Consultations / Requests",
     "Consultation History",
     "Reports",
     "Notifications",
@@ -54,8 +55,9 @@ test("Faculty sidebar has exactly eight canonical entries and the calendar alias
     navigation.map((x) => x.path),
     [
       "dashboard",
-      "requests",
+      "students",
       "availability",
+      "calendar",
       "consultations",
       "history",
       "reports",
@@ -63,7 +65,8 @@ test("Faculty sidebar has exactly eight canonical entries and the calendar alias
       "account",
     ].map((x) => `/faculty/${x}`),
   );
-  assert.deepEqual(navigation[2].activePaths, ["/faculty/calendar"]);
+  assert.equal(navigation[2].activePaths, undefined);
+  assert.equal(navigation[3].activePaths, undefined);
   const layout = await source("components/RoleLayout.jsx");
   assert.match(
     layout,
@@ -139,9 +142,9 @@ test("canonical titles, reused account components and calendar links remain avai
   try {
     for (const [page, title] of Object.entries({
       dashboard: "Faculty Dashboard",
-      requests: "Consultation Requests",
-      availability: "Availability & Calendar",
-      consultations: "My Consultations",
+      requests: "Consultations / Requests",
+      availability: "Availability",
+      consultations: "Consultations / Requests",
       history: "Consultation History",
       reports: "Reports",
       notifications: "Notifications",
@@ -167,22 +170,23 @@ test("canonical titles, reused account components and calendar links remain avai
   assert.match(account, /role="tablist"/);
   const Profile = () => null;
   const Availability = await load("pages/Faculty/FacultyAvailabilityCalendar.jsx", {
-    Link: router.Link, ManageAvailability: Profile, ConsultationCalendar: Profile,
-    FacultyConsultationsView: Profile, AvailabilityCalendarDetails: Profile,
-    useState: initial => [initial, () => {}], useCallback: fn => fn, useRef: () => ({ current: null }),
+    ManageAvailability: Profile,
   });
   const integrated = React.Children.toArray(Availability({}).props.children);
-  assert.equal(integrated[0].props.title, "Availability & Calendar");
-  assert.equal(integrated[0].props.personalCalendar, true);
-  assert.equal(integrated[2].props.showCalendarLink, false);
-  assert.equal(integrated[3].props.detailOnly, true);
+  assert.equal(integrated[0].type, "header");
+  assert.equal(integrated[1].props.showCalendarLink, true);
   const Calendar = await load("pages/Faculty/FacultyConsultationCalendar.jsx", {
-    Navigate: router.Navigate, calendarAliasSuffix,
-    useLocation: () => ({ search: "?view=week&owner=forged&includeFinalized=true", hash: "#details" }),
+    Link: router.Link, ConsultationCalendar: Profile, FacultyConsultationsView: Profile,
+    AvailabilityCalendarDetails: Profile, useState: initial => [initial, () => {}],
+    useCallback: fn => fn, useRef: () => ({ current: null }),
   });
-  assert.equal(Calendar({}).props.to, "/faculty/availability?view=week&includeFinalized=true#details");
-  assert.equal(Calendar({}).props.replace, true);
-  assert.equal(Calendar({ consultationsPath: "/dean/faculty/consultations" }).props.to, "/dean/faculty/availability?view=week&includeFinalized=true#details");
+  const facultyCalendar = React.Children.toArray(Calendar({}).props.children);
+  assert.equal(facultyCalendar[0].props.title, "Calendar");
+  assert.equal(facultyCalendar[0].props.personalCalendar, true);
+  assert.equal(facultyCalendar[0].props.includeAvailability, true);
+  assert.equal(facultyCalendar[1].props.children[1].props.to, "/faculty/availability");
+  const deanCalendar = React.Children.toArray(Calendar({ consultationsPath: "/dean/faculty/consultations" }).props.children);
+  assert.equal(deanCalendar[1].props.children[1].props.to, "/dean/faculty/availability");
   assert.equal(calendarAliasSuffix("?date=2026-02-30&view=week&view=month&includeInactive=maybe", "#//evil"), "");
   const app = await source("App.jsx");
   assert.ok(app.includes('FacultyAvailabilityCalendar routeBase="/dean/faculty"'));

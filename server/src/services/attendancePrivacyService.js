@@ -8,7 +8,8 @@ export function participation(appointment, actor) {
 export function monitoringAttendance(row) {
   const a = row.attendance;
   if (!a?.policyVersion) return { verification: "not_verified", finalOutcome: null };
-  return { verification: "two_party_workflow", policyVersion: a.policyVersion,
+  return { verification: a.initiatorRole ? "initiator_report" : "two_party_workflow", policyVersion: a.policyVersion,
+    initiatorRole: a.initiatorRole || null,
     attendanceOpensAt: a.attendanceOpensAt, responseDeadlineAt: a.responseDeadlineAt,
     finalOutcome: a.finalOutcome ?? null, finalizedAt: a.finalizedAt ?? null,
     finalizationSource: a.finalizationSource ?? null, reviewReason: a.reviewReason ?? null,
@@ -17,13 +18,22 @@ export function monitoringAttendance(row) {
 export function participantAttendance(row, responses, role, now = new Date()) {
   const own = responses.find(r => r.participantRole === role), a = row.attendance;
   const enrolled = Boolean(a?.policyVersion);
+  const initiatorWorkflow = Boolean(a?.initiatorRole);
+  const recorded = initiatorWorkflow ? responses[0] : null;
   return { enrolled, status: row.status, attendanceOpensAt: a?.attendanceOpensAt ?? null,
     policyVersion: a?.policyVersion ?? null,
+    workflow: initiatorWorkflow ? "initiator_report" : "two_party",
+    initiatorRole: a?.initiatorRole ?? null,
     responseDeadlineAt: a?.responseDeadlineAt ?? null,
-    eligible: enrolled && !own && ["Confirmed", "Awaiting Attendance Update"].includes(row.status) &&
+    eligible: enrolled && !recorded && (!initiatorWorkflow || role === a.initiatorRole) &&
+      ["Confirmed", "Awaiting Attendance Update"].includes(row.status) &&
       now >= new Date(row.endAt) && now < new Date(a.responseDeadlineAt),
     ownResponse: own ? { outcome: own.outcome, reason: own.reason || "", submittedAt: own.submittedAt } : null,
-    waiting: Boolean(own && responses.length < 2 && ["Confirmed", "Awaiting Attendance Update"].includes(row.status)),
+    recordedOutcome: recorded ? { outcome: recorded.outcome, reason: recorded.reason || "",
+      submittedAt: recorded.submittedAt, reportedByRole: recorded.participantRole,
+      proof: recorded.proof?.mimeType ? { name: recorded.proof.originalName, mimeType: recorded.proof.mimeType,
+        size: recorded.proof.size, available: true } : null } : null,
+    waiting: Boolean(!initiatorWorkflow && own && responses.length < 2 && ["Confirmed", "Awaiting Attendance Update"].includes(row.status)),
     outcomes: own && responses.length === 2 ? Object.fromEntries(responses.map(r => [r.participantRole, r.outcome])) : undefined,
     finalOutcome: a?.finalOutcome ?? null };
 }

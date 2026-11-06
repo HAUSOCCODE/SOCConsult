@@ -80,12 +80,12 @@ test("availability selection fetches fresh narrow details, handles retry and ign
   cleanup(); h.pending[0].resolve({ availability: { status: "stale" } }); await settle(); assert.doesNotMatch(h.html(h.render(props)), /stale/);
 });
 
-test("consolidated page routes selections by reference ID and restores focus after calendar refresh removes an opener", async () => {
+test("dedicated calendar routes selections by reference ID and restores focus after refresh removes an opener", async () => {
   const noop = () => null;
-  const h = await harness("pages/Faculty/FacultyAvailabilityCalendar.jsx", "FacultyAvailabilityCalendar", {
-    ManageAvailability: noop, ConsultationCalendar: noop, FacultyConsultationsView: noop, AvailabilityCalendarDetails: noop,
+  const h = await harness("pages/Faculty/FacultyConsultationCalendar.jsx", "FacultyConsultationCalendar", {
+    ConsultationCalendar: noop, FacultyConsultationsView: noop, AvailabilityCalendarDetails: noop,
   });
-  const props = { routeBase: "/dean/faculty", consultationsPath: "/dean/faculty/consultations" };
+  const props = { consultationsPath: "/dean/faculty/consultations" };
   let tree = h.render(props); const root = tree.props.ref; let restored = 0;
   root.current = { focus() { restored++; } };
   const calendar = elements(tree).find(el => el.props?.personalCalendar);

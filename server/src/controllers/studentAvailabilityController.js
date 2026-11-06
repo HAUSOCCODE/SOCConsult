@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 import StudentAvailability from "../models/StudentAvailability.js";
+import { availabilityStatus, availabilityWithStatus } from "../services/availabilityExpirationService.js";
+
+const endedMessage = "This availability period has already ended. Please create a new schedule.";
 
 const parsePeriod = (startValue, endValue) => ({
   startAt: new Date(startValue),
@@ -24,10 +27,11 @@ const overlapsActivePeriod = ({ student, startAt, endAt, excludeId }) =>
   });
 
 export const getStudentAvailability = async (req, res) => {
+  const now = new Date();
   const availability = await StudentAvailability.find({
     student: req.user.id,
   }).sort({ startAt: 1 });
-  res.json({ availability });
+  res.json({ availability: availability.map(item => availabilityWithStatus(item, now)) });
 };
 
 export const createStudentAvailability = async (req, res) => {
@@ -64,6 +68,8 @@ export const updateStudentAvailability = async (req, res) => {
   });
   if (!availability)
     return res.status(404).json({ message: "Availability not found." });
+  if (availabilityStatus(availability) === "expired")
+    return res.status(409).json({ message: endedMessage });
 
   const changesPeriod =
     req.body.startAt !== undefined || req.body.endAt !== undefined;
