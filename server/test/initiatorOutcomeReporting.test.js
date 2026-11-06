@@ -46,15 +46,21 @@ for (const initiatorRole of ["student", "faculty"]) test(`${initiatorRole} initi
   } finally { current.harness.restore(); }
 });
 
-test("Completed requires private image proof and stores only controlled metadata", async () => {
+test("Completed accepts optional proof and stores only controlled metadata when attached", async () => {
+  const withoutProof = setup("student");
+  try {
+    await processAttendance({ id: withoutProof.appointment._id, actor: withoutProof.actor("student"),
+      input: { outcome: "Completed" }, now: withoutProof.now });
+    assert.equal(withoutProof.harness.state.appointments[0].status, "Completed");
+    assert.equal(withoutProof.harness.state.responses[0].proof, undefined);
+  } finally { withoutProof.harness.restore(); }
+
   const current = setup("student");
   const oldUpload = cloudinary.uploader.upload_stream;
   cloudinary.uploader.upload_stream = (_options, callback) => ({ end: () => callback(null, {
     secure_url: "https://provider.invalid/private", public_id: "consultio/outcome-proofs/private-id", resource_type: "image",
   }) });
   try {
-    await assert.rejects(processAttendance({ id: current.appointment._id, actor: current.actor("student"),
-      input: { outcome: "Completed" }, now: current.now }), /proof photo is required/);
     const proofFile = { originalname: "proof.jpg", mimetype: "image/jpeg", size: 4,
       buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) };
     await processAttendance({ id: current.appointment._id, actor: current.actor("student"),
@@ -68,6 +74,23 @@ test("Completed requires private image proof and stores only controlled metadata
     await assert.rejects(readOutcomeProof({ id: current.appointment._id,
       actor: { id: "000000000000000000000002", role: "student" } }), /not found/);
   } finally { cloudinary.uploader.upload_stream = oldUpload; current.harness.restore(); }
+});
+
+test("untouched legacy attendance with explicit initiator safely adopts initiator-only reporting", async () => {
+  const current = setup("student");
+  current.appointment.attendance = attendanceEnrollment(current.appointment.endAt);
+  try {
+    const facultyView = await readAttendance({ id: current.appointment._id,
+      actor: current.actor("faculty"), now: current.now });
+    assert.equal(facultyView.workflow, "initiator_report");
+    assert.equal(facultyView.eligible, false);
+    await assert.rejects(processAttendance({ id: current.appointment._id, actor: current.actor("faculty"),
+      input: { outcome: "Completed" }, now: current.now }), /original consultation initiator/);
+    await processAttendance({ id: current.appointment._id, actor: current.actor("student"),
+      input: { outcome: "Completed" }, now: current.now });
+    assert.equal(current.harness.state.appointments[0].attendance.policyVersion, INITIATOR_ATTENDANCE_POLICY);
+    assert.equal(current.harness.state.responses.length, 1);
+  } finally { current.harness.restore(); }
 });
 
 test("initiator policy rejects early and duplicate outcome submissions", async () => {
@@ -109,7 +132,11 @@ test("image proof middleware and both role UIs enforce the initiator policy cont
   ]);
   assert.match(middleware, /5 \* 1024 \* 1024/);
   assert.match(middleware, /RIFF/); assert.match(middleware, /image\/jpeg/); assert.match(middleware, /image\/png/); assert.match(middleware, /image\/webp/);
-  for (const form of [student, faculty]) { assert.match(form, /Upload Consultation Proof/); assert.match(form, /requireProof/); }
+  for (const form of [student, faculty]) {
+    assert.match(form, /Attach Photo Proof \(Optional\)/);
+    assert.match(form, /allowProof/);
+    assert.doesNotMatch(form, /proof before reporting a completed consultation/);
+  }
   assert.match(faculty, /FormData/); assert.match(studentDetails, /FormData/);
   assert.match(studentView, /Awaiting Faculty Outcome Report/);
   assert.match(facultyView, /Awaiting Student Outcome Report/);

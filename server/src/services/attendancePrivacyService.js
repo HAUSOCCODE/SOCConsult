@@ -1,3 +1,5 @@
+import { initiatorReportingRole } from "../config/attendance.js";
+
 export function participation(appointment, actor) {
   if (actor.management || actor.deanManagementAccess) return null;
   const id = String(actor.id || actor._id || "");
@@ -8,8 +10,9 @@ export function participation(appointment, actor) {
 export function monitoringAttendance(row) {
   const a = row.attendance;
   if (!a?.policyVersion) return { verification: "not_verified", finalOutcome: null };
-  return { verification: a.initiatorRole ? "initiator_report" : "two_party_workflow", policyVersion: a.policyVersion,
-    initiatorRole: a.initiatorRole || null,
+  const initiatorRole = initiatorReportingRole(row);
+  return { verification: initiatorRole ? "initiator_report" : "two_party_workflow", policyVersion: a.policyVersion,
+    initiatorRole,
     attendanceOpensAt: a.attendanceOpensAt, responseDeadlineAt: a.responseDeadlineAt,
     finalOutcome: a.finalOutcome ?? null, finalizedAt: a.finalizedAt ?? null,
     finalizationSource: a.finalizationSource ?? null, reviewReason: a.reviewReason ?? null,
@@ -18,14 +21,15 @@ export function monitoringAttendance(row) {
 export function participantAttendance(row, responses, role, now = new Date()) {
   const own = responses.find(r => r.participantRole === role), a = row.attendance;
   const enrolled = Boolean(a?.policyVersion);
-  const initiatorWorkflow = Boolean(a?.initiatorRole);
+  const initiatorRole = initiatorReportingRole(row, { hasResponses: responses.length > 0 });
+  const initiatorWorkflow = Boolean(initiatorRole);
   const recorded = initiatorWorkflow ? responses[0] : null;
   return { enrolled, status: row.status, attendanceOpensAt: a?.attendanceOpensAt ?? null,
     policyVersion: a?.policyVersion ?? null,
     workflow: initiatorWorkflow ? "initiator_report" : "two_party",
-    initiatorRole: a?.initiatorRole ?? null,
+    initiatorRole,
     responseDeadlineAt: a?.responseDeadlineAt ?? null,
-    eligible: enrolled && !recorded && (!initiatorWorkflow || role === a.initiatorRole) &&
+    eligible: enrolled && !recorded && (!initiatorWorkflow || role === initiatorRole) &&
       ["Confirmed", "Awaiting Attendance Update"].includes(row.status) &&
       now >= new Date(row.endAt) && now < new Date(a.responseDeadlineAt),
     ownResponse: own ? { outcome: own.outcome, reason: own.reason || "", submittedAt: own.submittedAt } : null,

@@ -19,7 +19,7 @@ const safeMessage = (error) => {
   return "Unable to submit your attendance response. Refresh the consultation before trying again.";
 };
 
-export default function FacultyAttendanceForm({ appointmentId, onSubmitted, requireProof = false }) {
+export default function FacultyAttendanceForm({ appointmentId, onSubmitted, allowProof = false }) {
   const [outcome, setOutcome] = useState("");
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -45,7 +45,6 @@ export default function FacultyAttendanceForm({ appointmentId, onSubmitted, requ
   const requestConfirmation = (event) => {
     event.preventDefault();
     if (!outcome) return setError("Select one attendance outcome before continuing.");
-    if (requireProof && outcome === "Completed" && !proof) return setError("Upload consultation proof before reporting a completed consultation.");
     setError("");
     setConfirming(true);
   };
@@ -87,9 +86,9 @@ export default function FacultyAttendanceForm({ appointmentId, onSubmitted, requ
         <textarea value={reason} onChange={event => setReason(event.target.value)} disabled={submitting} maxLength={FACULTY_ATTENDANCE_REASON_LIMIT} rows={4} className="field mt-2 min-h-24 w-full resize-y" placeholder="Add context if helpful" />
         <span className="mt-1 block text-right text-xs font-normal text-slate-500">{reason.length}/{FACULTY_ATTENDANCE_REASON_LIMIT}</span>
       </label>
-      {requireProof && outcome === "Completed" && <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <label htmlFor="faculty-outcome-proof" className="block text-sm font-bold text-slate-800">Upload Consultation Proof</label>
-        <p id="faculty-outcome-proof-help" className="mt-1 text-sm text-slate-600">Attach a photo showing that the consultation took place. Avoid unrelated people, private messages, or sensitive information.</p>
+      {allowProof && <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <label htmlFor="faculty-outcome-proof" className="block text-sm font-bold text-slate-800">Attach Photo Proof (Optional)</label>
+        <p id="faculty-outcome-proof-help" className="mt-1 text-sm text-slate-600">You may attach a photo as supporting evidence that the consultation took place. This is optional. Avoid unrelated people, private messages, or sensitive information.</p>
         <input id="faculty-outcome-proof" type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseProof} disabled={submitting} aria-describedby="faculty-outcome-proof-help" className="field mt-3 w-full" />
         {proof && <div className="mt-3 flex flex-wrap items-start gap-3"><img src={preview} alt="Selected consultation proof preview" className="max-h-40 max-w-full rounded-lg border object-contain" /><div className="min-w-0"><p className="break-all text-sm">{proof.name}</p><button type="button" className="mt-2 text-sm font-bold text-maroon-800 underline" onClick={() => setProof(null)} disabled={submitting}>Remove photo</button></div></div>}
       </div>}

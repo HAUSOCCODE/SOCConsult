@@ -5,6 +5,7 @@ import { APPOINTMENT_STATUSES, TERMINAL_STATUSES } from "../config/appointmentSt
 import { facultyRequestDetails } from "./facultyRequestService.js";
 import { readAttendance } from "./attendanceService.js";
 import { assertTransition } from "./appointmentTransitionService.js";
+import { initiatorReportingRole } from "../config/attendance.js";
 
 export const SECTIONS = ["All", "Sent Requests", "Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
 const fail = code => { throw Object.assign(new Error("Consultation unavailable."), { statusCode: code }); };
@@ -34,7 +35,7 @@ export function personalRecord(row) {
     subject: row.subject, status: row.status, startAt: safeDate(row.startAt), endAt: safeDate(row.endAt),
     consultationMode: row.consultationMode, createdAt: row.createdAt,
     initiatedByRole: row.initiatedByRole === "faculty" ? "faculty" : "student",
-    attendanceWorkflow: row.attendance?.initiatorRole ? "initiator_report" : "two_party" };
+    attendanceWorkflow: initiatorReportingRole(row) ? "initiator_report" : "two_party" };
 }
 export async function listFacultyConsultations({ faculty, input, now = new Date() }) {
   const { section, page } = parseConsultationQuery(input);
@@ -59,7 +60,9 @@ export async function listFacultyConsultations({ faculty, input, now = new Date(
   } }, { $match: sectionMatch }, { $facet: {
     count: [{ $count: "total" }], records: [{ $sort: sort }, { $skip: (page - 1) * 20 }, { $limit: 20 },
       { $project: { student: 1, initiatedByRole: 1, subject: 1, status: 1, startAt: 1, endAt: 1, consultationMode: 1, createdAt: 1,
-        "attendance.initiatorRole": 1 } }],
+        "attendance.policyVersion": 1, "attendance.initiatorRole": 1, "attendance.studentResponded": 1,
+        "attendance.facultyResponded": 1, "attendance.finalOutcome": 1, "attendance.finalizationSource": 1,
+        "attendance.reviewReason": 1, "attendance.reviewStartedAt": 1 } }],
   } }];
   const [result] = await Appointment.aggregate(pipeline).option({ maxTimeMS: 10000 });
   const rows = await Appointment.populate(result?.records || [], { path: "student", select: "name" });

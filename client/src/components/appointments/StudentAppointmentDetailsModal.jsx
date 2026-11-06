@@ -222,7 +222,7 @@ export default function StudentAppointmentDetailsModal({
             </div>
           )}
           {!readOnly && ["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
-            <StudentAttendanceResponseForm onSubmit={submitAttendance} requireProof={attendance.workflow === "initiator_report"} />
+            <StudentAttendanceResponseForm onSubmit={submitAttendance} allowProof={attendance.workflow === "initiator_report"} />
           )}
           {["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
             <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
