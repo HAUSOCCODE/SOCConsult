@@ -6,9 +6,6 @@ import { useToast } from "../../context/ToastContext";
 import { formatPersonName } from "../../utils/formatPersonName";
 import {
   LEGACY_APPOINTMENT_STATUSES,
-  ACTIVE_REQUEST_STATUSES,
-  ATTENDANCE_REQUIRED_STATUSES,
-  UNDER_REVIEW_STATUSES,
   canStudentCancelAppointment,
   getAppointmentDisplayStatus,
 } from "../../utils/appointmentStatus";
@@ -17,12 +14,15 @@ import { isRecoverableStudentError, safeStudentError } from "../../utils/student
 import ConfirmDialog from "../ConfirmDialog";
 import StudentAppointmentDetailsModal from "./StudentAppointmentDetailsModal";
 import StudentRescheduleResponseModal from "./StudentRescheduleResponseModal";
+import FacultyRequestResponseModal from "./FacultyRequestResponseModal";
+import { useAuth } from "../../context/AuthContext";
 
 const TABS = [
-  { id: "active", label: "Active Requests", statuses: ACTIVE_REQUEST_STATUSES, empty: "No active consultations." },
-  { id: "attendance", label: "Attendance Required", statuses: ATTENDANCE_REQUIRED_STATUSES, empty: "No attendance update required." },
-  { id: "review", label: "Under Review", statuses: UNDER_REVIEW_STATUSES, empty: "No consultations are currently under review." },
-  { id: "legacy", label: "Legacy", statuses: LEGACY_APPOINTMENT_STATUSES, empty: "No legacy consultations." },
+  { id: "all", label: "All", empty: "No active consultation requests." },
+  { id: "incoming", label: "Incoming Requests", empty: "No incoming Faculty requests." },
+  { id: "sent", label: "Sent Requests", empty: "No consultation requests sent by you." },
+  { id: "upcoming", label: "Upcoming Consultations", empty: "No upcoming confirmed consultations." },
+  { id: "reschedule", label: "Reschedule Proposals", empty: "No reschedule proposals require your attention." },
 ];
 const validDate = (value) => {
   const date = new Date(value);
@@ -38,14 +38,17 @@ const timeLabel = (value) =>
   }) || "Not available";
 
 export default function StudentConsultationsView() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   const [errorRetryable, setErrorRetryable] = useState(true);
-  const [tab, setTab] = useState("active");
+  const [tab, setTab] = useState("all");
   const [details, setDetails] = useState(null);
+  const [outcomeMode, setOutcomeMode] = useState(false);
   const [proposalTarget, setProposalTarget] = useState(null);
+  const [facultyRequestTarget, setFacultyRequestTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -64,25 +67,34 @@ export default function StudentConsultationsView() {
     if (!items || !/^[a-f\d]{24}$/i.test(linkedId || "")) return;
     const linked = items.find(item => String(item._id) === linkedId);
     if (linked) {
-      const linkedTab = TABS.find(entry => entry.statuses.includes(linked.status));
-      if (linkedTab) setTab(linkedTab.id);
+      if (linked.status === "Confirmed") setTab("upcoming");
+      else if (linked.status === "Reschedule Proposed") setTab("reschedule");
+      else if (linked.status === "Pending") setTab(linked.initiatedByRole === "faculty" ? "incoming" : "sent");
       setDetails(linked);
     }
   }, [items, searchParams]);
   const closeDetails = () => {
     setDetails(null);
+    setOutcomeMode(false);
     if (searchParams.has("appointment")) setSearchParams({}, { replace: true });
   };
   const groups = useMemo(() => {
     const source = Array.isArray(items) ? items : [];
-    return Object.fromEntries(TABS.map((entry) => [entry.id, source
-      .filter((item) => entry.statuses.includes(item.status))
+    const current = source.filter(item => !LEGACY_APPOINTMENT_STATUSES.includes(item.status));
+    const membership = {
+      all: current,
+      incoming: current.filter(item => item.status === "Pending" && item.initiatedByRole === "faculty"),
+      sent: current.filter(item => item.status === "Pending" && item.initiatedByRole !== "faculty"),
+      upcoming: current.filter(item => item.status === "Confirmed"),
+      reschedule: current.filter(item => item.status === "Reschedule Proposed" && String(item.proposedBy || "") !== String(user?.id || user?._id || "")),
+    };
+    return Object.fromEntries(TABS.map((entry) => [entry.id, membership[entry.id]
       .sort((left, right) => {
         const leftTime = validDate(left.startAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         const rightTime = validDate(right.startAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return leftTime - rightTime || String(left._id).localeCompare(String(right._id));
       })]));
-  }, [items]);
+  }, [items, user]);
   const selectedTab = TABS.find((entry) => entry.id === tab) || TABS[0];
   const shown = groups[tab] || [];
   const cancel = async () => {
@@ -113,13 +125,13 @@ export default function StudentConsultationsView() {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-gold-700">Consultation Management</p>
-            <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">My Consultations</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Track active requests and consultations requiring your attention.</p>
+            <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-maroon-900 sm:text-[28px]">Consultations / Requests</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Manage your consultation requests, upcoming appointments, and scheduling responses.</p>
           </div>
           <span className="hidden h-12 w-12 shrink-0 place-items-center rounded-xl border border-gold-300 bg-maroon-50 text-maroon-800 md:grid"><CalendarDays size={23} /></span>
         </div>
       </section>
-      <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Consultation groups">
+      <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5" role="tablist" aria-label="Consultation groups">
         {TABS.map((entry) => (
           <button key={entry.id} type="button" role="tab" aria-selected={tab === entry.id} onClick={() => setTab(entry.id)} className={`min-w-0 rounded-xl border px-3 py-3 text-sm font-bold transition ${tab === entry.id ? "border-maroon-700 bg-maroon-800 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-maroon-300"}`}>
             <span className="break-words">{entry.label}</span>
@@ -133,11 +145,17 @@ export default function StudentConsultationsView() {
             const providerName = formatPersonName(appointment.faculty) || "Consultation Provider";
             const mode = appointment.consultationMode || "Not provided";
             const ModeIcon = mode === "Face-to-Face" ? MapPin : Monitor;
+            const ended = validDate(appointment.endAt)?.getTime() <= Date.now();
+            const initiatorWorkflow = appointment.attendanceSummary?.verification === "initiator_report";
+            const studentInitiated = appointment.initiatedByRole !== "faculty";
+            const canReportOutcome = (!initiatorWorkflow || studentInitiated) && ended && ["Confirmed", "Awaiting Attendance Update"].includes(appointment.status);
+            const awaitingOtherReporter = initiatorWorkflow && !studentInitiated && ended && ["Confirmed", "Awaiting Attendance Update"].includes(appointment.status);
             return (
               <article key={appointment._id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <h2 className="break-words text-base font-bold text-slate-900">{appointment.subject || "Subject not provided"}</h2>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-wide text-maroon-700">{appointment.initiatedByRole === "faculty" ? "Requested by Faculty" : "Requested by You"}</p>
                     <p className="mt-1 flex min-w-0 items-center gap-1.5 text-sm text-slate-600"><UserRound size={15} className="shrink-0 text-maroon-700" /><span className="break-words">{providerName}</span></p>
                   </div>
                   <StatusBadge appointment status={getAppointmentDisplayStatus(appointment)} compact allowWrap />
@@ -149,8 +167,11 @@ export default function StudentConsultationsView() {
                   <p className="flex min-w-0 items-start gap-2 sm:col-span-2"><ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{mode}</span></p>
                 </div>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button type="button" onClick={() => setDetails(appointment)} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> {appointment.status === "Awaiting Attendance Update" ? "View Attendance" : "View Details"}</button>
-                  {appointment.status === "Reschedule Proposed" && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
+                  <button type="button" onClick={() => { setOutcomeMode(false); setDetails(appointment); }} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2 px-4"><Eye size={16} /> View Details</button>
+                  {canReportOutcome && <button type="button" onClick={() => { setOutcomeMode(true); setDetails(appointment); }} className="btn-secondary min-h-10 px-4">Report Outcome</button>}
+                  {awaitingOtherReporter && <p className="self-center text-sm font-semibold text-slate-600">Awaiting Faculty Outcome Report</p>}
+                  {appointment.status === "Pending" && appointment.initiatedByRole === "faculty" && <button type="button" onClick={() => setFacultyRequestTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Faculty Request</button>}
+                  {appointment.status === "Reschedule Proposed" && String(appointment.proposedBy || "") !== String(appointment.student?._id || "") && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
                   {canStudentCancelAppointment(appointment) && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel Consultation</button>}
                 </div>
               </article>
@@ -158,8 +179,9 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} onClose={closeDetails} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} outcomeMode={outcomeMode} onClose={closeDetails} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
       {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
+      {facultyRequestTarget && <FacultyRequestResponseModal appointment={facultyRequestTarget} onClose={() => setFacultyRequestTarget(null)} onSuccess={async () => { setFacultyRequestTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
 }

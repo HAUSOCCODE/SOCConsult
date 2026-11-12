@@ -119,7 +119,7 @@ test("Faculty and Dean dashboard links match notification-center event destinati
     const user = { id: ids[role], role };
     const appointment = "507f1f77bcf86cd799439099";
     try {
-      for (const [type, destination] of [["faculty_request_submitted", "requests"],
+      for (const [type, destination] of [["faculty_request_submitted", "consultations"],
         ["faculty_proposal_declined", "requests"], ["faculty_finalized", "history"],
         ["faculty_attendance_review", "history"], ["faculty_upcoming_reminder", "consultations"]]) {
         const notice = { _id: type, recipient: user.id, type, category: "Consultation", relatedEntityId: appointment,

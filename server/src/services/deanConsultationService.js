@@ -58,7 +58,7 @@ export function parseConsultationQuery(query = {}) {
   return { filter, filters: { ...filters, search, sort }, search, page: integer(query.page, 1, 1000000), limit: integer(query.limit, 20, 100), sort: { createdAt: sort === "newest" ? -1 : 1, _id: sort === "newest" ? -1 : 1 } };
 }
 const names = "name firstName middleName lastName";
-const projection = "attendance student faculty subject startAt endAt consultationMode status createdAt updatedAt";
+const projection = "attendance initiatedByRole student faculty subject startAt endAt consultationMode status createdAt updatedAt";
 const populate = { path: "student faculty", select: names, options: { maxTimeMS: 10000 } };
 const displayName = user => user && typeof user === "object" && user.name ? formatFullName(user) : null;
 export const listRecord = row => ({

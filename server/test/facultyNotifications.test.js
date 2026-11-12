@@ -15,6 +15,7 @@ test("Faculty notification catalog contains exactly the approved privacy-safe ev
     "faculty_request_submitted", "faculty_proposal_accepted", "faculty_proposal_declined", "faculty_cancelled",
     "faculty_upcoming_reminder", "faculty_attendance_update_required", "faculty_student_attendance_submitted",
     "faculty_finalized", "faculty_attendance_review", "faculty_expired",
+    "faculty_request_accepted", "faculty_request_declined", "faculty_student_reschedule_proposed",
   ]);
   const neutral = FACULTY_CONSULTATION_EVENTS.faculty_student_attendance_submitted.join(" ");
   assert.match(neutral, /student has submitted an attendance response/i);
@@ -39,10 +40,10 @@ test("Faculty notifications use the trusted recipient, stable types, safe base r
   try {
     for (const event of Object.keys(FACULTY_CONSULTATION_EVENTS))
       await createFacultyConsultationNotification({ faculty, appointmentId, event, transitionVersion: 7 });
-    assert.equal(records.length, 10);
+    assert.equal(records.length, 13);
     assert.ok(records.every(row => String(row.recipient) === faculty && String(row.relatedEntityId) === appointmentId));
     assert.ok(records.every(row => row.actionUrl === "/faculty/appointments" && row.deduplicationKey.endsWith(":v7")));
-    assert.equal(new Set(records.map(row => row.type)).size, 10);
+    assert.equal(new Set(records.map(row => row.type)).size, 13);
     assert.doesNotMatch(JSON.stringify(records), /studentResponse|facultyResponse|attendance.*reason|password|smtp/i);
     assert.equal(facultyConsultationPath(appointmentId, "history", true), `/dean/faculty/history?appointment=${appointmentId}`);
     assert.throws(() => facultyConsultationPath("https://evil.test", "history"));
@@ -52,8 +53,10 @@ test("Faculty notifications use the trusted recipient, stable types, safe base r
 test("shared reminder processor creates one Student and one Faculty notice and deduplicates reruns", async () => {
   const appointmentId = newId(), student = newId(), faculty = newId(), keys = new Set(), records = [];
   const originalFind = Appointment.find, originalCreate = Notification.create, originalFindById = User.findById;
-  Appointment.find = () => { const query = { select() { return query; }, sort() { return query; }, limit() { return query; },
-    async lean() { return [{ _id: appointmentId, student, faculty, startAt: new Date("2026-11-01T01:00:00Z") }]; } }; return query; };
+  Appointment.find = () => { const query = { select() { return query; }, populate() { return query; }, sort() { return query; }, limit() { return query; },
+    async lean() { return [{ _id: appointmentId, student, faculty, status: "Confirmed", subject: "Consultation",
+      reason: "Scheduled review", consultationMode: "Online", meetingPlatform: "SOCConsult",
+      startAt: new Date("2026-11-01T01:00:00Z"), endAt: new Date("2026-11-01T01:30:00Z") }]; } }; return query; };
   User.findById = () => { const query = { select() { return query; }, session() { return query; }, async lean() { return { role: "faculty" }; } }; return query; };
   Notification.create = async rows => { const key = rows[0].deduplicationKey; if (keys.has(key)) throw Object.assign(new Error("duplicate"), { code: 11000 }); keys.add(key); records.push(...rows); return rows; };
   try {
@@ -88,7 +91,7 @@ test("notification client accepts API-resolved Faculty/Dean event links and reje
   const appointment = newId();
   for (const role of ["faculty", "dean"]) {
     const base = role === "dean" ? "/dean/faculty" : "/faculty";
-    for (const [type, page] of [["faculty_request_submitted", "requests"], ["faculty_proposal_declined", "requests"],
+    for (const [type, page] of [["faculty_request_submitted", "consultations"], ["faculty_proposal_declined", "requests"],
       ["faculty_finalized", "history"], ["faculty_attendance_review", "history"], ["faculty_upcoming_reminder", "consultations"]]) {
       const notice = publicNotification({ type, relatedEntityId: appointment, category: "Consultation",
         actionUrl: base + "/consultations" }, { role });

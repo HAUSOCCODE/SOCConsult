@@ -85,12 +85,17 @@ test("Faculty UI exposes only attendance outcomes and relies on shared attendanc
   assert.equal((form.match(/value: "(?:Completed|Student No-show|Faculty No-show)"/g) || []).length, 3);
   assert.match(form, /attendance-responses/);
   assert.match(form, /pending\.current/);
-  assert.match(form, /\{ outcome, \.\.\.\(reason\.trim\(\)/);
+  assert.match(form, /Report Consultation Outcome/);
+  assert.match(form, /Submit Outcome Report/);
+  assert.match(form, /new FormData\(\)/);
+  assert.match(form, /body\.append\("outcome", outcome\)/);
+  assert.match(form, /body\.append\("proof", proof\)/);
   assert.doesNotMatch(form, /status:\s*"(?:Completed|Attendance Review|Expired)"|facultyId|studentResponse/);
   assert.match(details, /attendance\?\.eligible && <FacultyAttendanceForm/);
   assert.match(details, /This attendance record requires review/);
   assert.match(details, /attendance\.ownResponse\.submittedAt/);
   assert.match(view, /onAttendanceSubmitted/);
+  assert.match(view, /Report Outcome/);
   assert.match(privacy, /own && responses\.length === 2/);
   assert.match(service, /bestEffortStudentConsultationEmail/);
 });

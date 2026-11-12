@@ -19,12 +19,12 @@ import FacultyLayout from "./layouts/FacultyLayout";
 import FacultyDashboard from "./pages/Faculty/FacultyDashboard";
 import FacultyAppointments from "./pages/Faculty/FacultyAppointments";
 import FacultyConsultationCalendar from "./pages/Faculty/FacultyConsultationCalendar";
-import AppointmentRequests from "./pages/Faculty/AppointmentRequests";
 import FacultyHistory from "./pages/Faculty/FacultyConsultationHistory";
 import FacultyReports from "./pages/Faculty/FacultyReports";
 import FacultyNotifications from "./pages/Faculty/FacultyNotifications";
 import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
 import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
+import FindStudent from "./pages/Faculty/FindStudent";
 import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
 import CsvImport from "./pages/Dean/CsvImport";
 import DeanLayout from "./layouts/DeanLayout";
@@ -81,10 +81,11 @@ export default function App() {
           <Route path="faculty" element={<FacultyLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<FacultyDashboard />} />
+            <Route path="students" element={<FindStudent />} />
             <Route path="consultations" element={<FacultyAppointments />} />
             <Route path="appointments" element={<DeanRouteRedirect to="/faculty/consultations" />} />
             <Route path="calendar" element={<FacultyConsultationCalendar />} />
-            <Route path="requests" element={<AppointmentRequests />} />
+            <Route path="requests" element={<DeanRouteRedirect to="/faculty/consultations" />} />
             <Route path="history" element={<FacultyHistory />} />
             <Route path="availability" element={<FacultyAvailabilityCalendar />} />
             <Route path="reports" element={<FacultyReports />} />
@@ -138,7 +139,8 @@ export default function App() {
                   />
                 }
               />
-              <Route path="requests" element={<AppointmentRequests />} />
+              <Route path="students" element={<FindStudent />} />
+              <Route path="requests" element={<DeanRouteRedirect to="/dean/faculty/consultations" />} />
               <Route path="availability" element={<FacultyAvailabilityCalendar routeBase="/dean/faculty" consultationsPath="/dean/faculty/consultations" />} />
               <Route path="consultations" element={<FacultyAppointments />} />
               <Route path="history" element={<FacultyHistory />} />

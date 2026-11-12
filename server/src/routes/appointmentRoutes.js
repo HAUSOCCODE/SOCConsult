@@ -28,11 +28,52 @@ import { listStudentConsultationHistory } from "../services/studentConsultationH
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
+import { createFacultyInitiatedConsultation, searchEligibleStudents } from "../services/facultyInitiatedConsultationService.js";
+import StudentAvailability from "../models/StudentAvailability.js";
+import { MINIMUM_CONSULTATION_MINUTES } from "../services/availabilityMatchingService.js";
 const router = Router();
 router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
   res.set("Cache-Control", "no-store"); next();
 });
 router.use(authenticate);
+
+const facultyRequestWrite = work => async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try { await work(req, res); }
+  catch (error) {
+    const status = [400, 403, 404, 409].includes(error.statusCode) ? error.statusCode : 503;
+    res.status(status).json({ code: error.code, message: status === 503 ? "Consultation requests are temporarily unavailable. Please try again." : error.message });
+  }
+};
+router.get("/faculty-request/students", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  res.json(await searchEligibleStudents({ faculty: req.user.id, input: req.query }));
+}));
+router.post("/faculty-request", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  const appointment = await createFacultyInitiatedConsultation({ actor: req.user, input: req.body, now: new Date() });
+  res.status(201).json({ message: "Consultation request sent to the Student.", appointment });
+}));
+router.put("/:id/respond", authorize("student"), facultyRequestWrite(async (req, res) => {
+  if (!req.body || !["accept", "decline", "propose"].includes(req.body.decision)) return res.status(400).json({ message: "Select a valid response." });
+  const allowed = req.body.decision === "propose"
+    ? ["decision", "reason", "startAt", "endAt", "mode", "location", "meetingPlatform", "meetingLink", "expectedVersion"]
+    : ["decision", "reason", "expectedVersion"];
+  if (Object.keys(req.body).some(key => !allowed.includes(key))) return res.status(400).json({ message: "Invalid consultation response." });
+  const schedule = req.body.decision === "propose" ? { startAt: new Date(req.body.startAt), endAt: new Date(req.body.endAt),
+    mode: req.body.mode, location: req.body.location, meetingPlatform: req.body.meetingPlatform, meetingLink: req.body.meetingLink } : undefined;
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
+    action: req.body.decision === "accept" ? "confirm" : req.body.decision === "decline" ? "reject" : "propose",
+    reason: req.body.reason ?? "", schedule, expectedVersion: req.body.expectedVersion });
+  res.json({ message: req.body.decision === "accept" ? "Consultation request accepted." : req.body.decision === "decline" ? "Consultation request declined." : "Another schedule was proposed.", appointment });
+}));
+router.put("/:id/proposal-response", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
+  if (!req.body || !["accept", "reject"].includes(req.body.decision)) return res.status(400).json({ message: "Select a valid proposal response." });
+  if (Object.keys(req.body).some(key => !["decision", "proposedAt", "expectedVersion"].includes(key)))
+    return res.status(400).json({ message: "Invalid proposal response." });
+  const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
+    action: req.body.decision === "accept" ? "accept_proposal" : "reject_proposal",
+    expectedProposalAt: req.body.proposedAt, expectedVersion: req.body.expectedVersion });
+  res.json({ message: req.body.decision === "accept" ? "Student proposal accepted." : "Student proposal rejected.", appointment });
+}));
 
 const requestRead = work => async (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -248,15 +289,26 @@ router.post(
       reservationToken: { $exists: false },
       startAt: { $gt: new Date() },
     });
-    const requestedStart = slot?.startAt;
-    const requestedEnd = slot?.endAt;
-    const windowMinutes = slot
-      ? Math.round((slot.endAt - slot.startAt) / 60000)
-      : 0;
     if (!slot || slot.endAt <= slot.startAt)
       return res.status(409).json({
         message: "This schedule is no longer available.",
       });
+    const suppliedStart = req.body.startAt, suppliedEnd = req.body.endAt;
+    if ((suppliedStart && !suppliedEnd) || (!suppliedStart && suppliedEnd))
+      return res.status(400).json({ message: "Select a complete consultation time range." });
+    const requestedStart = suppliedStart ? new Date(suppliedStart) : slot.startAt;
+    const requestedEnd = suppliedEnd ? new Date(suppliedEnd) : slot.endAt;
+    const windowMinutes = Math.floor((requestedEnd - requestedStart) / 60000);
+    if (!Number.isFinite(requestedStart.getTime()) || !Number.isFinite(requestedEnd.getTime()) ||
+      requestedStart < slot.startAt || requestedEnd > slot.endAt || requestedStart <= new Date() ||
+      requestedEnd <= requestedStart || windowMinutes < MINIMUM_CONSULTATION_MINUTES)
+      return res.status(409).json({ message: "This matching schedule is no longer available." });
+    const studentPeriods = await StudentAvailability.find({
+      student: req.user.id, isActive: true, endAt: { $gt: new Date() },
+    }).select("startAt endAt").lean();
+    if (studentPeriods.length && !studentPeriods.some(period =>
+      period.startAt <= requestedStart && period.endAt >= requestedEnd))
+      return res.status(409).json({ message: "This time is outside your current availability." });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
       role: { $in: ["faculty", "dean"] },
@@ -334,7 +386,7 @@ router.post(
       appointment = await createAppointmentRequest({ actor: req.user, data: {
         _id: appointmentId, student: req.user.id, faculty: slot.faculty,
         availability: slot._id, bookingMethod: "published_slot",
-        startAt: slot.startAt, endAt: slot.endAt, estimatedDurationMinutes: windowMinutes,
+        startAt: requestedStart, endAt: requestedEnd, estimatedDurationMinutes: windowMinutes,
         subject, yearLevel, reason, consultationMode: slot.mode || "Online",
         meetingPlatform: slot.mode === "Online" ? platformFor(slot) : undefined,
         location: slot.mode === "Face-to-Face" ? slot.location : "",

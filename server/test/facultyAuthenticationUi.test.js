@@ -17,7 +17,7 @@ async function load(path, name, imports) {
 }
 test('Faculty form preserves exact password, prevents same-tick submits, and waits for session hydration', async () => {
   let loading = true, calls = 0, finish; const navigations = [];
-  const h = await load('components/auth/AuthPageContent.jsx', 'AuthPageContent', { useParams: () => ({}), useNavigate: () => value => navigations.push(value), useAuth: () => ({ loading, login: async (role, credentials) => { calls++; assert.equal(role, 'faculty'); assert.equal(credentials.password, ' initial '); await new Promise(resolve => finish = resolve); return { role: 'faculty' }; } }), Link: 'link', Navigate: 'navigate', Brand: 'brand', ArrowLeft: 'icon', Eye: 'icon', EyeOff: 'icon' });
+  const h = await load('components/auth/AuthPageContent.jsx', 'AuthPageContent', { useParams: () => ({}), useLocation: () => ({ state: null }), useNavigate: () => value => navigations.push(value), useAuth: () => ({ loading, login: async (role, credentials) => { calls++; assert.equal(role, 'faculty'); assert.equal(credentials.password, ' initial '); await new Promise(resolve => finish = resolve); return { role: 'faculty' }; } }), Link: 'link', Navigate: 'navigate', Brand: 'brand', ArrowLeft: 'icon', Eye: 'icon', EyeOff: 'icon' });
   const render = () => h.render({ role: 'faculty' });
   let tree = render(); const inputs = nodes(tree).filter(n => n.type === 'input');
   inputs[0].props.onChange({ target: { value: 'OFFICIAL@HAU.EDU.PH' } }); tree = render();

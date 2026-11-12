@@ -53,6 +53,43 @@ test("shared dialogs contain focus, support Escape, and restore focus", async ()
   assert.match(confirm, /aria-label="Close confirmation dialog"/);
 });
 
+test("Faculty consultation requests use one portalled, viewport-safe modal with a persistent footer", async () => {
+  const [modal, request, findStudent, alternative] = await Promise.all([
+    source("components/UI.jsx"),
+    source("components/appointments/FacultyConsultationRequestModal.jsx"),
+    source("pages/Faculty/FindStudent.jsx"),
+    source("components/student/AlternativeScheduleRequestForm.jsx"),
+  ]);
+  assert.match(modal, /createPortal\(/);
+  assert.match(modal, /document\.body/);
+  assert.match(modal, /flex max-h-\[calc\(100dvh-1\.5rem\)\]/);
+  assert.match(modal, /min-h-0 flex-1 overflow-y-auto overscroll-contain/);
+  assert.match(request, /maxWidth="2xl"/);
+  assert.match(request, /form=\{formId\}/);
+  assert.match(request, /Selected Student/);
+  assert.match(request, /sm:grid-cols-2/);
+  assert.match(request, /Send Consultation Request/);
+  assert.match(findStudent, /<FacultyConsultationRequestModal/);
+  assert.match(alternative, /<Modal/);
+  assert.doesNotMatch(findStudent, /role="dialog"|aria-modal/);
+});
+
+test("Student availability and alternative-request dialogs share one reference-safe scroll lock", async () => {
+  const [findFaculty, hook, alternative] = await Promise.all([
+    source("pages/Student/FindFaculty.jsx"),
+    source("hooks/useDialogFocus.js"),
+    source("components/student/AlternativeScheduleRequestForm.jsx"),
+  ]);
+  assert.match(findFaculty, /useDialogFocus\(availabilityDialog/);
+  assert.match(findFaculty, /useDialogFocus\(requestDialog/);
+  assert.doesNotMatch(findFaculty, /document\.body\.style\.overflow/);
+  assert.match(alternative, /<Modal/);
+  assert.match(hook, /const scrollLocks = new Set\(\)/);
+  assert.match(hook, /scrollLocks\.add\(scrollLock\)/);
+  assert.match(hook, /scrollLocks\.delete\(scrollLock\)/);
+  assert.match(hook, /originalOverflow \?\? ""/);
+});
+
 test("Faculty custom dialog surfaces use shared focus behavior and mobile viewport bounds", async () => {
   const paths = ["pages/Faculty/AppointmentRequests.jsx", "components/appointments/FacultyAppointmentDetailsModal.jsx", "components/appointments/FacultyScheduleDetailsModal.jsx", "components/appointments/FacultyRescheduleModal.jsx", "components/appointments/OneTimeScheduleRequests.jsx", "components/calendar/ConsultationCalendar.jsx", "components/profile/ProfilePictureEditor.jsx", "components/notifications/NotificationsView.jsx"];
   for (const path of paths) {

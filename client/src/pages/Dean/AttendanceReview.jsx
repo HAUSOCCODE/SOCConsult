@@ -5,7 +5,7 @@ import { api } from "../../api/apiClient";
 import AttendanceReviewDetails from "../../components/attendance/AttendanceReviewDetails";
 import { monitoringDate } from "../../components/dean/ConsultationDetailsDialog";
 
-const triggers = { responses_conflict: "Responses differ", student_response_missing: "Student response missing", faculty_response_missing: "Faculty response missing", both_responses_missing: "Both responses missing" };
+const triggers = { responses_conflict: "Responses differ", student_response_missing: "Student response missing", faculty_response_missing: "Faculty response missing", both_responses_missing: "Both responses missing", initiator_report_disputed: "Initiator outcome disputed" };
 function ParticipantFilter({ role, value, onChange }) {
   const [search, setSearch] = useState(""), [data, setData] = useState(null), [error, setError] = useState(false), [retry, setRetry] = useState(0);
   useEffect(() => {

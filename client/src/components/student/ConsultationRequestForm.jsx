@@ -75,6 +75,8 @@ export default function ConsultationRequestForm({
     try {
       const request = new FormData();
       request.append("availabilityId", slot.availabilityId);
+      request.append("startAt", slot.startAt);
+      request.append("endAt", slot.endAt);
       request.append("subject", trimmedSubject);
       request.append("reason", trimmedConcern);
       documents.forEach((file) => request.append("documents", file));

@@ -23,11 +23,13 @@ test("strict section queries reject arbitrary owners and unbounded pages", () =>
 test("database pagination precedes safe name-only population; stable section sorts and one now", async () => {
   const old = Appointment.aggregate, pop = Appointment.populate;
   try {
-    for (const section of ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"]) {
+    for (const section of ["All", "Sent Requests", "Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"]) {
       Appointment.aggregate = pipeline => {
         assert.equal(String(pipeline[0].$match.faculty), owner);
         assert.equal(pipeline[1].$set.personalSection.$switch.branches[4].then.$cond[0].$gt[1], now);
-        assert.equal(pipeline[2].$match.personalSection, section);
+        if (section === "All") assert.deepEqual(pipeline[2].$match.personalSection.$in, ["Pending", "Reschedule Proposed", "Upcoming", "Awaiting Attendance Update", "Attendance Review"]);
+        else if (section === "Sent Requests") { assert.equal(pipeline[2].$match.personalSection, "Pending"); assert.equal(pipeline[2].$match.initiatedByRole, "faculty"); }
+        else assert.equal(pipeline[2].$match.personalSection, section);
         const records = pipeline[3].$facet.records;
         assert.ok(records[0].$sort._id); assert.equal(records[2].$limit, 20);
         assert.equal(records[1].$skip, 0);

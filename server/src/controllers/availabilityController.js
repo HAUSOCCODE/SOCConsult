@@ -8,17 +8,19 @@ import { mutateAvailability } from "../services/availabilityManagementService.js
 import {
   availabilityStatus,
 } from "../services/availabilityExpirationService.js";
+import { matchingAvailability } from "../services/availabilityMatchingService.js";
 
 const legacyPlatform = (availability) => {
   if (availability.meetingPlatform) return availability.meetingPlatform;
   return "Meeting platform not provided";
 };
 
-const scheduleShape = (availability) => ({
+const scheduleShape = (availability, window) => ({
   _id: availability.id || String(availability._id),
   availabilityId: availability.id || String(availability._id),
-  startAt: availability.startAt,
-  endAt: availability.endAt,
+  startAt: window?.startAt || availability.startAt,
+  endAt: window?.endAt || availability.endAt,
+  durationMinutes: window?.durationMinutes || Math.floor((availability.endAt - availability.startAt) / 60000),
   mode: availability.mode || "Online",
   location:
     availability.mode === "Face-to-Face" ? availability.location : undefined,
@@ -26,7 +28,7 @@ const scheduleShape = (availability) => ({
     availability.mode === "Online" ? legacyPlatform(availability) : undefined,
 });
 
-export const getAvailableFaculty = async (_req, res) => {
+export const getAvailableFaculty = async (req, res) => {
   const now = new Date();
   const faculty = await User.find({
     accountStatus: "Active",
@@ -45,17 +47,26 @@ export const getAvailableFaculty = async (_req, res) => {
     startAt: { $gt: now },
     endAt: { $gt: now },
   });
-  const appointments = await Appointment.find({ faculty: { $in: ids }, status: { $in: BLOCKING_STATUSES } })
-    .select("faculty availability startAt endAt");
+  const [appointments, studentAvailability, studentAppointments] = await Promise.all([
+    Appointment.find({ faculty: { $in: ids }, status: { $in: BLOCKING_STATUSES } })
+      .select("faculty availability startAt endAt"),
+    StudentAvailability.find({ student: req.user.id, isActive: true, endAt: { $gt: now } })
+      .select("startAt endAt").lean(),
+    Appointment.find({ student: req.user.id, status: { $in: BLOCKING_STATUSES },
+      startAt: { $exists: true }, endAt: { $gt: now } }).select("startAt endAt"),
+  ]);
   const counts = Object.fromEntries(faculty.map((item) => [item.id, 0]));
   const modes = Object.fromEntries(faculty.map((item) => [item.id, new Set()]));
-  availability.forEach((item) => {
-    if (appointments.some(appointment => String(appointment.faculty) === String(item.faculty) &&
-      (String(appointment.availability) === String(item._id) ||
-        (item.startAt < appointment.endAt && item.endAt > appointment.startAt)))) return;
-    counts[item.faculty] += 1;
-    modes[item.faculty].add(item.mode || "Online");
-  });
+  for (const item of faculty) {
+    const matches = matchingAvailability({
+      schedules: availability.filter((schedule) => String(schedule.faculty) === String(item.id)),
+      studentAvailability,
+      studentAppointments,
+      providerAppointments: appointments.filter((appointment) => String(appointment.faculty) === String(item.id)),
+    });
+    counts[item.id] = matches.length;
+    for (const match of matches) modes[item.id].add(match.schedule.mode || "Online");
+  }
   res.json({
     faculty: faculty
       .filter((item) => item.role === "faculty" || counts[item.id] > 0)
@@ -118,31 +129,13 @@ export const getFacultyAvailability = async (req, res) => {
         status: { $in: BLOCKING_STATUSES },
       }).select("availability startAt endAt"),
     ]);
-    const overlaps = (slot, appointment) =>
-      slot.startAt < appointment.endAt && slot.endAt > appointment.startAt;
-    const matchedSchedules = schedules.filter((schedule) => {
-      if (
-        hasActiveStudentAvailability &&
-        !studentAvailability.some(
-          (period) =>
-            period.startAt <= schedule.startAt &&
-            period.endAt >= schedule.endAt,
-        )
-      )
-        return false;
-      return (
-        !studentAppointments.some((appointment) =>
-          overlaps(schedule, appointment),
-        ) &&
-        !providerAppointments.some((appointment) =>
-          String(appointment.availability) === String(schedule._id) || overlaps(schedule, appointment),
-        )
-      );
+    const matchedSchedules = matchingAvailability({
+      schedules, studentAvailability, studentAppointments, providerAppointments,
     });
     return res.json({
       hasActiveStudentAvailability,
-      schedules: matchedSchedules.map((schedule) => ({
-        ...scheduleShape(schedule),
+      schedules: matchedSchedules.map(({ schedule, ...window }) => ({
+        ...scheduleShape(schedule, window),
         matchingType: hasActiveStudentAvailability
           ? "Matched with your availability"
           : "Based on Faculty availability only",

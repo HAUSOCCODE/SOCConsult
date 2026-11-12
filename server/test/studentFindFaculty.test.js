@@ -3,6 +3,7 @@ import { test } from "node:test";
 import Availability from "../src/models/Availability.js";
 import User from "../src/models/User.js";
 import Appointment from "../src/models/Appointment.js";
+import StudentAvailability from "../src/models/StudentAvailability.js";
 import { getAvailableFaculty } from "../src/controllers/availabilityController.js";
 
 const chain = (value, calls = []) => {
@@ -71,16 +72,20 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
     discoveryFilter = filter;
     return chain([
       {
+        _id: "dean-slot",
         faculty: "dean-available",
         mode: "Online",
+        startAt: new Date(Date.now() + 3_600_000),
+        endAt: new Date(Date.now() + 7_200_000),
       },
     ]);
   });
 
   let body;
   patch(Appointment, "find", () => chain([]));
+  patch(StudentAvailability, "find", () => chain([]));
   try {
-    await getAvailableFaculty({}, { json: (value) => (body = value) });
+    await getAvailableFaculty({ user: { id: "student" } }, { json: (value) => (body = value) });
   } finally {
     restores.reverse().forEach((restore) => restore());
   }

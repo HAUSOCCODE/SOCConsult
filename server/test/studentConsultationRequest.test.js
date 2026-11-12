@@ -38,7 +38,7 @@ test("selected-slot booking validates authoritative data, rolls back and prevent
   const h = await appointmentHttp();
   try {
     const record = fixture({ student: h.users.student.id, faculty: h.users.dean.id }); addSlot(h, { ...record, reservationToken: undefined });
-    const body = { availabilityId: record.availability, subject: " Project ", reason: " Review scope ", status: "Approved", student: h.users.otherStudent.id, startAt: new Date(0) };
+    const body = { availabilityId: record.availability, subject: " Project ", reason: " Review scope ", status: "Approved", student: h.users.otherStudent.id };
     for (const invalid of [{ subject: " " }, { reason: " " }, { subject: "x".repeat(151) }, { reason: "x".repeat(1001) }])
       assert.equal((await h.request('/appointments', "student", "POST", { ...body, ...invalid })).status, 400);
     h.fail("audits");
@@ -54,6 +54,33 @@ test("selected-slot booking validates authoritative data, rolls back and prevent
     assert.equal((await h.request('/appointments', "otherStudent", "POST", body)).status, 409);
     assert.equal(h.state.audits.length, 1); assert.equal(h.state.notifications.length, 2);
     assert.ok(h.state.notifications.some(notification => notification.recipient === h.users.student.id && notification.type === "request_submitted"));
+  } finally { await h.close(); }
+});
+
+test("partial-overlap booking persists only the shared interval", async () => {
+  const h = await appointmentHttp();
+  try {
+    const record = fixture({ student: h.users.student.id, faculty: h.users.faculty.id,
+      startAt: new Date("2099-01-01T12:51:00+08:00"), endAt: new Date("2099-01-01T13:51:00+08:00") });
+    addSlot(h, { ...record, reservationToken: undefined });
+    const response = await h.request("/appointments", "student", "POST", {
+      availabilityId: record.availability, subject: "Partial overlap", reason: "Shared schedule",
+      startAt: "2099-01-01T12:51:00+08:00", endAt: "2099-01-01T13:40:00+08:00",
+    });
+    assert.equal(response.status, 201);
+    const appointment = (await response.json()).appointment;
+    assert.equal(new Date(appointment.startAt).getTime(), new Date("2099-01-01T12:51:00+08:00").getTime());
+    assert.equal(new Date(appointment.endAt).getTime(), new Date("2099-01-01T13:40:00+08:00").getTime());
+    assert.equal(appointment.estimatedDurationMinutes, 49);
+    assert.equal(h.state.holds.length, 49);
+
+    const outside = fixture({ student: h.users.otherStudent.id, faculty: h.users.otherFaculty.id,
+      startAt: new Date("2099-01-02T12:51:00+08:00"), endAt: new Date("2099-01-02T13:51:00+08:00") });
+    addSlot(h, { ...outside, reservationToken: undefined });
+    assert.equal((await h.request("/appointments", "otherStudent", "POST", {
+      availabilityId: outside.availability, subject: "Invalid overlap", reason: "Outside window",
+      startAt: "2099-01-02T12:40:00+08:00", endAt: "2099-01-02T13:40:00+08:00",
+    })).status, 409);
   } finally { await h.close(); }
 });
 

@@ -9,21 +9,30 @@ import ConfirmDialog from "../ConfirmDialog";
 import DetailLoadingDialog from "./DetailLoadingDialog";
 import { consultationTime } from "./PersonalConsultationDetails";
 import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
+import FacultyConsultationRequestModal from "./FacultyConsultationRequestModal";
+import AppointmentRequests from "../../pages/Faculty/AppointmentRequests";
 
-const sections = ["Upcoming", "Pending", "Reschedule Proposed", "Awaiting Attendance Update", "Attendance Review", "Recently Finalized", "Compatibility"];
+const tabs = [
+  { label: "All", section: "All" },
+  { label: "Incoming Requests", section: "Incoming Requests" },
+  { label: "Sent Requests", section: "Sent Requests" },
+  { label: "Upcoming Consultations", section: "Upcoming" },
+  { label: "Reschedule Proposals", section: "Reschedule Proposed" },
+];
 export default function FacultyConsultationsView({ detailOnly = false, selection, onChanged, onDetailClose } = {}) {
   const { user } = useAuth();
   const searchParams = new URLSearchParams(window.location?.search || "");
   const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
     ? searchParams.get("appointment") : "";
   const base = user.role === "dean" ? "/dean/faculty" : "/faculty";
-  const [section, setSection] = useState("Upcoming"), [page, setPage] = useState(1), [revision, setRevision] = useState(0);
+  const [section, setSection] = useState("All"), [page, setPage] = useState(1), [revision, setRevision] = useState(0);
   const [list, setList] = useState({ loading: true }), [detail, setDetail] = useState(null), [selected, setSelected] = useState("");
   const [proposing, setProposing] = useState(false), [cancelling, setCancelling] = useState(false), [reason, setReason] = useState(""), [busy, setBusy] = useState(false), [actionError, setActionError] = useState("");
   const listRequest = useRef(null), detailRequest = useRef(null), busyRef = useRef(false), opener = useRef(null);
   const [reasonError, setReasonError] = useState("");
+  const [requesting, setRequesting] = useState(false), [proposalDecision, setProposalDecision] = useState("");
   useEffect(() => {
-    if (detailOnly) return undefined;
+    if (detailOnly || section === "Incoming Requests") return undefined;
     const load = async () => {
       listRequest.current?.abort(); const c = new AbortController(); listRequest.current = c;
       setList({ loading: true });
@@ -65,6 +74,15 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     } catch { setCancelling(false); setRevision(v => v + 1); onChanged?.(); await open(selected); setActionError("Unable to cancel. Review the latest consultation details before trying again."); }
     finally { busyRef.current = false; setBusy(false); }
   };
+  const respondToStudentProposal = async () => {
+    if (busyRef.current || !proposalDecision || !a?.proposedAt) return;
+    busyRef.current = true; setBusy(true); setActionError("");
+    try {
+      await api(`/appointments/${selected}/proposal-response`, { method: "PUT", body: JSON.stringify({ decision: proposalDecision, proposedAt: a.proposedAt, expectedVersion: a.__v }) });
+      setProposalDecision(""); setRevision(v => v + 1); onChanged?.(); await open(selected);
+    } catch (error) { setActionError(safeUiError(error, "Unable to respond to the Student proposal. Refresh and try again.")); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
   useEffect(() => {
     if (selection?.id) void open(selection.id, selection.opener);
     return () => { if (selection) detailRequest.current?.abort(); };
@@ -73,26 +91,36 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
   const a = detail?.appointment;
   return <div className="min-w-0 space-y-5">
     {!detailOnly && <>
-    <h1 className="text-2xl font-bold text-maroon-900">My Consultations</h1><p>Consultations assigned to you. Times are shown in Asia/Manila.</p>
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Consultation sections">{sections.map(name => <button type="button" key={name} aria-pressed={section === name} className={section === name ? "btn-primary" : "btn-secondary"} onClick={() => { setSection(name); setPage(1); }}>{name}</button>)}</div>
-    <h2 className="text-lg font-bold">{section}</h2>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-maroon-900">Consultations / Requests</h1><p>Manage your consultation requests, upcoming appointments, and scheduling responses.</p></div><button type="button" className="btn-primary" onClick={() => setRequesting(true)}>Request Consultation</button></div>
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5" role="tablist" aria-label="Consultation sections">{tabs.map(tab => <button type="button" role="tab" key={tab.section} aria-selected={section === tab.section} className={section === tab.section ? "btn-primary" : "btn-secondary"} onClick={() => { setSection(tab.section); setPage(1); }}>{tab.label}</button>)}</div>
+    <h2 className="text-lg font-bold">{tabs.find(tab => tab.section === section)?.label || section}</h2>
     {section === "Recently Finalized" && <p>Latest 20 finalized records. <Link className="underline" to={`${base}/history`}>Full Consultation History</Link></p>}
     {section === "Compatibility" && <p>Latest 20 historical or malformed records requiring review. Read-only; retired statuses are historical labels.</p>}
     {section === "Awaiting Attendance Update" && <p>Submit your attendance response from the consultation details. Responses are accepted once and cannot be edited.</p>}
-    {list.loading ? <Loading message="Loading your consultations..." /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(v => v + 1)} retryable={isRecoverableUiError(list.requestError)} /> : <>
-      {!list.data.appointments.length ? <EmptyState title={section === "Upcoming" ? "No upcoming consultations." : "No consultations in this section."} /> : <div className="space-y-3">{list.data.appointments.map(row => <article key={row._id} className="min-w-0 space-y-2 rounded-xl border bg-white p-4"><h3 className="break-words font-bold">{row.student?.name}</h3><StatusBadge appointment status={row.status} /><p className="break-words">{row.subject || "Consultation"}</p><p>{consultationTime(row.startAt)} - {consultationTime(row.endAt)}</p><p>{row.consultationMode}</p><button type="button" className="btn-secondary" onClick={e => open(row._id, e.currentTarget)}>View Details</button></article>)}</div>}
+    {section === "Incoming Requests" ? <AppointmentRequests embedded /> : list.loading ? <Loading message="Loading your consultations..." /> : list.error ? <ErrorState message={list.error} onRetry={() => setRevision(v => v + 1)} retryable={isRecoverableUiError(list.requestError)} /> : <>
+      {!list.data.appointments.length ? <EmptyState title={section === "Upcoming" ? "No upcoming consultations." : "No consultations in this section."} /> : <div className="space-y-3">{list.data.appointments.map(row => {
+        const ended = Number.isFinite(new Date(row.endAt).getTime()) && new Date(row.endAt).getTime() <= Date.now();
+        const initiatorWorkflow = row.attendanceWorkflow === "initiator_report";
+        const canReportOutcome = (!initiatorWorkflow || row.initiatedByRole === "faculty") && ended && ["Confirmed", "Awaiting Attendance Update"].includes(row.status);
+        const awaitingOtherReporter = initiatorWorkflow && row.initiatedByRole !== "faculty" && ended && ["Confirmed", "Awaiting Attendance Update"].includes(row.status);
+        return <article key={row._id} className="min-w-0 space-y-2 rounded-xl border bg-white p-4"><h3 className="break-words font-bold">{row.student?.name}</h3><p className="text-xs font-bold uppercase tracking-wide text-maroon-700">{row.initiatedByRole === "faculty" ? "Requested by You" : "Requested by Student"}</p><StatusBadge appointment status={row.status} /><p className="break-words">{row.subject || "Consultation"}</p><p>{consultationTime(row.startAt)} - {consultationTime(row.endAt)}</p><p>{row.consultationMode}</p><div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={e => open(row._id, e.currentTarget)}>View Details</button>{canReportOutcome && <button type="button" className="btn-primary" onClick={e => open(row._id, e.currentTarget)}>Report Outcome</button>}{awaitingOtherReporter && <p className="self-center text-sm font-semibold text-slate-600">Awaiting Student Outcome Report</p>}</div></article>;
+      })}</div>}
       {!["Recently Finalized", "Compatibility"].includes(section) && <nav className="flex flex-wrap items-center gap-3" aria-label="Consultation pagination"><button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page} of {Math.max(1, list.data.pagination.totalPages)}</span><button type="button" className="btn-secondary" disabled={page >= list.data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Next</button></nav>}
     </>}
     </>}
     {selected && !a && <DetailLoadingDialog onClose={close} opener={opener.current}>{detail?.loading ? "Loading consultation details..." : <><p role="alert">{detail?.error}</p><button type="button" className="btn-secondary" onClick={() => open(selected)}>Retry details</button></>}<button type="button" className="btn-secondary" onClick={close}>Close details</button></DetailLoadingDialog>}
     {a && <FacultyAppointmentDetailsModal appointment={a} personal opener={opener.current} onClose={close} onAttendanceSubmitted={async () => { setRevision(v => v + 1); onChanged?.(); await open(selected); }}>
       <div className="flex flex-wrap gap-3">
-        {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <Link className="btn-secondary" to={`${base}/requests`}>Review request decisions</Link>}
+        {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <button type="button" className="btn-secondary" onClick={() => { close(); setSection("Incoming Requests"); }}>Review request decisions</button>}
         {a.status === "Confirmed" && a.actions.propose && <button type="button" className="btn-secondary" onClick={() => setProposing(true)}>Propose reschedule</button>}
+        {a.status === "Reschedule Proposed" && a.actions.accept_proposal && <button type="button" className="btn-primary" onClick={() => setProposalDecision("accept")}>Accept Student Proposal</button>}
+        {a.status === "Reschedule Proposed" && a.actions.reject_proposal && <button type="button" className="btn-secondary" onClick={() => setProposalDecision("reject")}>Reject Student Proposal</button>}
         {a.actions.cancel && <button type="button" className="btn-secondary" onClick={() => { setReason(""); setReasonError(""); setCancelling(true); }}>Cancel consultation</button>}
       </div>{actionError && <p role="alert">{actionError}</p>}
     </FacultyAppointmentDetailsModal>}
     {proposing && a && <FacultyRescheduleModal appointment={a} opener={opener.current} onClose={() => setProposing(false)} onConflict={async () => { setProposing(false); setRevision(v => v + 1); onChanged?.(); await open(selected); }} onSuccess={async () => { setProposing(false); setRevision(v => v + 1); onChanged?.(); await open(selected); }} />}
     <ConfirmDialog open={cancelling} title="Cancel consultation" message="Cancel this consultation?" inputLabel="Cancellation reason (required, up to 500 characters)" inputRequired inputError={reasonError} inputMaxLength={500} inputValue={reason} onInputChange={value => { setReason(value); setReasonError(""); }} confirmLabel="Cancel consultation" loadingLabel="Cancelling..." loading={busy} onCancel={() => !busyRef.current && setCancelling(false)} onConfirm={cancel} />
+    <FacultyConsultationRequestModal open={requesting} onClose={() => setRequesting(false)} onSuccess={async () => { setRevision(v => v + 1); setSection("Sent Requests"); }} />
+    <ConfirmDialog open={Boolean(proposalDecision)} title={`${proposalDecision === "accept" ? "Accept" : "Reject"} Student proposal`} message={`${proposalDecision === "accept" ? "Accept" : "Reject"} the Student's proposed schedule?`} confirmLabel={`${proposalDecision === "accept" ? "Accept" : "Reject"} Proposal`} loading={busy} loadingLabel="Saving..." onCancel={() => !busyRef.current && setProposalDecision("")} onConfirm={respondToStudentProposal} />
   </div>;
 }

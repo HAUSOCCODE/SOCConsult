@@ -13,12 +13,15 @@ test("Student attendance UI uses the privacy-scoped attendance API", async () =>
   ]);
   for (const outcome of ["Completed", "Student No-show", "Faculty No-show"])
     assert.match(form, new RegExp(outcome));
-  assert.match(form, /Your attendance response will be stored separately from the Faculty member’s response\. The final consultation outcome will be determined by the system based on both submissions\./);
+  assert.match(form, /The original consultation requester records the outcome\. The other participant does not need to submit a second response\./);
   assert.match(form, /maxLength=\{ATTENDANCE_REASON_LIMIT\}/);
   assert.match(form, /ConfirmDialog/);
   assert.match(details, /\/appointments\/\$\{appointmentId\}\/attendance/);
   assert.match(details, /\/appointments\/\$\{appointmentId\}\/attendance-responses/);
-  assert.match(details, /appointment\.status === "Awaiting Attendance Update"/);
+  assert.match(details, /\["Confirmed", "Awaiting Attendance Update"\]\.includes\(appointment\.status\)/);
+  assert.match(details, /appointment\?\.status === "Confirmed" && consultationEnded/);
+  assert.match(form, /Report Consultation Outcome/);
+  assert.match(form, /Submit Outcome Report/);
   assert.match(details, /attendance\.eligible/);
   assert.match(details, /attendance\?\.ownResponse/);
   assert.match(summary, /import \{ formatManilaDateTime \} from "\.\.\/\.\.\/utils\/formatDateTime"/);

@@ -12,7 +12,7 @@ import { CONSULTATION_REMINDER_LEAD_MS, processConsultationReminders } from "../
 import { newId } from "./helpers/appointmentHarness.js";
 
 test("Student lifecycle catalog is complete, privacy-safe, and uses bounded internal deep links", async () => {
-  assert.deepEqual(Object.keys(STUDENT_CONSULTATION_EVENTS), ["request_submitted", "confirmed", "rejected",
+  assert.deepEqual(Object.keys(STUDENT_CONSULTATION_EVENTS), ["faculty_request_received", "request_submitted", "confirmed", "rejected",
     "reschedule_proposed", "reschedule_response_recorded", "cancelled", "upcoming_reminder", "expired",
     "attendance_update_required", "attendance_response_received", "attendance_review", "finalized"]);
   const appointmentId = newId(), student = newId(), records = [], original = Notification.create;
@@ -20,7 +20,7 @@ test("Student lifecycle catalog is complete, privacy-safe, and uses bounded inte
   try {
     for (const event of Object.keys(STUDENT_CONSULTATION_EVENTS))
       await createStudentConsultationNotification({ student, appointmentId, event });
-    assert.equal(records.length, 12);
+    assert.equal(records.length, 13);
     assert.ok(records.every(row => row.recipient === student && String(row.relatedEntityId) === appointmentId));
     assert.ok(records.every(row => /^\/student\/(consultations|history)\?appointment=[a-f\d]{24}$/i.test(row.actionUrl)));
     assert.doesNotMatch(JSON.stringify(records), /reservationToken|meetingLink|proposedMeetingLink|faculty.*reason|reviewNotes|password/i);
@@ -32,7 +32,7 @@ test("Student lifecycle catalog is complete, privacy-safe, and uses bounded inte
 test("SMTP adapter is optional, supports mocked delivery, and hides provider failures", async () => {
   const previous = { smtpHost: env.smtpHost, smtpUser: env.smtpUser, smtpPass: env.smtpPass, emailFrom: env.emailFrom,
     smtpPort: env.smtpPort, smtpSecure: env.smtpSecure, clientUrl: env.clientUrl };
-  const warning = console.warn;
+  const warning = console.warn, info = console.info;
   try {
     Object.assign(env, { smtpHost: undefined, smtpUser: undefined, smtpPass: undefined, emailFrom: undefined });
     assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "unavailable" });
@@ -44,11 +44,13 @@ test("SMTP adapter is optional, supports mocked delivery, and hides provider fai
     assert.equal(consultationEmailUrl(`/student/consultations?appointment=${newId()}`).startsWith("https://socconsult.example.test/student/"), true);
     assert.equal(consultationEmailUrl("https://evil.test"), undefined);
     const warnings = []; console.warn = value => warnings.push(value);
-    setEmailTransportFactoryForTests(() => ({ sendMail: async () => { throw new Error("EAUTH SECRET"); } }));
-    assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "delivery_failed" });
-    assert.deepEqual(warnings, ["[Email] Delivery failed."]);
+    setEmailTransportFactoryForTests(() => ({ sendMail: async () => {
+      throw Object.assign(new Error("provider detail must stay private"), { code: "EAUTH" });
+    } }));
+    assert.deepEqual(await sendEmail({ to: "student@example.test", subject: "Update", text: "Safe" }), { delivered: false, reason: "authentication_failed" });
+    assert.deepEqual(warnings, ["[Email] Delivery failed reason=authentication_failed."]);
     assert.doesNotMatch(JSON.stringify(warnings), /EAUTH|SECRET/);
-  } finally { Object.assign(env, previous); console.warn = warning; resetEmailTransportFactoryForTests(); }
+  } finally { Object.assign(env, previous); console.warn = warning; console.info = info; resetEmailTransportFactoryForTests(); }
 });
 
 test("24-hour reminder processor is bounded, Confirmed-only, idempotent, and keeps in-app delivery when email is unavailable", async () => {
@@ -59,8 +61,10 @@ test("24-hour reminder processor is bounded, Confirmed-only, idempotent, and kee
     assert.deepEqual(filter.status, "Confirmed");
     assert.equal(+filter.startAt.$gt, +now);
     assert.equal(+filter.startAt.$lte, +now + CONSULTATION_REMINDER_LEAD_MS);
-    const chain = { select() { return chain; }, sort() { return chain; }, limit() { return chain; },
-      async lean() { return [{ _id: appointmentId, student, startAt: new Date(+now + 3600000) }]; } };
+    const chain = { select() { return chain; }, populate() { return chain; }, sort() { return chain; }, limit() { return chain; },
+      async lean() { return [{ _id: appointmentId, student, status: "Confirmed", subject: "Consultation",
+        reason: "Scheduled review", consultationMode: "Online", meetingPlatform: "SOCConsult",
+        startAt: new Date(+now + 3600000), endAt: new Date(+now + 5400000) }]; } };
     return chain;
   };
   Notification.create = async rows => {

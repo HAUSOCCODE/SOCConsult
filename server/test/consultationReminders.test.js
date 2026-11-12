@@ -12,7 +12,9 @@ const now = new Date("2026-11-01T00:00:00Z");
 const student = "507f1f77bcf86cd799439013", faculty = "507f1f77bcf86cd799439014";
 function harness(t, size) {
   const rows = Array.from({ length: size }, (_, i) => ({ _id: (i + 1).toString(16).padStart(24, "0"),
-    student, faculty, status: "Confirmed", startAt: new Date(+now + 3600000) }));
+    student, faculty, initiatedByRole: "student", status: "Confirmed", subject: "Consultation reminder",
+    reason: "Review the scheduled consultation.", consultationMode: "Online", meetingPlatform: "SOCConsult",
+    startAt: new Date(+now + 3600000), endAt: new Date(+now + 5400000) }));
   const keys = new Set(), blocked = new Set(), email = [], queries = [], stored = [];
   const previous = { ...env };
   Object.assign(env, { smtpHost: "smtp.example.test", smtpUser: "mock", smtpPass: "mock", emailFrom: "sender@example.test", clientUrl: "https://socconsult.example.test" });
@@ -20,7 +22,8 @@ function harness(t, size) {
   t.mock.method(Appointment, "find", filter => {
     queries.push(filter);
     let limit;
-    const q = { select(projection) { assert.equal(projection, "student faculty startAt"); return q; },
+    const q = { select(projection) { assert.equal(projection, "student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform status"); return q; },
+      populate() { return q; },
       sort(sort) { assert.deepEqual(sort, { _id: 1 }); return q; }, limit(n) { limit = n; return q; },
       async lean() { return rows.filter(row => row.status === filter.status && row.startAt > filter.startAt.$gt &&
         row.startAt <= filter.startAt.$lte && (!filter._id || row._id > filter._id.$gt)).slice(0, limit); } };

@@ -75,6 +75,13 @@ test("nested dialog keyboard handling belongs to top layer; busy, restoration an
     opener.focus(); render(parent2, outerRef, {}); render(child2, innerRef, {});
     parent2.unmount(); first.isConnected = false; last.isConnected = false; child2.unmount(); await settle();
     assert.equal(doc.activeElement, opener); assert.equal(doc.body.style.overflow, "auto");
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const repeated = host();
+      render(repeated, innerRef, {});
+      assert.equal(doc.body.style.overflow, "hidden");
+      repeated.unmount(); await settle();
+      assert.equal(doc.body.style.overflow, "auto");
+    }
   } finally { globalThis.document = old; }
 });
 

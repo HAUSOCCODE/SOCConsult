@@ -4,17 +4,21 @@ import Appointment from "../models/Appointment.js";
 import AttendanceResponse, { assertAttendanceIndexes } from "../models/AttendanceResponse.js";
 import AuditLog from "../models/AuditLog.js";
 import User from "../models/User.js";
-import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS } from "../config/attendance.js";
+import { ATTENDANCE_POLICY, ATTENDANCE_OUTCOMES, RESPONSE_WINDOW_MS,
+  INITIATOR_ATTENDANCE_POLICY, initiatorReportingRole } from "../config/attendance.js";
 import { safeReason, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { participation, participantAttendance } from "./attendancePrivacyService.js";
 import { ATTENDANCE_TRANSITIONS } from "../config/appointmentStatus.js";
 import { bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
   createFacultyConsultationNotification, createStudentConsultationNotification } from "./consultationNotificationService.js";
+import { uploadBuffer, destroyAsset } from "./cloudinaryStorage.js";
+import crypto from "node:crypto";
+import path from "node:path";
 
 const fail = (message, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode }); };
 export function validAttendance(row) {
   const a = row.attendance;
-  return a?.policyVersion === ATTENDANCE_POLICY && row.endAt != null &&
+  return [ATTENDANCE_POLICY, INITIATOR_ATTENDANCE_POLICY].includes(a?.policyVersion) && row.endAt != null &&
     Number.isFinite(new Date(row.endAt).getTime()) && new Date(row.endAt) > new Date(row.startAt) &&
     +new Date(a.attendanceOpensAt) === +new Date(row.endAt) &&
     +new Date(a.responseDeadlineAt) === +new Date(row.endAt) + RESPONSE_WINDOW_MS;
@@ -58,19 +62,127 @@ async function transition(row, to, session, now) {
 }
 export async function readAttendance({ id, actor, now = new Date() }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
-  const row = await Appointment.findById(id).select("student faculty status startAt endAt +attendance").lean();
+  const row = await Appointment.findById(id).select("student faculty initiatedByRole status startAt endAt +attendance").lean();
   if (!row || !participation(row, actor)) fail("Appointment not found.", 404);
   // Read only the author's private reason; never fetch the counterpart's reason.
-  const responses = await AttendanceResponse.find({ appointment: id }).lean();
+  const initiatorWorkflow = row.attendance?.policyVersion === INITIATOR_ATTENDANCE_POLICY;
+  const responses = await AttendanceResponse.find({ appointment: id }).select(initiatorWorkflow ? "+reason" : "").lean();
   const own = await AttendanceResponse.findOne({ appointment: id, participant: actor.id }).select("+reason").lean();
   return participantAttendance(row, responses.map(r => String(r.participant) === String(actor.id) ? own || r : r), participation(row, actor), now);
+}
+export async function readOutcomeProof({ id, actor }) {
+  if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
+  const row = await Appointment.findById(id).select("student faculty +attendance").lean();
+  if (!row || !(participation(row, actor) || actor?.role === "dean" && actor?.management === true)) fail("Consultation proof not found.", 404);
+  const response = await AttendanceResponse.findOne({ appointment: id }).select("+proof.cloudinaryPublicId +proof.resourceType").lean();
+  if (!response?.proof?.cloudinaryPublicId) fail("Consultation proof not found.", 404);
+  return { name: response.proof.originalName, mimeType: response.proof.mimeType,
+    publicId: response.proof.cloudinaryPublicId, resourceType: response.proof.resourceType };
+}
+export async function disputeInitiatorOutcome({ id, actor, reason, now = new Date() }) {
+  if (!mongoose.isValidObjectId(id) || typeof reason !== "string" || !safeReason(reason) || reason.length > 500)
+    fail("A dispute reason of 500 characters or fewer is required.", 400);
+  const session = await mongoose.startSession();
+  let studentId, facultyId;
+  try {
+    await session.withTransaction(async () => {
+      const row = await Appointment.findById(id).select("+attendance").session(session).lean();
+      const role = row && participation(row, actor);
+      if (!row || !role) fail("Appointment not found.", 404);
+      if (row.attendance?.policyVersion !== INITIATOR_ATTENDANCE_POLICY || row.status !== "Completed" ||
+          row.attendance.finalizationSource !== "initiator_report") fail("This outcome cannot be disputed.");
+      if (role === row.attendance.initiatorRole) fail("The outcome reporter cannot dispute their own report.", 403);
+      studentId = row.student; facultyId = row.faculty;
+      const originalStatus = row.status;
+      Object.assign(row.attendance, { finalOutcome: null, finalizedAt: undefined, finalizationSource: undefined,
+        reviewReason: "initiator_report_disputed", missingRoles: [], reviewStartedAt: now });
+      const events = await transition(row, "Attendance Review", session, now);
+      await audit(row, actor, "attendance_outcome_disputed", session, now);
+      const updated = await Appointment.findOneAndUpdate({ _id: row._id, status: originalStatus, __v: row.__v,
+        updatedAt: row.updatedAt }, { $set: { status: row.status, attendance: row.attendance,
+          statusHistory: row.statusHistory }, $inc: { __v: 1 } }, { session, runValidators: true, new: true });
+      if (!updated) fail("Appointment changed. Please retry.");
+      return events;
+    });
+  } finally { await session.endSession(); }
+  await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event: "attendance_review" });
+  await bestEffortFacultyConsultationEmail({ faculty: facultyId, appointmentId: id, event: "faculty_attendance_review" });
+  return true;
+}
+async function uploadProof(file, appointmentId) {
+  if (!file) return null;
+  const originalName = path.basename(file.originalname.replaceAll("\\", "/")).slice(0, 255) || "consultation-proof";
+  const uploaded = await uploadBuffer(file.buffer, { folder: `consultio/outcome-proofs/${appointmentId}`,
+    resource_type: "image", public_id: crypto.randomUUID() });
+  return { originalName, cloudinaryPublicId: uploaded.public_id, resourceType: "image",
+    mimeType: file.mimetype.toLowerCase(), size: file.size };
+}
+async function processInitiatorOutcome({ id, actor, input, proofFile, now }) {
+  await assertAttendanceIndexes();
+  const preflight = await Appointment.findById(id).select("+attendance").lean();
+  const role = preflight && participation(preflight, actor);
+  const existingResponse = preflight && await AttendanceResponse.exists({ appointment: id });
+  const initiatorRole = initiatorReportingRole(preflight, { hasResponses: Boolean(existingResponse) });
+  if (!preflight || !role) fail("Appointment not found.", 404);
+  if (!validAttendance(preflight) || !initiatorRole ||
+      !["Confirmed", "Awaiting Attendance Update"].includes(preflight.status)) fail("Outcome reporting is unavailable.");
+  if (role !== initiatorRole) fail("Only the original consultation initiator can report the outcome.", 403);
+  if (now < new Date(preflight.endAt)) fail("Outcome reporting has not opened.");
+  if (now >= new Date(preflight.attendance.responseDeadlineAt)) fail("The outcome reporting deadline has passed.");
+  if (existingResponse) fail("The consultation outcome has already been submitted.");
+  const proof = await uploadProof(proofFile, id);
+  const session = await mongoose.startSession();
+  let studentId, facultyId;
+  try {
+    await session.withTransaction(async () => {
+      const row = await Appointment.findById(id).select("+attendance").session(session).lean();
+      const currentRole = row && participation(row, actor);
+      const responseExists = row && await AttendanceResponse.exists({ appointment: id }).session(session);
+      const currentInitiator = initiatorReportingRole(row, { hasResponses: Boolean(responseExists) });
+      if (!row || currentRole !== currentInitiator ||
+          !["Confirmed", "Awaiting Attendance Update"].includes(row.status) || now < new Date(row.endAt) ||
+          now >= new Date(row.attendance.responseDeadlineAt)) fail("The consultation outcome is no longer available.");
+      if (responseExists) fail("The consultation outcome has already been submitted.");
+      studentId = row.student; facultyId = row.faculty;
+      if (row.attendance.policyVersion === ATTENDANCE_POLICY) {
+        row.attendance.policyVersion = INITIATOR_ATTENDANCE_POLICY;
+        row.attendance.initiatorRole = currentInitiator;
+      }
+      await AttendanceResponse.create([{ appointment: row._id, participant: actor.id, participantRole: currentRole,
+        outcome: input.outcome, reason: safeReason(input.reason ?? ""), submittedAt: now,
+        policyVersion: row.attendance.policyVersion, ...(proof && { proof }) }], { session });
+      const originalStatus = row.status;
+      Object.assign(row.attendance, { [`${currentRole}Responded`]: true, finalOutcome: input.outcome,
+        finalizedAt: now, finalizationSource: "initiator_report" });
+      const events = await transition(row, "Completed", session, now);
+      await audit(row, actor, "attendance_response_submitted", session, now);
+      const updated = await Appointment.findOneAndUpdate({ _id: row._id, status: originalStatus, __v: row.__v,
+        updatedAt: row.updatedAt }, { $set: { status: row.status, attendance: row.attendance,
+          statusHistory: row.statusHistory }, $inc: { __v: 1 } }, { session, runValidators: true, new: true });
+      if (!updated) fail("Appointment changed. Please retry.");
+      return events;
+    });
+  } catch (error) {
+    if (proof) await destroyAsset({ publicId: proof.cloudinaryPublicId, resourceType: "image" }).catch(() => {});
+    if (error.code === 11000) fail("The consultation outcome has already been submitted.");
+    throw error;
+  } finally { await session.endSession(); }
+  await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event: "finalized" });
+  await bestEffortFacultyConsultationEmail({ faculty: facultyId, appointmentId: id, event: "faculty_finalized" });
+  return true;
 }
 export async function processAttendance({ id, actor, input, now = new Date() }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment reference.", 400);
   const submitting = input !== undefined;
-  if (submitting && (!input || Object.keys(input).some(k => !["outcome", "reason"].includes(k)) || !ATTENDANCE_OUTCOMES.includes(input.outcome))) fail("Invalid attendance response.", 400);
+  if (submitting && (!input || Object.keys(input).some(k => !["outcome", "reason", "proofFile"].includes(k)) || !ATTENDANCE_OUTCOMES.includes(input.outcome))) fail("Invalid attendance response.", 400);
   if (submitting && input.reason !== undefined && (typeof input.reason !== "string" || input.reason.length > 500)) fail("Reason must be text of 500 characters or fewer.", 400);
   const reason = submitting ? safeReason(input.reason ?? "") : "";
+  if (submitting) {
+    const policy = await Appointment.findById(id).select("initiatedByRole +attendance").lean();
+    const hasResponses = policy && await AttendanceResponse.exists({ appointment: id });
+    if (initiatorReportingRole(policy, { hasResponses: Boolean(hasResponses) }))
+      return processInitiatorOutcome({ id, actor, input, proofFile: input.proofFile, now });
+  }
   await assertAttendanceIndexes();
   const session = await mongoose.startSession();
   let changed = false;
@@ -113,7 +225,15 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
           facultyEmailEvents.add("faculty_student_attendance_submitted");
         }
       }
-      const decision = attendanceDecision(responses, deadlinePassed);
+      const effectiveInitiator = initiatorReportingRole(row, { hasResponses: responses.length > 0 });
+      if (effectiveInitiator && row.attendance.policyVersion === ATTENDANCE_POLICY) {
+        row.attendance.policyVersion = INITIATOR_ATTENDANCE_POLICY;
+        row.attendance.initiatorRole = effectiveInitiator;
+      }
+      const decision = effectiveInitiator
+        ? deadlinePassed ? { status: "Attendance Review", reviewReason: `${effectiveInitiator}_response_missing`,
+          missingRoles: [effectiveInitiator] } : null
+        : attendanceDecision(responses, deadlinePassed);
       if (decision) {
         if (decision.status === "Completed") Object.assign(row.attendance, { finalOutcome: decision.finalOutcome, finalizedAt: now, finalizationSource: "participant_agreement" });
         else Object.assign(row.attendance, { finalOutcome: null, reviewReason: decision.reviewReason, missingRoles: decision.missingRoles, reviewStartedAt: now });

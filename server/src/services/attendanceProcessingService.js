@@ -1,10 +1,10 @@
 import Appointment from "../models/Appointment.js";
-import { ATTENDANCE_POLICY } from "../config/attendance.js";
+import { ATTENDANCE_POLICY, INITIATOR_ATTENDANCE_POLICY } from "../config/attendance.js";
 import { processAttendance } from "./attendanceService.js";
 export const emptyAttendanceCounts = () => ({ attempted: 0, changed: 0, skipped: 0, failed: 0, errors: 0, incomplete: 0 });
 export async function processAttendanceBatch({ now, limit = 100, afterId } = {}) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Invalid batch size.");
-  const rows = await Appointment.find({ "attendance.policyVersion": ATTENDANCE_POLICY,
+  const rows = await Appointment.find({ "attendance.policyVersion": { $in: [ATTENDANCE_POLICY, INITIATOR_ATTENDANCE_POLICY] },
     $or: [{ status: "Confirmed", endAt: { $lte: now } },
       { status: "Awaiting Attendance Update", "attendance.responseDeadlineAt": { $lte: now } }],
     ...(afterId && { _id: { $gt: afterId } }) }).select("_id").sort({ _id: 1 }).limit(limit).lean();

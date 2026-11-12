@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import ConfirmDialog from "../ConfirmDialog";
 
@@ -19,13 +19,28 @@ const safeMessage = (error) => {
   return "Unable to submit your attendance response. Refresh the consultation before trying again.";
 };
 
-export default function FacultyAttendanceForm({ appointmentId, onSubmitted }) {
+export default function FacultyAttendanceForm({ appointmentId, onSubmitted, allowProof = false }) {
   const [outcome, setOutcome] = useState("");
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [proof, setProof] = useState(null), [preview, setPreview] = useState("");
   const pending = useRef(false);
+
+  useEffect(() => {
+    if (!proof) { setPreview(""); return undefined; }
+    const url = URL.createObjectURL(proof); setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [proof]);
+  const chooseProof = event => {
+    const file = event.target.files?.[0] || null;
+    if (file && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      event.target.value = ""; setProof(null);
+      return setError("Choose a JPEG, PNG, or WebP image no larger than 5 MB.");
+    }
+    setProof(file); setError("");
+  };
 
   const requestConfirmation = (event) => {
     event.preventDefault();
@@ -40,10 +55,10 @@ export default function FacultyAttendanceForm({ appointmentId, onSubmitted }) {
     setSubmitting(true);
     setError("");
     try {
-      await api(`/appointments/${appointmentId}/attendance-responses`, {
-        method: "POST",
-        body: JSON.stringify({ outcome, ...(reason.trim() && { reason: reason.trim() }) }),
-      });
+      const body = new FormData(); body.append("outcome", outcome);
+      if (reason.trim()) body.append("reason", reason.trim());
+      if (proof) body.append("proof", proof);
+      await api(`/appointments/${appointmentId}/attendance-responses`, { method: "POST", body });
       setConfirming(false);
       await onSubmitted?.({ success: true });
     } catch (requestError) {
@@ -57,8 +72,8 @@ export default function FacultyAttendanceForm({ appointmentId, onSubmitted }) {
   };
 
   return <section className="min-w-0 rounded-xl border border-gold-300 bg-gold-50 p-4 sm:p-5" aria-labelledby="faculty-attendance-heading">
-    <h3 id="faculty-attendance-heading" className="font-bold text-maroon-900">Submit Attendance Response</h3>
-    <p className="mt-2 text-sm leading-6 text-slate-700">Report your own attendance outcome. The system determines the final consultation status from both participant responses.</p>
+    <h3 id="faculty-attendance-heading" className="font-bold text-maroon-900">Report Consultation Outcome</h3>
+    <p className="mt-2 text-sm leading-6 text-slate-700">As the original requester, record the final consultation outcome. The Student does not need to submit a second response.</p>
     <form className="mt-4 min-w-0 space-y-4" onSubmit={requestConfirmation}>
       <fieldset disabled={submitting} className="min-w-0 space-y-2">
         <legend className="mb-2 text-sm font-bold text-slate-800">Attendance outcome</legend>
@@ -71,8 +86,14 @@ export default function FacultyAttendanceForm({ appointmentId, onSubmitted }) {
         <textarea value={reason} onChange={event => setReason(event.target.value)} disabled={submitting} maxLength={FACULTY_ATTENDANCE_REASON_LIMIT} rows={4} className="field mt-2 min-h-24 w-full resize-y" placeholder="Add context if helpful" />
         <span className="mt-1 block text-right text-xs font-normal text-slate-500">{reason.length}/{FACULTY_ATTENDANCE_REASON_LIMIT}</span>
       </label>
+      {allowProof && <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <label htmlFor="faculty-outcome-proof" className="block text-sm font-bold text-slate-800">Attach Photo Proof (Optional)</label>
+        <p id="faculty-outcome-proof-help" className="mt-1 text-sm text-slate-600">You may attach a photo as supporting evidence that the consultation took place. This is optional. Avoid unrelated people, private messages, or sensitive information.</p>
+        <input id="faculty-outcome-proof" type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseProof} disabled={submitting} aria-describedby="faculty-outcome-proof-help" className="field mt-3 w-full" />
+        {proof && <div className="mt-3 flex flex-wrap items-start gap-3"><img src={preview} alt="Selected consultation proof preview" className="max-h-40 max-w-full rounded-lg border object-contain" /><div className="min-w-0"><p className="break-all text-sm">{proof.name}</p><button type="button" className="mt-2 text-sm font-bold text-maroon-800 underline" onClick={() => setProof(null)} disabled={submitting}>Remove photo</button></div></div>}
+      </div>}
       {error && <p role="alert" className="break-words rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
-      <button type="submit" disabled={submitting} className="btn-primary min-h-10 w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">{submitting ? "Submitting..." : "Submit Attendance Response"}</button>
+      <button type="submit" disabled={submitting} className="btn-primary min-h-10 w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">{submitting ? "Submitting..." : "Submit Outcome Report"}</button>
     </form>
     <ConfirmDialog open={confirming} title="Submit Attendance Response" message="Submit this attendance response? You will not be able to change it after submission." supportingText={`Selected outcome: ${outcome}`} confirmLabel="Submit Response" cancelLabel="Go Back" loadingLabel="Submitting..." variant="primary" loading={submitting} onCancel={() => !pending.current && setConfirming(false)} onConfirm={submit} />
   </section>;
