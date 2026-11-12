@@ -8,6 +8,9 @@ export const resetEmailTransportFactoryForTests = () => { transportFactory = (op
 
 const configured = () => Boolean(env.smtpHost && env.smtpUser && env.smtpPass && env.emailFrom);
 const validRecipient = (value) => typeof value === "string" && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const smtpPassword = () => env.smtpHost?.trim().toLowerCase() === "smtp.gmail.com"
+  ? String(env.smtpPass).replace(/\s+/g, "")
+  : env.smtpPass;
 const deliveryFailureReason = (error) => {
   if (error?.code === "EAUTH" || error?.responseCode === 535) return "authentication_failed";
   if (["ETIMEDOUT", "ESOCKET", "ECONNECTION", "ECONNREFUSED", "ECONNRESET"].includes(error?.code)) return "connection_failed";
@@ -26,7 +29,7 @@ export async function sendEmail({ to, subject, text, html }) {
     return { delivered: false, reason: "invalid_message" };
   try {
     const transport = transportFactory({ host: env.smtpHost, port: env.smtpPort, secure: env.smtpSecure,
-      auth: { user: env.smtpUser, pass: env.smtpPass } });
+      auth: { user: env.smtpUser, pass: smtpPassword() } });
     await transport.sendMail({ from: env.emailFrom, to, subject: subject.trim(), text, ...(html && { html }) });
     console.info("[Email] SMTP accepted message.");
     return { delivered: true };

@@ -91,7 +91,7 @@ test("notification client accepts API-resolved Faculty/Dean event links and reje
   const appointment = newId();
   for (const role of ["faculty", "dean"]) {
     const base = role === "dean" ? "/dean/faculty" : "/faculty";
-    for (const [type, page] of [["faculty_request_submitted", "requests"], ["faculty_proposal_declined", "requests"],
+    for (const [type, page] of [["faculty_request_submitted", "consultations"], ["faculty_proposal_declined", "requests"],
       ["faculty_finalized", "history"], ["faculty_attendance_review", "history"], ["faculty_upcoming_reminder", "consultations"]]) {
       const notice = publicNotification({ type, relatedEntityId: appointment, category: "Consultation",
         actionUrl: base + "/consultations" }, { role });
