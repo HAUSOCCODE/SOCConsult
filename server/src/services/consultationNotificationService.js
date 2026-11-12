@@ -21,7 +21,7 @@ export const STUDENT_CONSULTATION_EVENTS = Object.freeze({
 });
 
 export const FACULTY_CONSULTATION_EVENTS = Object.freeze({
-  faculty_request_submitted: ["New consultation request", "A student submitted a new consultation request.", "requests"],
+  faculty_request_submitted: ["New consultation request", "A student submitted a new consultation request.", "consultations"],
   faculty_proposal_accepted: ["Proposed schedule accepted", "The student accepted your proposed consultation schedule.", "consultations"],
   faculty_proposal_declined: ["Proposed schedule declined", "The student declined your proposed consultation schedule.", "requests"],
   faculty_cancelled: ["Consultation cancelled", "The student cancelled this consultation.", "history"],
@@ -34,6 +34,19 @@ export const FACULTY_CONSULTATION_EVENTS = Object.freeze({
   faculty_request_accepted: ["Consultation request accepted", "The student accepted your consultation request.", "consultations"],
   faculty_request_declined: ["Consultation request declined", "The student declined your consultation request.", "history"],
   faculty_student_reschedule_proposed: ["Student proposed another schedule", "The student proposed another consultation schedule for your review.", "consultations"],
+});
+
+const STUDENT_EMAIL_EVENTS = Object.freeze({
+  faculty_request_received: ["[SOCConsult] New Consultation Request from Faculty",
+    "A Faculty member has requested a consultation with you. Please review the proposed schedule."],
+  confirmed: ["[SOCConsult] Your Consultation Has Been Confirmed",
+    "Your consultation request has been confirmed by your Faculty member."],
+});
+const FACULTY_EMAIL_EVENTS = Object.freeze({
+  faculty_request_submitted: ["[SOCConsult] New Consultation Request",
+    "A Student has requested a consultation with you. Please review the request."],
+  faculty_request_accepted: ["[SOCConsult] Student Accepted Your Consultation Request",
+    "The Student accepted your consultation request."],
 });
 
 const id = value => String(value?._id || value?.id || value || "");
@@ -68,10 +81,10 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
       appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
     ["Meeting link", appointment.consultationMode === "Online" && ["Confirmed", "Completed"].includes(appointment.status)
       ? appointment.meetingLink : undefined],
-    ["Status", appointment.status],
+    ["Status", appointment.status], ["Time zone", "Philippine Time"],
   ].filter(([, value]) => value != null && String(value).trim());
   const button = request ? "View Consultation Request" : "View Consultation";
-  const greeting = recipientRole === "student" ? "Hello, Student!" : "Hello, Professor!";
+  const greeting = `Hello, ${recipientRole === "student" ? student : faculty}!`;
   const textDetails = details.map(([label, value]) => `${label}: ${value}`).join("\n");
   const text = `SOCConsult\nSchool of Computing — Holy Angel University\n\n${subject}\n\n${greeting}\n\n${message}\n\nConsultation Details\n${textDetails}\n\nPlease review this consultation in SOCConsult.\n\n${button}: ${url}\n\nThis is an automated SOCConsult notification.`;
   const rows = details.map(([label, value]) => `<tr><th style="padding:8px;text-align:left;vertical-align:top;color:#6e1423">${escapeHtml(label)}</th><td style="padding:8px;overflow-wrap:anywhere">${escapeHtml(value)}</td></tr>`).join("");
@@ -128,7 +141,7 @@ export async function sendStudentConsultationEmail({ student, appointmentId, eve
   let appointment;
   try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return false; }
   if (!appointment) return false;
-  const [subject, message] = definition;
+  const [subject, message] = STUDENT_EMAIL_EVENTS[event] || definition;
   const content = buildConsultationEmail({ appointment, recipientRole: "student", subject, message, url,
     request: event === "faculty_request_received" });
   const result = await sendEmail({ to: user.email, ...content });
@@ -144,7 +157,8 @@ export async function sendFacultyConsultationEmail({ faculty, appointmentId, eve
   if (!definition) return false;
   const user = await User.findById(faculty).select("email role").lean();
   if (!user?.email || !["faculty", "dean"].includes(user.role)) return false;
-  const [subject, message, destination] = definition;
+  const [subject, message] = FACULTY_EMAIL_EVENTS[event] || definition;
+  const destination = definition[2];
   const path = facultyConsultationPath(appointmentId, destination, user.role === "dean");
   const url = consultationEmailUrl(path);
   let appointment;

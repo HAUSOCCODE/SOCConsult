@@ -345,9 +345,7 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
   } finally { await session.endSession(); }
   if (facultyInitiated)
     await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "faculty_request_received" });
-  else {
-    await bestEffortStudentConsultationEmail({ student: appointment.student, appointmentId: appointment._id, event: "request_submitted" });
+  else
     await bestEffortFacultyConsultationEmail({ faculty: appointment.faculty, appointmentId: appointment._id, event: "faculty_request_submitted" });
-  }
   return safeAppointment(appointment, actor.role);
 }
