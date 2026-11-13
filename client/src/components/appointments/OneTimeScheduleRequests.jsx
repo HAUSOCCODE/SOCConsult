@@ -1,4 +1,3 @@
-import { safeStudentError } from "../../utils/studentUiErrors";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,6 +6,32 @@ import { StatusBadge } from "../UI";
 import AppointmentRequestDetailsModal from "./AppointmentRequestDetailsModal";
 import { useToast } from "../../context/ToastContext";
 import { formatPersonName } from "../../utils/formatPersonName";
+
+const SAFE_APPROVAL_MESSAGES = new Set([
+  "Choose a valid future date and time with a timezone.",
+  "Duration must be between 5 and 240 minutes.",
+  "Choose a consultation mode.",
+  "Enter a location (up to 150 characters).",
+  "Enter a meeting platform and an optional valid HTTP or HTTPS meeting link.",
+  "Choose a valid future schedule.",
+  "Invalid consultation duration.",
+  "Choose a valid consultation mode.",
+  "Enter a valid location.",
+  "Enter a valid meeting platform.",
+  "This schedule conflicts with another active appointment.",
+  "This request is no longer pending or does not belong to you.",
+  "The Student account is no longer active.",
+]);
+const actionError = (error, decision) => {
+  if (!error?.status) return "Network connection interrupted. Please try again.";
+  if (error.status === 401) return "Your session has expired. Please sign in again.";
+  if ([403, 404].includes(error.status)) return "This request is unavailable or you do not have permission to update it.";
+  if (decision === "approve" && SAFE_APPROVAL_MESSAGES.has(error.message)) return error.message;
+  if (decision === "approve" && error.status === 409) return "The selected schedule conflicts with another consultation or the request changed. Refresh and try again.";
+  if (decision === "approve") return "Unable to approve the consultation. Please try again.";
+  if (decision === "reject" && error.status === 409) return "This request changed before it could be rejected. Refresh and try again.";
+  return "Unable to reject the consultation. Please try again.";
+};
 
 const initial = {
   date: "",
@@ -25,12 +50,14 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
   const [details, setDetails] = useState(null);
   const [form, setForm] = useState({ ...initial, durationMinutes: String(reviewRequest?.estimatedDurationMinutes || "") });
   const [rejectNote, setRejectNote] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
   const [busy, setBusy] = useState(false);
   const reviewButtonRef = useRef(null);
   const reviewDialogRef = useRef(null);
   const busyRef = useRef(false);
   busyRef.current = busy;
-  const closeReview = () => { setSelected(null); onClose?.(); };
+  const closeReview = () => { setSelected(null); setRejecting(false); setDecisionError(""); onClose?.(); };
   const load = () =>
     api("/schedule-requests/mine")
       .then((data) => setRequests(data.requests || []))
@@ -46,6 +73,8 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     reviewButtonRef.current = opener;
     setSelected(request);
     setRejectNote("");
+    setRejecting(false);
+    setDecisionError("");
     setForm({
       ...initial,
       durationMinutes: String(request.estimatedDurationMinutes || ""),
@@ -55,17 +84,34 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     if (!selected || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    setDecisionError("");
     try {
       if (!Number.isInteger(selected.__v)) throw new Error("Reload request details.");
-      if (decision === "reject" && !rejectNote.trim()) throw new Error("A rejection reason is required.");
+      if (decision === "reject" && !rejectNote.trim()) {
+        setDecisionError("Please provide a reason for rejecting this consultation.");
+        return;
+      }
       let body = { note: rejectNote };
       if (decision === "approve") {
-        if (!form.date || !form.time)
-          throw new Error("Choose a date and start time.");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) { setDecisionError("Please select a valid consultation date."); return; }
+        if (!/^\d{2}:\d{2}$/.test(form.time)) { setDecisionError("Please enter a valid start time."); return; }
+        const durationMinutes = Number(form.durationMinutes);
+        if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 240) {
+          setDecisionError("Duration must be between 5 and 240 minutes."); return;
+        }
+        if (form.mode === "Face-to-Face" && !form.location.trim()) {
+          setDecisionError("Please provide a consultation location."); return;
+        }
+        if (form.mode === "Online" && !form.meetingPlatform.trim()) {
+          setDecisionError("Please provide an online meeting platform."); return;
+        }
         const startAt = `${form.date}T${form.time}:00+08:00`;
+        if (!Number.isFinite(new Date(startAt).getTime()) || new Date(startAt) <= new Date()) {
+          setDecisionError("Please choose a future consultation time."); return;
+        }
         body = {
           startAt,
-          durationMinutes: Number(form.durationMinutes),
+          durationMinutes,
           mode: form.mode,
           location: form.location,
           meetingPlatform: form.meetingPlatform,
@@ -76,12 +122,15 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
         method: "PUT",
         body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
       });
-      toast.success(data.message);
+      toast.success(decision === "approve" ? "Consultation approved and scheduled successfully." : "Consultation request rejected.");
       closeReview();
       if (reviewRequest) onDecided?.();
       else await load();
     } catch (error) {
-      toast.error(safeStudentError(error, "Unable to decide this request. Check the schedule and required reason."));
+      const message = error?.status ? actionError(error, decision)
+        : error?.message === "Reload request details." ? "Reload request details before deciding." : actionError(error, decision);
+      setDecisionError(message);
+      toast.error(message);
       if (error.status === 409) onConflict?.();
     } finally {
       busyRef.current = false;
@@ -184,7 +233,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                 </p>
               </header>
               <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
-                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                {!rejecting && <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-semibold">
                     Consultation date
                     <input disabled={busy}
@@ -280,44 +329,56 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                       </label>
                     </>
                   )}
-                </div>
-                <div className="mt-5 border-t border-slate-200 pt-4">
+                </div>}
+                {rejecting && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <label className="text-sm font-semibold">
                     Rejection reason (required)
                     <textarea disabled={busy}
                       className="field mt-1 min-h-20 resize-y"
                       maxLength="500"
                       value={rejectNote}
-                      onChange={(event) => setRejectNote(event.target.value)}
+                      onChange={(event) => { setRejectNote(event.target.value); setDecisionError(""); }}
                     />
                   </label>
-                </div>
+                </div>}
+                {decisionError && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{decisionError}</p>}
               </div>
               <footer className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 min-[460px]:flex-row min-[460px]:flex-wrap min-[460px]:justify-end sm:px-6 sm:py-4">
                 <button
                   type="button"
                   className="btn-secondary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={closeReview}
+                  onClick={() => {
+                    if (rejecting) {
+                      setRejecting(false);
+                      setDecisionError("");
+                    } else closeReview();
+                  }}
                 >
-                  Close
+                  {rejecting ? "Back" : "Close"}
                 </button>
                 <button
                   type="button"
                   className="btn-secondary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={() => decide("reject")}
+                  onClick={() => {
+                    if (rejecting) void decide("reject");
+                    else {
+                      setRejecting(true);
+                      setDecisionError("");
+                    }
+                  }}
                 >
-                  Reject
+                  {rejecting ? "Confirm Rejection" : "Reject"}
                 </button>
-                <button
+                {!rejecting && <button
                   type="button"
                   className="btn-primary w-full min-[460px]:w-auto"
                   disabled={busy}
                   onClick={() => decide("approve")}
                 >
                   {busy ? "Saving..." : "Approve and Schedule"}
-                </button>
+                </button>}
               </footer>
             </section>
           </div>,
