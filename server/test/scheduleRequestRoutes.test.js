@@ -31,6 +31,8 @@ for (const role of ["faculty", "dean"]) test(role+" unscheduled requests remain 
     assert.equal((await h.request('/schedule-requests/'+pending._id+'/cancel', "otherStudent", "PUT", {})).status, 404);
     assert.equal((await h.request('/schedule-requests/'+pending._id+'/cancel', "student", "PUT", {})).status, 200);
     const third = (await (await h.request('/schedule-requests', "student", "POST", body)).json()).appointment;
+    assert.equal((await h.request('/schedule-requests/'+third._id+'/reject', role, "PUT", { note: "   " })).status, 400);
+    assert.equal(h.state.appointments.find(item => item._id === third._id).status, "Pending");
     assert.equal((await h.request('/schedule-requests/'+third._id+'/reject', role, "PUT", { note: "Unavailable" })).status, 200);
   } finally { await h.close(); }
 });
