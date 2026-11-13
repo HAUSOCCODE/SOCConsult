@@ -85,13 +85,36 @@ test("legacy review reuses versioned decisions without fetching or rendering ano
   let tree = h.render(props);
   h.effects[0](); assert.equal(h.pending.length, 0);
   assert.doesNotMatch(h.html(tree), /Requests for a Schedule|No pending schedule requests/);
-  const date = elements(tree).find(el => el.type === "input" && el.props.type === "date"); date.props.onChange({ target: { value: "2026-10-20" } });
+  assert.doesNotMatch(h.html(tree), /Rejection reason \(required\)/);
+  const date = elements(tree).find(el => el.type === "input" && el.props.type === "date"); date.props.onChange({ target: { value: "2099-10-20" } });
   tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.type === "time").props.onChange({ target: { value: "09:00" } });
+  tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.maxLength === "150").props.onChange({ target: { value: "SOC Room 201" } });
   tree = h.render(props); button(tree, "Approve and Schedule").props.onClick();
   assert.equal(h.pending[0].path, "/schedule-requests/first/approve");
   const body = JSON.parse(h.pending[0].options.body);
-  assert.equal(body.expectedVersion, 4); assert.equal(body.startAt, "2026-10-20T09:00:00+08:00"); assert.equal(body.durationMinutes, 30);
+  assert.equal(body.expectedVersion, 4); assert.equal(body.startAt, "2099-10-20T09:00:00+08:00"); assert.equal(body.durationMinutes, 30);
+  assert.equal(Object.hasOwn(body, "note"), false, "approval must not send a rejection field");
   h.pending[0].resolve({ message: "Saved" }); await settle(); assert.equal(h.pending.length, 1);
+});
+
+test("legacy review reveals and validates the rejection reason only after Reject is selected", async () => {
+  const h = await harness("components/appointments/OneTimeScheduleRequests.jsx", { formatPersonName: value => value });
+  const props = { reviewRequest: { ...record, bookingMethod: "schedule_request", estimatedDurationMinutes: 30 }, onClose() {}, onDecided() {} };
+  let tree = h.render(props);
+  assert.doesNotMatch(h.html(tree), /Rejection reason \(required\)/);
+  button(tree, "Reject").props.onClick();
+  tree = h.render(props);
+  assert.match(h.html(tree), /Rejection reason \(required\)/);
+  assert.equal(button(tree, "Approve and Schedule"), undefined);
+  button(tree, "Confirm Rejection").props.onClick();
+  tree = h.render(props);
+  assert.equal(h.pending.length, 0);
+  assert.match(h.html(tree), /Please provide a reason for rejecting this consultation/);
+  elements(tree).find(el => el.type === "textarea").props.onChange({ target: { value: "Schedule unavailable" } });
+  tree = h.render(props);
+  button(tree, "Confirm Rejection").props.onClick();
+  assert.equal(h.pending[0].path, "/schedule-requests/first/reject");
+  assert.deepEqual(JSON.parse(h.pending[0].options.body), { note: "Schedule unavailable", expectedVersion: 4 });
 });
 
 test("protected document viewer uses binary personal endpoints, rejects stale loads and revokes object URLs", async () => {
