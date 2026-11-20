@@ -68,6 +68,78 @@ test("Student alternative schedule stays Pending and unreserved until Faculty ac
   } finally { await h.close(); }
 });
 
+test("Student date-only request preserves the Manila date without inventing or reserving a time", async () => {
+  const h = await appointmentHttp();
+  try {
+    const body = { facultyId: h.users.faculty.id, subject: "Date preference", reason: "Faculty will select the time",
+      requestedConsultationDate: "2099-01-15", mode: "Face-to-Face" };
+    const response = await h.request("/schedule-requests", "student", "POST", body);
+    assert.equal(response.status, 201);
+    const created = (await response.json()).appointment;
+    assert.equal(created.status, "Pending");
+    assert.equal(created.requestedConsultationDate, body.requestedConsultationDate);
+    assert.equal(created.consultationMode, body.mode);
+    assert.equal(created.startAt, undefined);
+    assert.equal(created.endAt, undefined);
+    assert.equal(created.estimatedDurationMinutes, undefined);
+    assert.equal(h.state.holds.length, 0);
+    const wrongDate = await h.request(`/schedule-requests/${created._id}/approve`, "faculty", "PUT", {
+      startAt: "2099-01-16T14:00:00+08:00", durationMinutes: 30,
+      mode: "Face-to-Face", location: "SOC Room 201", expectedVersion: created.__v,
+    });
+    assert.equal(wrongDate.status, 400); assert.equal((await wrongDate.json()).code, "REQUESTED_DATE_MISMATCH");
+    const approval = { startAt: "2099-01-15T14:00:00+08:00", durationMinutes: 30,
+      mode: "Face-to-Face", location: "SOC Room 201", expectedVersion: created.__v };
+    const approved = await h.request(`/schedule-requests/${created._id}/approve`, "faculty", "PUT", approval);
+    assert.equal(approved.status, 200);
+    assert.equal(h.state.appointments[0].status, "Confirmed");
+    assert.equal(h.state.appointments[0].requestedConsultationDate, body.requestedConsultationDate);
+  } finally { await h.close(); }
+});
+
+test("date-only request rejects malformed and past Manila dates", async () => {
+  const h = await appointmentHttp();
+  const base = { facultyId: h.users.faculty.id, subject: "Date preference", reason: "Faculty selects time", mode: "Online" };
+  try {
+    for (const [requestedConsultationDate, code] of [["2099-02-30", "INVALID_REQUESTED_DATE"], ["2000-01-01", "PAST_REQUESTED_DATE"]]) {
+      const response = await h.request("/schedule-requests", "student", "POST", { ...base, requestedConsultationDate });
+      assert.equal(response.status, 400); assert.equal((await response.json()).code, code);
+    }
+    assert.equal(h.state.appointments.length, 0);
+  } finally { await h.close(); }
+});
+
+test("Faculty can counter a date-only request and Student acceptance confirms the proposed schedule once", async () => {
+  const h = await appointmentHttp();
+  try {
+    const createdResponse = await h.request("/schedule-requests", "student", "POST", {
+      facultyId: h.users.faculty.id, subject: "Date preference", reason: "Please choose another time",
+      requestedConsultationDate: "2099-01-15", mode: "Online",
+    });
+    const created = (await createdResponse.json()).appointment;
+    const proposalResponse = await h.request(`/faculty/appointments/${created._id}/reschedule`, "faculty", "PATCH", {
+      consultationDate: "2099-01-16", startTime: "10:00", duration: 30, mode: "Online",
+      meetingPlatform: "Google Meet", meetingLink: "https://meet.example/consultation",
+      reason: "Unavailable on the requested date", expectedVersion: created.__v,
+    });
+    assert.equal(proposalResponse.status, 200);
+    const proposed = (await proposalResponse.json()).appointment;
+    assert.equal(proposed.status, "Reschedule Proposed");
+    assert.equal(proposed.requestedConsultationDate, "2099-01-15");
+    assert.equal(h.state.holds.length, 0, "a proposal must not reserve before acceptance");
+    const accepted = await h.request(`/appointments/${created._id}/reschedule-response`, "student", "PUT", {
+      decision: "accept", proposedAt: proposed.proposedAt, expectedVersion: proposed.__v,
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(h.state.appointments[0].status, "Confirmed");
+    assert.equal(h.state.appointments[0].requestedConsultationDate, "2099-01-15");
+    assert.equal(h.state.holds.length, 30);
+    assert.equal((await h.request(`/appointments/${created._id}/reschedule-response`, "student", "PUT", {
+      decision: "accept", proposedAt: proposed.proposedAt, expectedVersion: proposed.__v,
+    })).status, 409);
+  } finally { await h.close(); }
+});
+
 test("Student can send an Online alternative without published Faculty availability", async () => {
   const h = await appointmentHttp();
   try {
@@ -119,9 +191,12 @@ test("alternative request validation returns stable safe codes and preserves aut
 
 test("alternative request form maps safe API validation codes and never renders raw server messages", async () => {
   const source = await readFile(new URL("../../client/src/components/student/AlternativeScheduleRequestForm.jsx", import.meta.url), "utf8");
-  for (const code of ["INVALID_SUBJECT", "INVALID_REASON", "PAST_SCHEDULE", "INVALID_SCHEDULE_ORDER", "SCHEDULE_CONFLICT"])
+  for (const code of ["INVALID_SUBJECT", "INVALID_REASON", "INVALID_REQUESTED_DATE", "PAST_REQUESTED_DATE"])
     assert.match(source, new RegExp(code));
   assert.match(source, /Preferred Consultation Mode/);
+  assert.match(source, /Preferred consultation date/);
+  assert.match(source, /Faculty member will review your requested date/);
+  assert.doesNotMatch(source, /datetime-local|estimatedDurationMinutes|startAt|endAt/);
   assert.doesNotMatch(source, /Meeting platform|Meeting link|>Location</);
   assert.match(source, /requestErrorMessage/);
   assert.doesNotMatch(source, /requestError\.message|response\.data/);

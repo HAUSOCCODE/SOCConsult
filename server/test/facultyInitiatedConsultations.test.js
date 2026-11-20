@@ -5,6 +5,7 @@ import Appointment from "../src/models/Appointment.js";
 import { createAppointmentRequest, transitionAppointment } from "../src/services/appointmentTransitionService.js";
 import { buildConsultationEmail, facultyAppointmentEvent } from "../src/services/consultationNotificationService.js";
 import { appointmentHarness, fixture, newId } from "./helpers/appointmentHarness.js";
+import { appointmentHttp } from "./helpers/appointmentHttp.js";
 
 const schedule = { startAt: new Date("2099-05-10T02:00:00Z"), endAt: new Date("2099-05-10T02:30:00Z"),
   consultationMode: "Face-to-Face", location: "Room <101>", subject: "Capstone <Review>", reason: "Discuss & verify requirements" };
@@ -30,6 +31,27 @@ test("Faculty creates one Pending participant-owned request and only the Student
     assert.equal(h.state.holds.length, 30, "acceptance reserves the revalidated schedule");
     assert.equal(h.state.notifications.some(item => item.type === "faculty_request_accepted" && String(item.recipient) === faculty), true);
   } finally { h.restore(); }
+});
+
+test("Student HTTP acceptance of a Faculty request confirms once without unrelated fields", async () => {
+  const h = await appointmentHttp();
+  try {
+    const response = await h.request("/appointments/faculty-request", "faculty", "POST", {
+      studentId: h.users.student.id, subject: "Progress review", reason: "Discuss progress",
+      startAt: "2099-05-10T10:00:00+08:00", endAt: "2099-05-10T10:30:00+08:00",
+      mode: "Face-to-Face", location: "SOC Room 201",
+    });
+    assert.equal(response.status, 201);
+    const created = (await response.json()).appointment;
+    const accepted = await h.request(`/appointments/${created._id}/respond`, "student", "PUT", {
+      decision: "accept", expectedVersion: created.__v,
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(h.state.appointments[0].status, "Confirmed");
+    assert.equal((await h.request(`/appointments/${created._id}/respond`, "student", "PUT", {
+      decision: "accept", expectedVersion: created.__v,
+    })).status, 409);
+  } finally { await h.close(); }
 });
 
 test("Student can decline or propose a schedule and the assigned Faculty alone responds", async () => {
@@ -67,6 +89,16 @@ test("branded consultation email escapes saved details and keeps the action butt
   assert.ok(email.html.indexOf("Consultation Details") < email.html.indexOf("View Consultation Request"));
   assert.match(email.text, /Consultation Details[\s\S]*View Consultation Request:/);
   assert.match(email.text, /May 10, 2099/); assert.match(email.text, /10:00 AM/);
+});
+
+test("date-only request email shows the requested date without fabricated times", () => {
+  const email = buildConsultationEmail({ appointment: { initiatedByRole: "student", status: "Pending",
+    requestedConsultationDate: "2099-05-12", consultationMode: "Online", subject: "Date request", reason: "Select a time",
+    faculty: { name: "Faculty" }, student: { name: "Student" } }, recipientRole: "faculty",
+    subject: "New Consultation Request", message: "Please review this request.",
+    url: "https://socconsult.example/faculty/consultations?appointment=0123456789abcdef01234567", request: true });
+  assert.match(email.text, /Requested consultation date: 2099-05-12/);
+  assert.doesNotMatch(email.text, /Start time:|End time:/);
 });
 
 test("Faculty and Student interfaces expose directional request controls and authenticated deep-link recovery", async () => {

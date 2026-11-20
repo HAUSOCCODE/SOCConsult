@@ -69,13 +69,14 @@ const manila = (value, options) => new Intl.DateTimeFormat("en-PH", { timeZone: 
 export function buildConsultationEmail({ appointment, recipientRole, subject, message, url, request = false }) {
   const faculty = personName(appointment.faculty), student = personName(appointment.student);
   const requestedBy = appointment.initiatedByRole === "faculty" ? faculty : student;
-  const date = manila(appointment.startAt, { month: "long", day: "numeric", year: "numeric" });
-  const start = manila(appointment.startAt, { hour: "numeric", minute: "2-digit" });
-  const end = manila(appointment.endAt, { hour: "numeric", minute: "2-digit" });
+  const scheduled = appointment.startAt && appointment.endAt;
+  const date = scheduled ? manila(appointment.startAt, { month: "long", day: "numeric", year: "numeric" }) : appointment.requestedConsultationDate;
+  const start = scheduled ? manila(appointment.startAt, { hour: "numeric", minute: "2-digit" }) : undefined;
+  const end = scheduled ? manila(appointment.endAt, { hour: "numeric", minute: "2-digit" }) : undefined;
   const details = [
     ["Requested by", requestedBy], ["Faculty member", faculty], ["Student", student],
     ["Consultation subject", appointment.subject], ["Reason for consultation", appointment.reason],
-    ["Date", date], ["Start time", start], ["End time", end],
+    [scheduled ? "Date" : "Requested consultation date", date], ["Start time", start], ["End time", end],
     ["Consultation mode", appointment.consultationMode],
     [appointment.consultationMode === "Online" ? "Meeting information" : "Location",
       appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
@@ -94,7 +95,7 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
 
 async function appointmentEmail(appointmentId, appointment) {
   if (appointment) return appointment;
-  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason startAt endAt consultationMode location meetingPlatform +meetingLink status")
+  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason requestedConsultationDate startAt endAt consultationMode location meetingPlatform +meetingLink status")
     .populate("student", "name").populate("faculty", "name").lean();
 }
 
