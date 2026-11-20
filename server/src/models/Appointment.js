@@ -166,6 +166,8 @@ const appointmentSchema = new mongoose.Schema(
     proposedAt: Date,
     proposedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     estimatedDurationMinutes: { type: Number, min: 5, max: 1440 },
+    // Student preference before Faculty assigns a time. Date-only avoids zone shifts.
+    requestedConsultationDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
     subject: { type: String, required: true, trim: true, maxlength: 150 },
     yearLevel: {
       type: String,

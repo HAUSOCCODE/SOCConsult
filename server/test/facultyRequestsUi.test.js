@@ -43,7 +43,7 @@ test("request list renders escaped separate text, schedule fallback, server page
   h.pending[1].resolve({ appointment: { ...record, startAt: "2026-10-20T00:00:00Z", endAt: "2026-10-20T01:00:00Z" } }); await settle();
   tree = h.render(); const modal = elements(tree).find(el => el.props?.personalRequest);
   assert.ok(modal); assert.ok(button(modal.props.actions, "Confirm"));
-  assert.ok(button(modal.props.actions, "Propose Schedule"));
+  assert.equal(button(modal.props.actions, "Propose Schedule"), undefined);
   button(modal.props.actions, "Confirm").props.onClick();
   assert.equal(h.pending.length,2);
   const confirmedModal = elements(h.render()).find(el => el.props?.personalRequest);
@@ -85,6 +85,7 @@ test("legacy review reuses versioned decisions without fetching or rendering ano
   let tree = h.render(props);
   h.effects[0](); assert.equal(h.pending.length, 0);
   assert.doesNotMatch(h.html(tree), /Requests for a Schedule|No pending schedule requests/);
+  assert.match(h.html(tree), /Review Action|Approve and Schedule|Reschedule Request/);
   assert.doesNotMatch(h.html(tree), /Rejection reason \(required\)/);
   const date = elements(tree).find(el => el.type === "input" && el.props.type === "date"); date.props.onChange({ target: { value: "2099-10-20" } });
   tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.type === "time").props.onChange({ target: { value: "09:00" } });
@@ -97,24 +98,34 @@ test("legacy review reuses versioned decisions without fetching or rendering ano
   h.pending[0].resolve({ message: "Saved" }); await settle(); assert.equal(h.pending.length, 1);
 });
 
-test("legacy review reveals and validates the rejection reason only after Reject is selected", async () => {
+test("central Review Request modal keeps rejection in the details workflow", async () => {
   const h = await harness("components/appointments/OneTimeScheduleRequests.jsx", { formatPersonName: value => value });
   const props = { reviewRequest: { ...record, bookingMethod: "schedule_request", estimatedDurationMinutes: 30 }, onClose() {}, onDecided() {} };
-  let tree = h.render(props);
+  const tree = h.render(props);
   assert.doesNotMatch(h.html(tree), /Rejection reason \(required\)/);
-  button(tree, "Reject").props.onClick();
+  assert.equal(button(tree, "Reject"), undefined);
+  assert.ok(button(tree, "Approve and Schedule"));
+});
+
+test("date-only review locks approval to the requested date and sends rescheduling through the canonical proposal route", async () => {
+  const h = await harness("components/appointments/OneTimeScheduleRequests.jsx", { formatPersonName: value => value });
+  const props = { reviewRequest: { ...record, bookingMethod: "schedule_request", requestedConsultationDate: "2099-10-20",
+    consultationMode: "Face-to-Face", estimatedDurationMinutes: undefined }, onClose() {}, onDecided() {} };
+  let tree = h.render(props);
+  const date = elements(tree).find(el => el.type === "input" && el.props.type === "date");
+  assert.equal(date.props.value, "2099-10-20"); assert.equal(date.props.disabled, true);
+  const action = elements(tree).find(el => el.type === "select" && elements(el).some(item => item.type === "option" && item.props.value === "reschedule"));
+  action.props.onChange({ target: { value: "reschedule" } });
   tree = h.render(props);
-  assert.match(h.html(tree), /Rejection reason \(required\)/);
-  assert.equal(button(tree, "Approve and Schedule"), undefined);
-  button(tree, "Confirm Rejection").props.onClick();
-  tree = h.render(props);
-  assert.equal(h.pending.length, 0);
-  assert.match(h.html(tree), /Please provide a reason for rejecting this consultation/);
-  elements(tree).find(el => el.type === "textarea").props.onChange({ target: { value: "Schedule unavailable" } });
-  tree = h.render(props);
-  button(tree, "Confirm Rejection").props.onClick();
-  assert.equal(h.pending[0].path, "/schedule-requests/first/reject");
-  assert.deepEqual(JSON.parse(h.pending[0].options.body), { note: "Schedule unavailable", expectedVersion: 4 });
+  elements(tree).find(el => el.type === "input" && el.props.type === "date").props.onChange({ target: { value: "2099-10-21" } });
+  tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.type === "time").props.onChange({ target: { value: "10:00" } });
+  tree = h.render(props); elements(tree).find(el => el.type === "input" && el.props.maxLength === "150").props.onChange({ target: { value: "SOC Room 202" } });
+  tree = h.render(props); elements(tree).find(el => el.type === "textarea").props.onChange({ target: { value: "Unavailable on the requested date" } });
+  tree = h.render(props); button(tree, "Send Reschedule Proposal").props.onClick();
+  assert.equal(h.pending[0].path, "/faculty/appointments/first/reschedule");
+  const body = JSON.parse(h.pending[0].options.body);
+  assert.equal(body.consultationDate, "2099-10-21"); assert.equal(body.startTime, "10:00");
+  assert.equal(body.reason, "Unavailable on the requested date"); assert.equal(body.expectedVersion, 4);
 });
 
 test("protected document viewer uses binary personal endpoints, rejects stale loads and revokes object URLs", async () => {

@@ -21,6 +21,9 @@ const SAFE_APPROVAL_MESSAGES = new Set([
   "This schedule conflicts with another active appointment.",
   "This request is no longer pending or does not belong to you.",
   "The Student account is no longer active.",
+  "Use Reschedule Request to propose a different consultation date.",
+  "Choose a valid future date and time in Asia/Manila.",
+  "Provide a reschedule reason between 5 and 500 characters.",
 ]);
 const actionError = (error, decision) => {
   if (!error?.status) return "Network connection interrupted. Please try again.";
@@ -48,16 +51,18 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
   const [requests, setRequests] = useState([]);
   const [selected, setSelected] = useState(reviewRequest || null);
   const [details, setDetails] = useState(null);
-  const [form, setForm] = useState({ ...initial, durationMinutes: String(reviewRequest?.estimatedDurationMinutes || "") });
-  const [rejectNote, setRejectNote] = useState("");
-  const [rejecting, setRejecting] = useState(false);
+  const requestedDate = reviewRequest?.requestedConsultationDate || "";
+  const [form, setForm] = useState({ ...initial, date: requestedDate,
+    mode: reviewRequest?.consultationMode || "Face-to-Face",
+    durationMinutes: String(reviewRequest?.estimatedDurationMinutes || 30), reason: "" });
+  const [reviewAction, setReviewAction] = useState("approve");
   const [decisionError, setDecisionError] = useState("");
   const [busy, setBusy] = useState(false);
   const reviewButtonRef = useRef(null);
   const reviewDialogRef = useRef(null);
   const busyRef = useRef(false);
   busyRef.current = busy;
-  const closeReview = () => { setSelected(null); setRejecting(false); setDecisionError(""); onClose?.(); };
+  const closeReview = () => { setSelected(null); setDecisionError(""); onClose?.(); };
   const load = () =>
     api("/schedule-requests/mine")
       .then((data) => setRequests(data.requests || []))
@@ -72,13 +77,14 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
   const choose = (request, opener) => {
     reviewButtonRef.current = opener;
     setSelected(request);
-    setRejectNote("");
-    setRejecting(false);
     setDecisionError("");
     setForm({
       ...initial,
-      durationMinutes: String(request.estimatedDurationMinutes || ""),
+      date: request.requestedConsultationDate || "",
+      mode: request.consultationMode || "Face-to-Face",
+      durationMinutes: String(request.estimatedDurationMinutes || 30), reason: "",
     });
+    setReviewAction("approve");
   };
   const decide = async (decision) => {
     if (!selected || busyRef.current) return;
@@ -87,12 +93,8 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     setDecisionError("");
     try {
       if (!Number.isInteger(selected.__v)) throw new Error("Reload request details.");
-      if (decision === "reject" && !rejectNote.trim()) {
-        setDecisionError("Please provide a reason for rejecting this consultation.");
-        return;
-      }
-      let body = { note: rejectNote };
-      if (decision === "approve") {
+      let body;
+      if (["approve", "reschedule"].includes(decision)) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) { setDecisionError("Please select a valid consultation date."); return; }
         if (!/^\d{2}:\d{2}$/.test(form.time)) { setDecisionError("Please enter a valid start time."); return; }
         const durationMinutes = Number(form.durationMinutes);
@@ -104,6 +106,12 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
         }
         if (form.mode === "Online" && !form.meetingPlatform.trim()) {
           setDecisionError("Please provide an online meeting platform."); return;
+        }
+        if (decision === "approve" && selected.requestedConsultationDate && form.date !== selected.requestedConsultationDate) {
+          setDecisionError("Use Reschedule Request to propose a different consultation date."); return;
+        }
+        if (decision === "reschedule" && form.reason.trim().length < 5) {
+          setDecisionError("Please provide a reason for rescheduling (at least 5 characters)."); return;
         }
         const startAt = `${form.date}T${form.time}:00+08:00`;
         if (!Number.isFinite(new Date(startAt).getTime()) || new Date(startAt) <= new Date()) {
@@ -118,16 +126,22 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
           meetingLink: form.meetingLink,
         };
       }
-      const data = await api(`/schedule-requests/${selected._id}/${decision}`, {
-        method: "PUT",
-        body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
-      });
-      toast.success(decision === "approve" ? "Consultation approved and scheduled successfully." : "Consultation request rejected.");
+      const data = decision === "reschedule"
+        ? await api(`/faculty/appointments/${selected._id}/reschedule`, { method: "PATCH", body: JSON.stringify({
+          consultationDate: form.date, startTime: form.time, duration: Number(form.durationMinutes), mode: form.mode,
+          location: form.location, meetingPlatform: form.meetingPlatform, meetingLink: form.meetingLink,
+          reason: form.reason.trim(), expectedVersion: selected.__v,
+        }) })
+        : await api(`/schedule-requests/${selected._id}/approve`, {
+          method: "PUT", body: JSON.stringify({ ...body, expectedVersion: selected.__v }),
+        });
+      toast.success(decision === "approve" ? "Consultation approved and scheduled successfully."
+        : "Reschedule proposal sent to the Student successfully.");
       closeReview();
       if (reviewRequest) onDecided?.();
       else await load();
     } catch (error) {
-      const message = error?.status ? actionError(error, decision)
+      const message = error?.status ? actionError(error, decision === "reschedule" ? "approve" : decision)
         : error?.message === "Reload request details." ? "Reload request details before deciding." : actionError(error, decision);
       setDecisionError(message);
       toast.error(message);
@@ -222,7 +236,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                   id="review-schedule-request-title"
                   className="text-xl font-bold text-maroon-900"
                 >
-                  Review Schedule Request
+                  Review Request
                 </h3>
                 <p className="mt-2 break-words text-sm text-slate-700">
                   {formatPersonName(selected.student?.name)} ·{" "}
@@ -231,12 +245,19 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                 <p className="mt-1 break-words text-sm text-slate-600">
                   {selected.reason}
                 </p>
+                <p className="mt-1 text-sm text-slate-600">Requested date: <strong>{selected.requestedConsultationDate || "Legacy request"}</strong> · Preferred mode: <strong>{selected.consultationMode || "Not provided"}</strong></p>
               </header>
               <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
-                {!rejecting && <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="mb-4 block text-sm font-semibold">Review Action
+                  <select className="field mt-1" disabled={busy} value={reviewAction} onChange={event => { setReviewAction(event.target.value); setDecisionError(""); }}>
+                    <option value="approve">Approve and Schedule</option>
+                    <option value="reschedule">Reschedule Request</option>
+                  </select>
+                </label>
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-sm font-semibold">
-                    Consultation date
-                    <input disabled={busy}
+                    {reviewAction === "reschedule" ? "Proposed consultation date" : "Consultation date"}
+                    <input disabled={busy || (reviewAction === "approve" && Boolean(selected.requestedConsultationDate))}
                       type="date"
                       className="field mt-1"
                       value={form.date}
@@ -329,18 +350,10 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                       </label>
                     </>
                   )}
-                </div>}
-                {rejecting && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <label className="text-sm font-semibold">
-                    Rejection reason (required)
-                    <textarea disabled={busy}
-                      className="field mt-1 min-h-20 resize-y"
-                      maxLength="500"
-                      value={rejectNote}
-                      onChange={(event) => { setRejectNote(event.target.value); setDecisionError(""); }}
-                    />
-                  </label>
-                </div>}
+                  {reviewAction === "reschedule" && <label className="text-sm font-semibold sm:col-span-2">Reason for rescheduling (required)
+                    <textarea disabled={busy} className="field mt-1 min-h-20 resize-y" maxLength="500" value={form.reason} onChange={event => setForm({ ...form, reason: event.target.value })} />
+                  </label>}
+                </div>
                 {decisionError && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{decisionError}</p>}
               </div>
               <footer className="sticky bottom-0 flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 min-[460px]:flex-row min-[460px]:flex-wrap min-[460px]:justify-end sm:px-6 sm:py-4">
@@ -348,37 +361,18 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                   type="button"
                   className="btn-secondary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={() => {
-                    if (rejecting) {
-                      setRejecting(false);
-                      setDecisionError("");
-                    } else closeReview();
-                  }}
+                  onClick={closeReview}
                 >
-                  {rejecting ? "Back" : "Close"}
+                  Close
                 </button>
                 <button
                   type="button"
-                  className="btn-secondary w-full min-[460px]:w-auto"
-                  disabled={busy}
-                  onClick={() => {
-                    if (rejecting) void decide("reject");
-                    else {
-                      setRejecting(true);
-                      setDecisionError("");
-                    }
-                  }}
-                >
-                  {rejecting ? "Confirm Rejection" : "Reject"}
-                </button>
-                {!rejecting && <button
-                  type="button"
                   className="btn-primary w-full min-[460px]:w-auto"
                   disabled={busy}
-                  onClick={() => decide("approve")}
+                  onClick={() => decide(reviewAction === "reschedule" ? "reschedule" : "approve")}
                 >
-                  {busy ? "Saving..." : "Approve and Schedule"}
-                </button>}
+                  {busy ? "Saving..." : reviewAction === "reschedule" ? "Send Reschedule Proposal" : "Approve and Schedule"}
+                </button>
               </footer>
             </section>
           </div>,

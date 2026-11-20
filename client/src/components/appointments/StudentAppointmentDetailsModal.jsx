@@ -188,7 +188,7 @@ export default function StudentAppointmentDetailsModal({
           <Section title="Schedule">
             <Detail
               label="Consultation Date"
-              value={safeDate(appointment.startAt, {
+              value={appointment.requestedConsultationDate || safeDate(appointment.startAt, {
                 weekday: "long",
                 year: "numeric",
                 month: "long",
@@ -207,7 +207,7 @@ export default function StudentAppointmentDetailsModal({
               label="Consultation Mode"
               value={appointment.consultationMode}
             />
-            {appointment.consultationMode === "Face-to-Face" && (
+            {appointment.consultationMode === "Face-to-Face" && appointment.location && (
               <Detail label="Location" value={appointment.location} />
             )}
           </Section>

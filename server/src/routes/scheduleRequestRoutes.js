@@ -21,6 +21,17 @@ const validMeetingLink = (value) => {
     return false;
   }
 };
+const requestedDateIsValid = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const instant = new Date(`${value}T00:00:00+08:00`);
+  if (!Number.isFinite(instant.getTime())) return false;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(instant) === value;
+};
+const manilaDate = (now = new Date()) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(now);
 router.get("/mine", authorize("faculty", "dean"), async (req, res) => {
   const requests = await Appointment.find({
     faculty: req.user.id,
@@ -45,8 +56,10 @@ router.post(
     const subject = String(req.body.subject || "").trim();
     const reason = String(req.body.reason || "").trim();
     const yearLevel = String(req.body.yearLevel || req.user.yearLevel || "").trim();
+    const requestedConsultationDate = String(req.body.requestedConsultationDate || "").trim();
     const duration = Number(req.body.estimatedDurationMinutes);
     const hasPreferredSchedule = Boolean(req.body.startAt || req.body.endAt);
+    const isDateOnlyRequest = Boolean(requestedConsultationDate) && !hasPreferredSchedule;
     const startAt = hasPreferredSchedule ? new Date(req.body.startAt) : undefined;
     const endAt = hasPreferredSchedule ? new Date(req.body.endAt) : undefined;
     const mode = String(req.body.mode || "").trim();
@@ -69,7 +82,11 @@ router.post(
       return invalid(res, "Please enter a consultation reason of 1,000 characters or fewer.", "INVALID_REASON");
     if (yearLevel && !years.includes(yearLevel))
       return invalid(res, "Your Student profile contains an invalid year level. Please update your profile or contact the Dean.", "INVALID_YEAR_LEVEL");
-    if (!Number.isInteger(duration) || duration < 5 || duration > 240)
+    if (isDateOnlyRequest && !requestedDateIsValid(requestedConsultationDate))
+      return invalid(res, "Please choose a valid preferred consultation date.", "INVALID_REQUESTED_DATE");
+    if (isDateOnlyRequest && requestedConsultationDate < manilaDate())
+      return invalid(res, "Please choose today or a future consultation date.", "PAST_REQUESTED_DATE");
+    if (!isDateOnlyRequest && (!Number.isInteger(duration) || duration < 5 || duration > 240))
       return invalid(res, "Consultation duration must be between 5 and 240 minutes.", "INVALID_DURATION");
     if (hasPreferredSchedule && (!req.body.startAt || !req.body.endAt ||
       !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())))
@@ -81,7 +98,7 @@ router.post(
     const preferredMinutes = hasPreferredSchedule ? Math.floor((endAt - startAt) / 60000) : duration;
     if (hasPreferredSchedule && (preferredMinutes < 5 || preferredMinutes > 240))
       return invalid(res, "Consultation duration must be between 5 and 240 minutes.", "INVALID_DURATION");
-    if (hasPreferredSchedule && !["Online", "Face-to-Face"].includes(mode))
+    if ((hasPreferredSchedule || isDateOnlyRequest) && !["Online", "Face-to-Face"].includes(mode))
       return invalid(res, "Please choose a valid consultation mode.", "INVALID_MODE");
     if (hasPreferredSchedule && location.length > 150)
       return invalid(res, "Location must be 150 characters or fewer.", "INVALID_LOCATION");
@@ -115,8 +132,11 @@ router.post(
       appointment = await createAppointmentRequest({ actor: req.user, data: {
         _id: appointmentId, student: req.user.id, faculty: facultyId,
         bookingMethod: "schedule_request", subject, reason, ...(yearLevel && { yearLevel }),
-        estimatedDurationMinutes: duration, supportingDocuments: documents.entries,
+        supportingDocuments: documents.entries,
+        ...(isDateOnlyRequest && { requestedConsultationDate, consultationMode: mode }),
+        ...(!hasPreferredSchedule && !isDateOnlyRequest && { estimatedDurationMinutes: duration }),
         ...(hasPreferredSchedule && {
+          estimatedDurationMinutes: duration,
           startAt, endAt, consultationMode: mode,
           location: mode === "Face-to-Face" ? location : "",
           meetingPlatform: mode === "Online" ? meetingPlatform : "",
@@ -193,6 +213,11 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
   if (!appointment)
     return res.status(409).json({
       message: "This request is no longer pending or does not belong to you.",
+    });
+  if (appointment.requestedConsultationDate && manilaDate(startAt) !== appointment.requestedConsultationDate)
+    return res.status(400).json({
+      message: "Use Reschedule Request to propose a different consultation date.",
+      code: "REQUESTED_DATE_MISMATCH",
     });
   const studentIsActive = await User.exists({
     _id: appointment.student,
