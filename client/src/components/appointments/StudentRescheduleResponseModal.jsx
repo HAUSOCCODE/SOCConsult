@@ -25,14 +25,14 @@ const timeLabel = (value) =>
     minute: "2-digit",
   }) || "Not available";
 
-const Schedule = ({ title, startAt, endAt, mode, location, platform, accent }) => {
+const Schedule = ({ title, requestedDate, startAt, endAt, mode, location, platform, accent }) => {
   const ModeIcon = mode === "Face-to-Face" ? MapPin : Monitor;
   return (
     <section className={`min-w-0 rounded-xl border p-4 ${accent}`}>
       <h3 className="font-bold text-maroon-900">{title}</h3>
       <div className="mt-3 space-y-2 text-sm text-slate-700">
-        <p className="flex min-w-0 gap-2"><CalendarDays size={16} className="mt-0.5 shrink-0" /><span className="break-words">{dateLabel(startAt)}</span></p>
-        <p className="flex min-w-0 gap-2"><Clock3 size={16} className="mt-0.5 shrink-0" /><span>{timeLabel(startAt)} – {timeLabel(endAt)}</span></p>
+        <p className="flex min-w-0 gap-2"><CalendarDays size={16} className="mt-0.5 shrink-0" /><span className="break-words">{requestedDate || dateLabel(startAt)}</span></p>
+        {startAt && <p className="flex min-w-0 gap-2"><Clock3 size={16} className="mt-0.5 shrink-0" /><span>{timeLabel(startAt)} – {timeLabel(endAt)}</span></p>}
         <p className="flex min-w-0 gap-2"><ModeIcon size={16} className="mt-0.5 shrink-0" /><span className="break-words">{mode || "Mode not provided"}</span></p>
         <p className="break-words text-slate-600">
           {mode === "Face-to-Face"
@@ -90,7 +90,7 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
         </header>
         <div className="space-y-5 p-4 sm:p-6">
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Schedule title="Original Schedule" startAt={appointment.startAt} endAt={appointment.endAt} mode={appointment.consultationMode} location={appointment.location} platform={appointment.meetingPlatform} accent="border-slate-200 bg-slate-50" />
+            <Schedule title={appointment.requestedConsultationDate ? "Original Requested Date" : "Original Schedule"} requestedDate={appointment.requestedConsultationDate} startAt={appointment.startAt} endAt={appointment.endAt} mode={appointment.consultationMode} location={appointment.location} platform={appointment.meetingPlatform} accent="border-slate-200 bg-slate-50" />
             <Schedule title="Proposed Schedule" startAt={appointment.proposedStartAt} endAt={appointment.proposedEndAt} mode={appointment.proposedConsultationMode} location={appointment.proposedLocation} platform={appointment.proposedMeetingPlatform} accent="border-gold-300 bg-gold-50/50" />
           </div>
           <section className="rounded-xl border border-slate-200 p-4">

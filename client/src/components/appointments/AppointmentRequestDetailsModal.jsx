@@ -92,32 +92,32 @@ export default function AppointmentRequestDetailsModal({
               <Detail
                 label="Requested Date"
                 value={
-                  appointment.startAt
+                  appointment.requestedConsultationDate || (appointment.startAt
                     ? formatManilaDisplay(new Date(appointment.startAt), {
                           weekday: "long",
                           year: "numeric",
                           month: "long",
                           day: "numeric",
                         }, "date")
-                    : "Pending Faculty schedule"
+                    : "Pending Faculty schedule")
                 }
               />
-              <Detail
+              {appointment.startAt && <Detail
                 label="Faculty Availability Window"
                 value={
                   appointment.startAt
                     ? `${time(appointment.startAt)} – ${time(appointment.endAt)}`
                     : "Not scheduled"
                 }
-              />
-              <Detail
+              />}
+              {appointment.estimatedDurationMinutes && <Detail
                 label="Estimated Consultation Time"
                 value={
                   appointment.estimatedDurationMinutes
                     ? `${appointment.estimatedDurationMinutes} minutes`
                     : "Not provided"
                 }
-              />
+              />}
               <Detail
                 label={personalRequest ? "Consultation Concern" : "Reason for Consultation"}
                 value={appointment.reason}
@@ -133,7 +133,7 @@ export default function AppointmentRequestDetailsModal({
                 />
               )}
               <Detail label="Mode" value={appointment.consultationMode} />
-              {appointment.consultationMode === "Face-to-Face" && (
+              {appointment.consultationMode === "Face-to-Face" && appointment.location && (
                 <Detail label="Location" value={appointment.location} />
               )}
               <div>

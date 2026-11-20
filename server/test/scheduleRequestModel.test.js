@@ -26,6 +26,14 @@ describe("schedule request model", () => {
     assert.equal(request.availability, undefined);
     assert.equal(request.consultationMode, undefined);
   });
+  it("stores a date-only Student preference without creating schedule instants", () => {
+    const request = new Appointment({ ...data, bookingMethod: "schedule_request", status: "Pending",
+      requestedConsultationDate: "2099-01-15", consultationMode: "Online" });
+    assert.equal(request.validateSync(), undefined);
+    assert.equal(request.requestedConsultationDate, "2099-01-15");
+    assert.equal(request.startAt, undefined);
+    assert.equal(request.endAt, undefined);
+  });
   it("requires a date and time before a one-time request becomes approved", () => {
     const request = new Appointment({
       ...data,
