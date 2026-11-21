@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ConfirmDialog from "../ConfirmDialog";
 import { safeStudentError } from "../../utils/studentUiErrors";
+import { useToast } from "../../context/ToastContext";
 
 const OUTCOMES = [
   { value: "Completed", description: "I attended and completed this consultation." },
@@ -13,6 +14,8 @@ export const ATTENDANCE_NOTICE =
   "The original consultation requester records the outcome. The other participant does not need to submit a second response.";
 
 export default function StudentAttendanceResponseForm({ onSubmit, allowProof = false }) {
+  const toast = useToast();
+  const [outcomeGroup, setOutcomeGroup] = useState("");
   const [outcome, setOutcome] = useState("");
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -52,6 +55,7 @@ export default function StudentAttendanceResponseForm({ onSubmit, allowProof = f
     setError("");
     try {
       await onSubmit({ outcome, reason: reason.trim(), proof });
+      toast.success("Meeting outcome recorded successfully.");
       setConfirming(false);
     } catch (requestError) {
       setConfirming(false);
@@ -64,18 +68,29 @@ export default function StudentAttendanceResponseForm({ onSubmit, allowProof = f
 
   return (
     <section className="min-w-0 rounded-xl border border-gold-300 bg-gold-50 p-4 sm:p-5" aria-labelledby="student-attendance-heading">
-      <h3 id="student-attendance-heading" className="font-bold text-maroon-900">Report Consultation Outcome</h3>
+      <h3 id="student-attendance-heading" className="font-bold text-maroon-900">Meeting Outcome</h3>
       <p className="mt-2 break-words rounded-lg border border-maroon-200 bg-white p-3 text-sm leading-6 text-slate-700">As the original requester, record the final consultation outcome. The Faculty member does not need to submit a second response.</p>
       <form className="mt-4 min-w-0 space-y-4" onSubmit={requestConfirmation}>
-        <fieldset disabled={submitting} className="min-w-0 space-y-2">
-          <legend className="mb-2 text-sm font-bold text-slate-800">Choose one response</legend>
-          {OUTCOMES.map((option) => (
+        <fieldset disabled={submitting} className="grid min-w-0 gap-2 sm:grid-cols-2">
+          <legend className="mb-2 text-sm font-bold text-slate-800 sm:col-span-2">Did the consultation take place?</legend>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 focus-within:ring-2 focus-within:ring-maroon-200">
+            <input type="radio" name="meeting-outcome-group" checked={outcomeGroup === "completed"} onChange={() => { setOutcomeGroup("completed"); setOutcome("Completed"); setError(""); }} className="mt-1 h-4 w-4 accent-maroon-800" />
+            <span><strong className="block text-sm">Meeting Completed</strong><span className="text-sm text-slate-600">The consultation took place.</span></span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 focus-within:ring-2 focus-within:ring-maroon-200">
+            <input type="radio" name="meeting-outcome-group" checked={outcomeGroup === "not-proceeded"} onChange={() => { setOutcomeGroup("not-proceeded"); setOutcome(""); setError(""); }} className="mt-1 h-4 w-4 accent-maroon-800" />
+            <span><strong className="block text-sm">Did Not Proceed</strong><span className="text-sm text-slate-600">The scheduled consultation did not take place.</span></span>
+          </label>
+        </fieldset>
+        {outcomeGroup === "not-proceeded" && <fieldset disabled={submitting} className="min-w-0 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <legend className="px-1 text-sm font-bold text-slate-800">What prevented the meeting?</legend>
+          {OUTCOMES.filter(option => option.value !== "Completed").map((option) => (
             <label key={option.value} className="flex min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-maroon-300 focus-within:ring-2 focus-within:ring-maroon-200">
               <input type="radio" name="student-attendance-outcome" value={option.value} checked={outcome === option.value} onChange={() => { setOutcome(option.value); setError(""); }} className="mt-1 h-4 w-4 shrink-0 accent-maroon-800" />
               <span className="min-w-0"><strong className="block break-words text-sm text-slate-900">{option.value}</strong><span className="mt-0.5 block break-words text-sm leading-5 text-slate-600">{option.description}</span></span>
             </label>
           ))}
-        </fieldset>
+        </fieldset>}
         <label className="block min-w-0 text-sm font-bold text-slate-800">
           Remarks or explanation (Optional)
           <textarea value={reason} onChange={(event) => setReason(event.target.value)} disabled={submitting} maxLength={ATTENDANCE_REASON_LIMIT} rows={4} className="field mt-2 min-h-24 w-full resize-y" placeholder="Add context if helpful" />

@@ -101,6 +101,19 @@ const appointmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Availability",
       required: function () {
+        // Mongoose binds conditional validators to the Query during
+        // findOneAndUpdate(). Read the authoritative transition filter/update
+        // instead of treating missing document properties as a slot booking.
+        if (typeof this?.getUpdate === "function") {
+          const filter = typeof this.getQuery === "function" ? this.getQuery() : {};
+          const update = this.getUpdate() || {};
+          const next = update.$set || update;
+          return (
+            filter.bookingMethod !== "schedule_request" &&
+            next.bookingMethod !== "schedule_request" &&
+            next.currentScheduleSource !== "faculty_assigned"
+          );
+        }
         return (
           this.bookingMethod !== "schedule_request" &&
           this.currentScheduleSource !== "faculty_assigned" &&
@@ -168,6 +181,8 @@ const appointmentSchema = new mongoose.Schema(
     estimatedDurationMinutes: { type: Number, min: 5, max: 1440 },
     // Student preference before Faculty assigns a time. Date-only avoids zone shifts.
     requestedConsultationDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
+    // Informational preference only; it is not a confirmed schedule or reservation.
+    requestedConsultationTime: { type: String, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
     subject: { type: String, required: true, trim: true, maxlength: 150 },
     yearLevel: {
       type: String,
