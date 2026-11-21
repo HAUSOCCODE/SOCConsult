@@ -11,7 +11,7 @@ export function parseRequestQuery(input = {}) {
   if (!REQUEST_FILTERS.includes(status) || typeof page !== "string" || !/^[1-9]\d*$/.test(page) || !Number.isSafeInteger(+page) || +page > 10000) fail(400);
   return { status, page: +page };
 }
-const fields = "student initiatedByRole subject reason requestedConsultationDate startAt endAt consultationMode createdAt status bookingMethod estimatedDurationMinutes __v supportingDocument.name supportingDocument.mimeType supportingDocument.size supportingDocuments";
+const fields = "student initiatedByRole subject reason requestedConsultationDate requestedConsultationTime startAt endAt consultationMode createdAt status bookingMethod estimatedDurationMinutes __v supportingDocument.name supportingDocument.mimeType supportingDocument.size supportingDocuments";
 const person = { path: "student", select: "name", options: { maxTimeMS: 10000 } };
 const safeDate = value => value && Number.isFinite(new Date(value).getTime()) ? value : null;
 export function requestRecord(row, detail = false) {
@@ -19,6 +19,7 @@ export function requestRecord(row, detail = false) {
     _id: String(row._id), student: { name: typeof row.student?.name === "string" ? row.student.name : "Student unavailable" },
     subject: row.subject, reason: detail ? row.reason : (row.reason || "").slice(0, 180),
     requestedConsultationDate: row.requestedConsultationDate ?? null,
+    requestedConsultationTime: row.requestedConsultationTime ?? null,
     startAt: safeDate(row.startAt), endAt: safeDate(row.endAt), consultationMode: row.consultationMode ?? null,
     createdAt: row.createdAt, status: row.status, bookingMethod: row.bookingMethod,
     estimatedDurationMinutes: row.estimatedDurationMinutes, __v: row.__v,

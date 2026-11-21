@@ -102,6 +102,10 @@ export default function AppointmentRequestDetailsModal({
                     : "Pending Faculty schedule")
                 }
               />
+              {appointment.requestedConsultationTime && <Detail
+                label="Preferred Consultation Time"
+                value={`${appointment.requestedConsultationTime} (Asia/Manila)`}
+              />}
               {appointment.startAt && <Detail
                 label="Faculty Availability Window"
                 value={

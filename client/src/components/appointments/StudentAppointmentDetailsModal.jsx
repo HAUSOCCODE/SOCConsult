@@ -200,7 +200,9 @@ export default function StudentAppointmentDetailsModal({
               value={
                 appointment.startAt
                   ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
-                  : "Not scheduled yet"
+                  : appointment.requestedConsultationTime
+                    ? `${appointment.requestedConsultationTime} (preferred, Asia/Manila)`
+                    : "Not scheduled yet"
               }
             />
             <Detail
@@ -226,7 +228,9 @@ export default function StudentAppointmentDetailsModal({
           )}
           {["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && !attendance.eligible && !attendanceLoading && (
             <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm leading-6 text-orange-900">
-              Attendance submission is not currently available. Responses open after the consultation ends and remain subject to the backend response window.
+              {attendance.workflow === "initiator_report" && attendance.initiatorRole === "faculty"
+                ? "Awaiting Faculty Outcome Report. The original Faculty requester is responsible for recording this meeting outcome."
+                : "Attendance submission is not currently available. Responses open after the consultation ends and remain subject to the backend response window."}
             </p>
           )}
           {attendance?.ownResponse && <AttendanceResponseSummary attendance={attendance} />}

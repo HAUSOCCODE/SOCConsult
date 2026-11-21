@@ -22,6 +22,7 @@ const SAFE_APPROVAL_MESSAGES = new Set([
   "This request is no longer pending or does not belong to you.",
   "The Student account is no longer active.",
   "Use Reschedule Request to propose a different consultation date.",
+  "Use Reschedule Request to propose a different consultation time.",
   "Choose a valid future date and time in Asia/Manila.",
   "Provide a reschedule reason between 5 and 500 characters.",
 ]);
@@ -53,6 +54,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
   const [details, setDetails] = useState(null);
   const requestedDate = reviewRequest?.requestedConsultationDate || "";
   const [form, setForm] = useState({ ...initial, date: requestedDate,
+    time: reviewRequest?.requestedConsultationTime || "",
     mode: reviewRequest?.consultationMode || "Face-to-Face",
     durationMinutes: String(reviewRequest?.estimatedDurationMinutes || 30), reason: "" });
   const [reviewAction, setReviewAction] = useState("approve");
@@ -81,6 +83,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     setForm({
       ...initial,
       date: request.requestedConsultationDate || "",
+      time: request.requestedConsultationTime || "",
       mode: request.consultationMode || "Face-to-Face",
       durationMinutes: String(request.estimatedDurationMinutes || 30), reason: "",
     });
@@ -109,6 +112,9 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
         }
         if (decision === "approve" && selected.requestedConsultationDate && form.date !== selected.requestedConsultationDate) {
           setDecisionError("Use Reschedule Request to propose a different consultation date."); return;
+        }
+        if (decision === "approve" && selected.requestedConsultationTime && form.time !== selected.requestedConsultationTime) {
+          setDecisionError("Use Reschedule Request to propose a different consultation time."); return;
         }
         if (decision === "reschedule" && form.reason.trim().length < 5) {
           setDecisionError("Please provide a reason for rescheduling (at least 5 characters)."); return;
@@ -245,7 +251,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                 <p className="mt-1 break-words text-sm text-slate-600">
                   {selected.reason}
                 </p>
-                <p className="mt-1 text-sm text-slate-600">Requested date: <strong>{selected.requestedConsultationDate || "Legacy request"}</strong> · Preferred mode: <strong>{selected.consultationMode || "Not provided"}</strong></p>
+                <p className="mt-1 text-sm text-slate-600">Requested date: <strong>{selected.requestedConsultationDate || "Legacy request"}</strong> · Preferred time: <strong>{selected.requestedConsultationTime || "Not provided"}</strong> · Preferred mode: <strong>{selected.consultationMode || "Not provided"}</strong></p>
               </header>
               <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
                 <label className="mb-4 block text-sm font-semibold">Review Action
@@ -268,7 +274,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                   </label>
                   <label className="text-sm font-semibold">
                     Start time (Asia/Manila)
-                    <input disabled={busy}
+                    <input disabled={busy || (reviewAction === "approve" && Boolean(selected.requestedConsultationTime))}
                       type="time"
                       className="field mt-1"
                       value={form.time}

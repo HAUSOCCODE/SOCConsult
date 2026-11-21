@@ -163,7 +163,7 @@ export default function StudentConsultationsView() {
                 <p className="mt-3 line-clamp-2 break-words text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-700">Consultation Concern:</span> {appointment.reason || "Not provided"}</p>
                 <div className="mt-4 grid min-w-0 gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2">
                   <p className="flex min-w-0 items-start gap-2"><CalendarDays size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{appointment.requestedConsultationDate || dateLabel(appointment.startAt)}</span></p>
-                  {appointment.startAt && <p className="flex min-w-0 items-start gap-2"><Clock3 size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{timeLabel(appointment.startAt)} – {timeLabel(appointment.endAt)}</span></p>}
+                  {(appointment.startAt || appointment.requestedConsultationTime) && <p className="flex min-w-0 items-start gap-2"><Clock3 size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{appointment.startAt ? `${timeLabel(appointment.startAt)} – ${timeLabel(appointment.endAt)}` : `${appointment.requestedConsultationTime} preferred`}</span></p>}
                   <p className="flex min-w-0 items-start gap-2 sm:col-span-2"><ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{mode}</span></p>
                 </div>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">

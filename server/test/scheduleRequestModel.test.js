@@ -28,11 +28,18 @@ describe("schedule request model", () => {
   });
   it("stores a date-only Student preference without creating schedule instants", () => {
     const request = new Appointment({ ...data, bookingMethod: "schedule_request", status: "Pending",
-      requestedConsultationDate: "2099-01-15", consultationMode: "Online" });
+      requestedConsultationDate: "2099-01-15", requestedConsultationTime: "14:00", consultationMode: "Online" });
     assert.equal(request.validateSync(), undefined);
     assert.equal(request.requestedConsultationDate, "2099-01-15");
+    assert.equal(request.requestedConsultationTime, "14:00");
     assert.equal(request.startAt, undefined);
     assert.equal(request.endAt, undefined);
+  });
+  it("keeps legacy date-only preferences valid without fabricating a time", () => {
+    const request = new Appointment({ ...data, bookingMethod: "schedule_request", status: "Pending",
+      requestedConsultationDate: "2099-01-15", consultationMode: "Online" });
+    assert.equal(request.validateSync(), undefined);
+    assert.equal(request.requestedConsultationTime, undefined);
   });
   it("requires a date and time before a one-time request becomes approved", () => {
     const request = new Appointment({
@@ -52,5 +59,21 @@ describe("schedule request model", () => {
       endAt: new Date(Date.now() + 7200000),
     });
     assert.ok(request.validateSync().errors.availability);
+  });
+  it("evaluates availability requirements safely in update-query context", () => {
+    const required = Appointment.schema.path("availability").options.required;
+    const dateOnlyApproval = {
+      getQuery: () => ({ bookingMethod: "schedule_request" }),
+      getUpdate: () => ({ $set: { status: "Confirmed", currentScheduleSource: "faculty_assigned" },
+        $unset: { availability: 1 } }),
+    };
+    const publishedSlotRemoval = {
+      getQuery: () => ({ bookingMethod: "published_slot" }),
+      getUpdate: () => ({ $unset: { availability: 1 } }),
+    };
+    assert.equal(required.call(dateOnlyApproval), false,
+      "a custom schedule must not acquire a fake availability requirement during findOneAndUpdate");
+    assert.equal(required.call(publishedSlotRemoval), true,
+      "published-slot updates must retain the availability invariant");
   });
 });

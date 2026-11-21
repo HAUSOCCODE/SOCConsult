@@ -32,6 +32,9 @@ const requestedDateIsValid = (value) => {
 const manilaDate = (now = new Date()) => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
 }).format(now);
+const manilaTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+}).format(now);
 router.get("/mine", authorize("faculty", "dean"), async (req, res) => {
   const requests = await Appointment.find({
     faculty: req.user.id,
@@ -57,6 +60,7 @@ router.post(
     const reason = String(req.body.reason || "").trim();
     const yearLevel = String(req.body.yearLevel || req.user.yearLevel || "").trim();
     const requestedConsultationDate = String(req.body.requestedConsultationDate || "").trim();
+    const requestedConsultationTime = String(req.body.requestedConsultationTime || "").trim();
     const duration = Number(req.body.estimatedDurationMinutes);
     const hasPreferredSchedule = Boolean(req.body.startAt || req.body.endAt);
     const isDateOnlyRequest = Boolean(requestedConsultationDate) && !hasPreferredSchedule;
@@ -84,8 +88,10 @@ router.post(
       return invalid(res, "Your Student profile contains an invalid year level. Please update your profile or contact the Dean.", "INVALID_YEAR_LEVEL");
     if (isDateOnlyRequest && !requestedDateIsValid(requestedConsultationDate))
       return invalid(res, "Please choose a valid preferred consultation date.", "INVALID_REQUESTED_DATE");
-    if (isDateOnlyRequest && requestedConsultationDate < manilaDate())
-      return invalid(res, "Please choose today or a future consultation date.", "PAST_REQUESTED_DATE");
+    if (isDateOnlyRequest && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(requestedConsultationTime))
+      return invalid(res, "Please choose a valid preferred consultation time.", "INVALID_REQUESTED_TIME");
+    if (isDateOnlyRequest && new Date(`${requestedConsultationDate}T${requestedConsultationTime}:00+08:00`) <= new Date())
+      return invalid(res, "Please choose a future preferred consultation date and time.", "PAST_REQUESTED_SCHEDULE");
     if (!isDateOnlyRequest && (!Number.isInteger(duration) || duration < 5 || duration > 240))
       return invalid(res, "Consultation duration must be between 5 and 240 minutes.", "INVALID_DURATION");
     if (hasPreferredSchedule && (!req.body.startAt || !req.body.endAt ||
@@ -133,7 +139,7 @@ router.post(
         _id: appointmentId, student: req.user.id, faculty: facultyId,
         bookingMethod: "schedule_request", subject, reason, ...(yearLevel && { yearLevel }),
         supportingDocuments: documents.entries,
-        ...(isDateOnlyRequest && { requestedConsultationDate, consultationMode: mode }),
+        ...(isDateOnlyRequest && { requestedConsultationDate, requestedConsultationTime, consultationMode: mode }),
         ...(!hasPreferredSchedule && !isDateOnlyRequest && { estimatedDurationMinutes: duration }),
         ...(hasPreferredSchedule && {
           estimatedDurationMinutes: duration,
@@ -218,6 +224,11 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
     return res.status(400).json({
       message: "Use Reschedule Request to propose a different consultation date.",
       code: "REQUESTED_DATE_MISMATCH",
+    });
+  if (appointment.requestedConsultationTime && manilaTime(startAt) !== appointment.requestedConsultationTime)
+    return res.status(400).json({
+      message: "Use Reschedule Request to propose a different consultation time.",
+      code: "REQUESTED_TIME_MISMATCH",
     });
   const studentIsActive = await User.exists({
     _id: appointment.student,
