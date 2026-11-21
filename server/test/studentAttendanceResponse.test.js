@@ -20,7 +20,9 @@ test("Student attendance UI uses the privacy-scoped attendance API", async () =>
   assert.match(details, /\/appointments\/\$\{appointmentId\}\/attendance-responses/);
   assert.match(details, /\["Confirmed", "Awaiting Attendance Update"\]\.includes\(appointment\.status\)/);
   assert.match(details, /appointment\?\.status === "Confirmed" && consultationEnded/);
-  assert.match(form, /Report Consultation Outcome/);
+  assert.match(form, /Meeting Outcome/);
+  assert.match(form, /Meeting Completed/);
+  assert.match(form, /Did Not Proceed/);
   assert.match(form, /Submit Outcome Report/);
   assert.match(details, /attendance\.eligible/);
   assert.match(details, /attendance\?\.ownResponse/);

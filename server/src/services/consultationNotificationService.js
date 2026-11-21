@@ -76,7 +76,9 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
   const details = [
     ["Requested by", requestedBy], ["Faculty member", faculty], ["Student", student],
     ["Consultation subject", appointment.subject], ["Reason for consultation", appointment.reason],
-    [scheduled ? "Date" : "Requested consultation date", date], ["Start time", start], ["End time", end],
+    [scheduled ? "Date" : "Requested consultation date", date],
+    [scheduled ? "Start time" : "Preferred consultation time", scheduled ? start : appointment.requestedConsultationTime],
+    ["End time", end],
     ["Consultation mode", appointment.consultationMode],
     [appointment.consultationMode === "Online" ? "Meeting information" : "Location",
       appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
@@ -95,7 +97,7 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
 
 async function appointmentEmail(appointmentId, appointment) {
   if (appointment) return appointment;
-  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason requestedConsultationDate startAt endAt consultationMode location meetingPlatform +meetingLink status")
+  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason requestedConsultationDate requestedConsultationTime startAt endAt consultationMode location meetingPlatform +meetingLink status")
     .populate("student", "name").populate("faculty", "name").lean();
 }
 

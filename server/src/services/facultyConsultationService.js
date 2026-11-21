@@ -33,6 +33,7 @@ const safeDate = value => Number.isFinite(stamp(value)) ? value : null;
 export function personalRecord(row) {
   return { _id: String(row._id), student: { name: typeof row.student?.name === "string" ? row.student.name : "Student unavailable" },
     subject: row.subject, status: row.status, requestedConsultationDate: row.requestedConsultationDate,
+    requestedConsultationTime: row.requestedConsultationTime,
     startAt: safeDate(row.startAt), endAt: safeDate(row.endAt),
     consultationMode: row.consultationMode, createdAt: row.createdAt,
     initiatedByRole: row.initiatedByRole === "faculty" ? "faculty" : "student",
@@ -60,7 +61,7 @@ export async function listFacultyConsultations({ faculty, input, now = new Date(
     finalizedSort: { $ifNull: [{ $max: { $map: { input: { $filter: { input: { $ifNull: ["$statusHistory", []] }, as: "event", cond: { $in: ["$$event.newStatus", [...TERMINAL_STATUSES, "No Show"]] } } }, as: "event", in: "$$event.changedAt" } } }, "$attendance.finalizedAt", "$updatedAt", "$endAt", "$createdAt"] },
   } }, { $match: sectionMatch }, { $facet: {
     count: [{ $count: "total" }], records: [{ $sort: sort }, { $skip: (page - 1) * 20 }, { $limit: 20 },
-      { $project: { student: 1, initiatedByRole: 1, subject: 1, status: 1, requestedConsultationDate: 1, startAt: 1, endAt: 1, consultationMode: 1, createdAt: 1,
+      { $project: { student: 1, initiatedByRole: 1, subject: 1, status: 1, requestedConsultationDate: 1, requestedConsultationTime: 1, startAt: 1, endAt: 1, consultationMode: 1, createdAt: 1,
         "attendance.policyVersion": 1, "attendance.initiatorRole": 1, "attendance.studentResponded": 1,
         "attendance.facultyResponded": 1, "attendance.finalOutcome": 1, "attendance.finalizationSource": 1,
         "attendance.reviewReason": 1, "attendance.reviewStartedAt": 1 } }],
@@ -97,7 +98,7 @@ export function detailRecord(row, actor, now, hasAttendanceResponse = false) {
 export async function facultyConsultationDetails({ faculty, id, input = {}, now = new Date(), actor }) {
   if (Object.keys(input).length) fail(400);
   if (!/^[a-f\d]{24}$/i.test(id)) fail(404);
-  const row = await Appointment.findOne({ _id: id, faculty }).select("student faculty initiatedByRole subject reason status requestedConsultationDate startAt endAt consultationMode location meetingPlatform +meetingLink createdAt __v bookingMethod statusHistory proposedStartAt proposedEndAt proposedConsultationMode proposedLocation proposedMeetingPlatform proposedAt proposedBy +attendance").populate("student", "name").maxTimeMS(10000).lean();
+  const row = await Appointment.findOne({ _id: id, faculty }).select("student faculty initiatedByRole subject reason status requestedConsultationDate requestedConsultationTime startAt endAt consultationMode location meetingPlatform +meetingLink createdAt __v bookingMethod statusHistory proposedStartAt proposedEndAt proposedConsultationMode proposedLocation proposedMeetingPlatform proposedAt proposedBy +attendance").populate("student", "name").maxTimeMS(10000).lean();
   if (!row) fail(404);
   const metadata = await facultyRequestDetails({ faculty, id });
   const hasAttendanceResponse = Boolean(await AttendanceResponse.exists({ appointment: row._id }).maxTimeMS(10000));

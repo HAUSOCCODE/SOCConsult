@@ -110,10 +110,12 @@ test("central Review Request modal keeps rejection in the details workflow", asy
 test("date-only review locks approval to the requested date and sends rescheduling through the canonical proposal route", async () => {
   const h = await harness("components/appointments/OneTimeScheduleRequests.jsx", { formatPersonName: value => value });
   const props = { reviewRequest: { ...record, bookingMethod: "schedule_request", requestedConsultationDate: "2099-10-20",
-    consultationMode: "Face-to-Face", estimatedDurationMinutes: undefined }, onClose() {}, onDecided() {} };
+    requestedConsultationTime: "09:30", consultationMode: "Face-to-Face", estimatedDurationMinutes: undefined }, onClose() {}, onDecided() {} };
   let tree = h.render(props);
   const date = elements(tree).find(el => el.type === "input" && el.props.type === "date");
   assert.equal(date.props.value, "2099-10-20"); assert.equal(date.props.disabled, true);
+  const preferredTime = elements(tree).find(el => el.type === "input" && el.props.type === "time");
+  assert.equal(preferredTime.props.value, "09:30"); assert.equal(preferredTime.props.disabled, true);
   const action = elements(tree).find(el => el.type === "select" && elements(el).some(item => item.type === "option" && item.props.value === "reschedule"));
   action.props.onChange({ target: { value: "reschedule" } });
   tree = h.render(props);

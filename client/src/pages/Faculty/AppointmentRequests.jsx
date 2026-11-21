@@ -106,6 +106,7 @@ export default function AppointmentRequests({ embedded = false }) {
           <p className="break-words"><strong>Subject / Course:</strong> {request.subject}</p>
           <p className="whitespace-pre-wrap break-words"><strong>Consultation Concern:</strong> {request.reason}</p>
           <p>{request.requestedConsultationDate ? `Requested date: ${request.requestedConsultationDate}` : `Requested schedule: ${timestamp(request.startAt)}${request.endAt ? ` - ${timestamp(request.endAt)}` : ""}`}</p>
+          {request.requestedConsultationTime && <p>Preferred time: {request.requestedConsultationTime} (Asia/Manila)</p>}
           <p>Mode: {request.consultationMode || "Not scheduled"}</p>
           <p>Submitted: {request.createdAt ? timestamp(request.createdAt) : "Not available"}</p>
           <p>{request.hasSupportingDocuments ? "Supporting document attached" : "No supporting documents"}</p>

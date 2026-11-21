@@ -93,11 +93,12 @@ test("branded consultation email escapes saved details and keeps the action butt
 
 test("date-only request email shows the requested date without fabricated times", () => {
   const email = buildConsultationEmail({ appointment: { initiatedByRole: "student", status: "Pending",
-    requestedConsultationDate: "2099-05-12", consultationMode: "Online", subject: "Date request", reason: "Select a time",
+    requestedConsultationDate: "2099-05-12", requestedConsultationTime: "14:30", consultationMode: "Online", subject: "Date request", reason: "Select a time",
     faculty: { name: "Faculty" }, student: { name: "Student" } }, recipientRole: "faculty",
     subject: "New Consultation Request", message: "Please review this request.",
     url: "https://socconsult.example/faculty/consultations?appointment=0123456789abcdef01234567", request: true });
   assert.match(email.text, /Requested consultation date: 2099-05-12/);
+  assert.match(email.text, /Preferred consultation time: 14:30/);
   assert.doesNotMatch(email.text, /Start time:|End time:/);
 });
 

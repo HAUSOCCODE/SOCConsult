@@ -250,7 +250,13 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
           meetingPlatform: schedule.mode === "Online" ? schedule.meetingPlatform : "",
           meetingLink: schedule.mode === "Online" ? schedule.meetingLink || "" : "" });
         if (schedule.availability) { set.availability = schedule.availability; set.reservationToken = token; }
-        else { unset.availability = 1; unset.reservationToken = 1; }
+        else {
+          // Date-only/custom requests never had a published slot. Avoid asking
+          // Mongoose to unset an absent required-by-slot field, while still
+          // clearing a real legacy reservation when changing schedule source.
+          if (appointment.availability) unset.availability = 1;
+          if (appointment.reservationToken) unset.reservationToken = 1;
+        }
       }
       if (["cancel", "reject", "expire"].includes(action)) {
         await release(appointment, session);
