@@ -57,6 +57,7 @@ async function harness() {
   let stateIndex = 0,
     refIndex = 0;
   h.ManualAccountForm = () => null;
+  h.CsvImport = () => null;
   h.Pagination = () => null;
   h.ConfirmDialog = () => null;
   h.ErrorState = () => null;
@@ -98,10 +99,12 @@ async function harness() {
     ConfirmDialog: h.ConfirmDialog,
     Pagination: h.Pagination,
     ManualAccountForm: h.ManualAccountForm,
+    CsvImport: h.CsvImport,
     useToast: () => ({
       success: (message) => h.toasts.push(["success", message]),
       error: (message) => h.toasts.push(["error", message]),
     }),
+    useDialogFocus: () => {},
     api: (path, options) => {
       h.calls.push({ path, options });
       return new Promise((resolve, reject) => {
@@ -123,6 +126,13 @@ async function harness() {
   };
   h.dialog = () =>
     elements(h.render(), (element) => element.type === h.ConfirmDialog)[1];
+  h.renderDetails = () => {
+    const detail = elements(h.render(), (element) => element.props?.user === state[8] && "onStatus" in element.props)[0];
+    const original = globalThis.document;
+    globalThis.document = { body: {} };
+    try { return detail.type(detail.props); }
+    finally { globalThis.document = original; }
+  };
   h.resolve = (value = { users: [user], pagination: { page: 2, total: 41 } }) =>
     h.pending.shift().resolve(value);
   h.reject = (error) => h.pending.shift().reject(error);
@@ -142,19 +152,15 @@ test("render shows server-backed controls and all required account details witho
     "Inactive",
     "CSV-created",
     "Manually created",
-    "Legacy",
     "Institutional ID",
     "Full name",
     "Official email",
-    "Account source",
     "Account status",
-    "Date created",
     "000456",
     "Jane Santos",
     "jane@hau.edu.ph",
     "View Details",
-    "Deactivate",
-    "Create User Manually",
+    "Create Account",
   ])
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(
@@ -235,10 +241,11 @@ test("search debounce normalizes input and resets the page", async () => {
 
 test("deactivation requires confirmation and reason; synchronous repeated submissions send one request", async () => {
   const h = await harness();
+  h.state[8] = user;
   const button = elements(
-    h.render(),
+    h.renderDetails(),
     (element) =>
-      element.type === "button" && element.props.children === "Deactivate",
+      element.type === "button" && element.props.children === "Deactivate Account",
   )[0];
   button.props.onClick();
   assert.equal(h.calls.length, 0);
@@ -282,10 +289,11 @@ test("activation confirms without reason, invalidated pages clamp, and source is
   h.state[0] = [
     { ...user, accountStatus: "Inactive", accountSource: undefined },
   ];
+  h.state[8] = h.state[0][0];
   elements(
-    h.render(),
+    h.renderDetails(),
     (element) =>
-      element.type === "button" && element.props.children === "Activate",
+      element.type === "button" && element.props.children === "Activate Account",
   )[0].props.onClick();
   assert.equal(h.dialog().props.inputLabel, undefined);
   const pending = h.dialog().props.onConfirm();

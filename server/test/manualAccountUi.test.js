@@ -151,15 +151,15 @@ test("User Management manual success refreshes server accounts while preserving 
     useEffect: () => {}, createPortal: (value) => value, X: () => null,
     api: async (path) => { calls.push(path); return { users, pagination: { page: 2, total: 25 } }; },
     EmptyState: () => null, ErrorState: () => null, Loading: () => null, StatusBadge: () => null,
-    ConfirmDialog: () => null, Pagination, ManualAccountForm,
+    ConfirmDialog: () => null, Pagination, ManualAccountForm, CsvImport: () => null,
     useToast: () => ({ success: (message) => toasts.push(message) }),
   });
   const tree = Component();
-  assert.ok(elements(tree, (e) => e.type === "button" && e.props.children === "Create User Manually").length);
+  assert.ok(elements(tree, (e) => e.type === "button" && e.props.children === "Create Account").length);
   assert.equal(elements(tree, (e) => e.type === Pagination)[0].props.currentPage, 2);
   assert.equal(elements(tree, (e) => e.type === Pagination)[0].props.totalItems, 25);
   const html = renderToString(tree);
-  for (const text of ["User Accounts", "Faculty", "View Details", "Deactivate", "000123"])
+  for (const text of ["Account Management", "User Accounts", "Faculty", "View Details", "000123"])
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /Pending Registrations|Approve|Reject/);
   const form = elements(tree, (e) => e.type === ManualAccountForm)[0];
