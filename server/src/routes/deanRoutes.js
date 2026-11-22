@@ -5,6 +5,8 @@ import { getConsultations, getConsultationOptions, getConsultation, getConsultat
 import accountImportRoutes from "./accountImportRoutes.js";
 import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
+import { readOutcomeProof } from "../services/attendanceService.js";
+import { documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 import { postNarrative, getNarrative, postNarrativeReview } from "../controllers/reportNarrativeController.js";
 import {
   auditRequestGuard,
@@ -45,6 +47,12 @@ router.post("/reports/ai-summaries/:id/review", narrativeLimit(8), postNarrative
 router.post("/reports/pdf", rateLimit({ windowMs: 60000, limit: 4, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false }), postDeanReport);
 router.get("/attendance-review", getReviews);
 router.get("/attendance-review/filter-options", getReviewOptions);
+router.get("/attendance-review/:id/proof", async (req, res) => {
+  const proof = await readOutcomeProof({ id: req.params.id,
+    actor: { id: req.user.id, role: req.user.role, management: true } });
+  const bytes = await documentContent(proof);
+  res.set(documentHeaders(proof)).send(bytes);
+});
 router.get("/attendance-review/:id", getReview);
 router.post("/attendance-review/:id/actions", postReview);
 router.use("/account-imports", accountImportRoutes);
