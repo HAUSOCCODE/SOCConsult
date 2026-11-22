@@ -75,7 +75,7 @@ test("report filters use strict canonical values and Manila request dates", () =
       status: "Completed",
       "attendance.finalOutcome": "Completed",
       "attendance.finalizationSource": {
-        $in: ["participant_agreement", "dean_review"],
+        $in: ["participant_agreement", "initiator_report", "dean_review"],
       },
     },
   ]);
@@ -134,23 +134,27 @@ test("same safe rows drive exhaustive totals, trusted outcomes and historical ca
       ...row,
       attendance: { finalOutcome, finalizationSource: "dean_review" },
     })),
+    ...ATTENDANCE_OUTCOMES.map((finalOutcome) => ({
+      ...row,
+      attendance: { finalOutcome, finalizationSource: "initiator_report" },
+    })),
     { ...row, attendance: {} },
     { ...row, status: "Attendance Review" },
     { ...row, status: "Pending" },
     { ...row, status: "No Show", consultationMode: "bogus" },
   ];
   const report = buildReport(rows, filters, now);
-  assert.equal(report.summary.total, 8);
+  assert.equal(report.summary.total, 11);
   for (const counts of Object.values(report.summary).filter(
     (value) => typeof value === "object",
   ))
     assert.equal(
       Object.values(counts).reduce((a, b) => a + b, 0),
-      8,
+      11,
     );
-  assert.equal(report.summary.attendance.Completed, 2);
-  assert.equal(report.summary.attendance["Student No-show"], 1);
-  assert.equal(report.summary.attendance["Faculty No-show"], 1);
+  assert.equal(report.summary.attendance.Completed, 3);
+  assert.equal(report.summary.attendance["Student No-show"], 2);
+  assert.equal(report.summary.attendance["Faculty No-show"], 2);
   assert.equal(report.summary.attendance["Historical unverified Completed"], 1);
   assert.equal(report.summary.attendance["Attendance Review"], 1);
   assert.equal(report.summary.attendance["No verified final outcome"], 2);

@@ -48,7 +48,7 @@ export function parseReportFilters(input) {
         status: "Completed",
         "attendance.finalOutcome": attendanceOutcome,
         "attendance.finalizationSource": {
-          $in: ["participant_agreement", "dean_review"],
+          $in: ["participant_agreement", "initiator_report", "dean_review"],
         },
       },
     ];
