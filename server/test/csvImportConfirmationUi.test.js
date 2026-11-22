@@ -26,7 +26,7 @@ test("terminal result renders only safe fields and navigation, ignoring extra cr
     password: "PLAINTEXT-SECRET", hash: "$2b$12$opaque", institutionalId: "PRIVATE-ID", email: "private@example.test" }, onNewImport: () => {} }));
   for (const text of ["safe-import", "Total rows", "Successful rows", "Failed rows", "Students", "Faculty", "completed", "Import timestamp", "Start New Import"])
     assert.ok(html.includes(text), text);
-  assert.match(html, /href="\/dean\/users"/);
+  assert.doesNotMatch(html, /href="\/dean\/users"/);
   assert.doesNotMatch(html, /PLAINTEXT|opaque|PRIVATE-ID|private@example|password|export/i);
 });
 

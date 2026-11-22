@@ -181,7 +181,6 @@ test("actual App routes allow only Dean on both Dean workspaces and preserve Fac
     );
   const pages = {
     dashboard: "DeanDashboard",
-    import: "CsvImport",
     users: "UserManagement",
     consultations: "ConsultationMonitoring",
     "attendance-review": "AttendanceReview",

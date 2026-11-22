@@ -57,6 +57,7 @@ async function harness() {
   let stateIndex = 0,
     refIndex = 0;
   h.ManualAccountForm = () => null;
+  h.CsvImport = () => null;
   h.Pagination = () => null;
   h.ConfirmDialog = () => null;
   h.ErrorState = () => null;
@@ -98,10 +99,12 @@ async function harness() {
     ConfirmDialog: h.ConfirmDialog,
     Pagination: h.Pagination,
     ManualAccountForm: h.ManualAccountForm,
+    CsvImport: h.CsvImport,
     useToast: () => ({
       success: (message) => h.toasts.push(["success", message]),
       error: (message) => h.toasts.push(["error", message]),
     }),
+    useDialogFocus: () => {},
     api: (path, options) => {
       h.calls.push({ path, options });
       return new Promise((resolve, reject) => {
@@ -123,6 +126,13 @@ async function harness() {
   };
   h.dialog = () =>
     elements(h.render(), (element) => element.type === h.ConfirmDialog)[0];
+  h.renderDetails = () => {
+    const detail = elements(h.render(), (element) => element.props?.user === state[8] && "onReset" in element.props)[0];
+    const original = globalThis.document;
+    globalThis.document = { body: {} };
+    try { return detail.type(detail.props); }
+    finally { globalThis.document = original; }
+  };
   h.resolve = (value = { users: [user], pagination: { page: 2, total: 41 } }) =>
     h.pending.shift().resolve(value);
   h.reject = (error) => h.pending.shift().reject(error);
@@ -130,7 +140,7 @@ async function harness() {
 }
 
 test("confirmation warning, empty body, version, synchronous guard and preserved list view", async () => {
- const h=await harness();elements(h.render(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();
+ const h=await harness();h.state[8]=user;elements(h.renderDetails(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();
  assert.equal(h.calls.length,0);assert.equal(h.dialog().props.open,true);assert.equal(h.dialog().props.inputLabel,undefined);
  assert.equal(h.dialog().props.message,"This will reset the user's password to their institutional ID. The user may change it later from Account Settings.");
  const first=h.dialog().props.onConfirm(),second=h.dialog().props.onConfirm();assert.equal(h.calls.length,1);assert.equal(h.dialog().props.loading,true);
@@ -140,10 +150,10 @@ test("confirmation warning, empty body, version, synchronous guard and preserved
  h.resolve();await Promise.all([first,second]);assert.deepEqual(h.toasts,[["success","Password reset successfully."]]);assert.equal(h.dialog().props.open,false);
 });
 test("unsupported roles hide reset and uncertain outcomes refresh without retry or disclosure", async () => {
- for(const role of ["dean","admin","program_chair","custom"]) {const h=await harness();h.state[0]=[{...user,role}];assert.equal(elements(h.render(),e=>e.type==="button"&&e.props.children==="Reset Password").length,0);}
+ for(const role of ["dean","admin","program_chair","custom"]) {const h=await harness();h.state[8]={...user,role};assert.equal(elements(h.renderDetails(),e=>e.type==="button"&&e.props.children==="Reset Password").length,0);}
  for(const code of ["PASSWORD_RESET_UNCERTAIN","PASSWORD_RESET_CONFLICT","INVALID_INSTITUTIONAL_ID","PASSWORD_RESET_INELIGIBLE",null]) {
- const h=await harness();elements(h.render(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();h.dialog().props.onCancel();assert.equal(h.calls.length,0);
- elements(h.render(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();const pending=h.dialog().props.onConfirm();
+ const h=await harness();h.state[8]=user;elements(h.renderDetails(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();h.dialog().props.onCancel();assert.equal(h.calls.length,0);
+ elements(h.renderDetails(),e=>e.type==="button"&&e.props.children==="Reset Password")[0].props.onClick();const pending=h.dialog().props.onConfirm();
  h.reject(Object.assign(new Error("PRIVATE_PASSWORD_HASH"),{code}));await new Promise(r=>setImmediate(r));h.resolve();await pending;
  assert.equal(h.calls.filter(c=>c.options?.method==="POST").length,1);assert.equal(h.toasts.some(([k])=>k==="success"),false);assert.doesNotMatch(JSON.stringify(h.toasts),/PRIVATE/);
  }
