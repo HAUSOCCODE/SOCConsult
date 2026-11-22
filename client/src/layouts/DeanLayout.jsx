@@ -5,7 +5,6 @@ import {
   CalendarDays,
   ClipboardList,
   FileBarChart,
-  FileUp,
   History,
   LayoutDashboard,
   Settings,
@@ -16,8 +15,7 @@ import RoleLayout from "../components/RoleLayout";
 import { deanWorkspace } from "../utils/deanWorkspace";
 const management = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dean/dashboard" },
-  { icon: FileUp, label: "CSV Import", path: "/dean/import" },
-  { icon: Users, label: "User Management", path: "/dean/users" },
+  { icon: Users, label: "Account Management", path: "/dean/users" },
   {
     icon: BarChart3,
     label: "Consultation Monitoring",

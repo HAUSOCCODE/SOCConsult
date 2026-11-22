@@ -26,7 +26,6 @@ import FacultyAccountSettings from "./pages/Faculty/FacultyAccountSettings";
 import FacultyAvailabilityCalendar from "./pages/Faculty/FacultyAvailabilityCalendar";
 import FindStudent from "./pages/Faculty/FindStudent";
 import DeferredFeaturePage from "./pages/Dean/DeferredFeaturePage";
-import CsvImport from "./pages/Dean/CsvImport";
 import DeanLayout from "./layouts/DeanLayout";
 import DeanDashboard from "./pages/Dean/DeanDashboard";
 import UserManagement from "./pages/Dean/UserManagement";
@@ -119,7 +118,7 @@ export default function App() {
               element={<DeanRouteRedirect to="/dean/account" />}
             />
             <Route path="account" element={<DeanAccountSettings />} />
-            <Route path="import" element={<CsvImport />} />
+            <Route path="import" element={<DeanRouteRedirect to="/dean/users" />} />
             <Route
               path="attendance-review"
               element={<AttendanceReview />}

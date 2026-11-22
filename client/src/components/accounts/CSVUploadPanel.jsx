@@ -13,8 +13,7 @@ export default function CSVUploadPanel({ busy, onSelect, onSubmit, file, error }
         onChange={(event) => onSelect(event.target.files?.[0] || null)}
       />
       <p className="text-sm text-slate-600">
-        Default limits: 1 MiB, 200 accounts per batch, 16 KiB per record. Validation
-        previews expire after 30 minutes.
+        CSV only · 1 MiB max · 200 accounts per batch. Previews expire after 30 minutes.
       </p>
       <button className="btn-primary block" disabled={busy || !file}>
         {busy ? "Validating…" : "Upload and validate"}

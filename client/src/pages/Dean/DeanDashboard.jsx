@@ -165,9 +165,9 @@ export default function DeanDashboard() {
                 </h2>
                 <Link
                   className="text-sm font-semibold text-maroon-800"
-                  to="/dean/import"
+                  to="/dean/users#csv-import"
                 >
-                  CSV Import
+                  Import accounts
                 </Link>
               </div>
               <p className="mt-1 text-xs text-slate-500">

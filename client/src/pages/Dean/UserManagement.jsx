@@ -16,6 +16,7 @@ import { useToast } from "../../context/ToastContext";
 import Pagination from "../../components/Pagination";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import ManualAccountForm from "../../components/accounts/ManualAccountForm";
+import CsvImport from "./CsvImport";
 
 const LIMIT = 20;
 const sourceLabel = (source) =>
@@ -231,52 +232,35 @@ export default function UserManagement() {
     setTarget(user);
   };
   const actions = (user) => (
-    <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        className="btn-action-sm"
-        disabled={busy}
-        onClick={() => void view(user)}
-      >
-        View Details
-      </button>
-      {["student", "faculty"].includes(user.role) && ["Active", "Inactive"].includes(user.accountStatus) && (
-        <button type="button" className="btn-action-sm" disabled={busy}
-          onClick={() => { if (!inFlight.current) setResetTarget(user); }}>
-          Reset Password
-        </button>
-      )}
-      {["Active", "Inactive"].includes(user.accountStatus) && (
-        <button
-          type="button"
-          className="btn-action-sm"
-          disabled={busy}
-          onClick={() => requestStatus(user)}
-        >
-          {user.accountStatus === "Active" ? "Deactivate" : "Activate"}
-        </button>
-      )}
-    </div>
+    <button type="button" className="btn-action-sm" disabled={busy} onClick={() => void view(user)}>
+      View Details
+    </button>
   );
 
   return (
     <div className="w-full min-w-0 space-y-5 pb-16">
-      <div>
-        <h1 className="text-2xl font-bold text-maroon-900">User Accounts</h1>
-        <details className="text-sm"><summary className="cursor-pointer">Advanced</summary><Link className="text-maroon-800 underline" to="/dean/audit-logs">Audit Logs</Link></details>
-        <p className="mt-2 text-sm text-slate-500">
-          Search and manage Student and Faculty accounts.
-        </p>
-        <button
-          type="button"
-          className="btn-primary mt-4"
-          disabled={busy}
-          onClick={() => setManualOpen(true)}
-        >
-          Create User Manually
-        </button>
-      </div>
-      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+      <header>
+        <h1 className="text-2xl font-bold text-maroon-900">Account Management</h1>
+        <p className="mt-1 text-sm text-slate-600">Create and manage Student and Faculty accounts.</p>
+      </header>
+      <section aria-labelledby="account-creation-title" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="account-creation-title" className="text-xl font-bold text-maroon-900">Account Creation</h2>
+            <p className="mt-1 text-sm text-slate-600">Add one account or import a CSV batch.</p>
+          </div>
+          <button type="button" className="btn-primary" disabled={busy} onClick={() => setManualOpen(true)}>
+            Create Account
+          </button>
+        </div>
+        <div className="mt-6"><CsvImport onImported={() => void latestLoad.current()} /></div>
+      </section>
+      <section aria-labelledby="user-accounts-title" className="space-y-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="user-accounts-title" className="text-xl font-bold text-maroon-900">User Accounts</h2>
+          <Link className="text-sm text-maroon-800 underline underline-offset-2" to="/dean/audit-logs">Audit logs</Link>
+        </div>
+      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_11rem_11rem]">
         <label
           htmlFor={searchId}
           className="text-sm font-semibold text-slate-700"
@@ -315,17 +299,14 @@ export default function UserManagement() {
             ["Inactive", "Inactive"],
           ]}
         />
-        <Filter
-          label="Account source"
-          value={filters.source}
-          disabled={busy}
-          onChange={(value) => changeFilter("source", value)}
-          options={[
-            ["all", "All sources (including legacy)"],
-            ["csv", "CSV-created"],
-            ["manual", "Manually created"],
-          ]}
-        />
+        <details className="sm:col-span-2 lg:col-span-3">
+          <summary className="w-fit cursor-pointer text-sm font-medium text-maroon-800">More filters</summary>
+          <div className="mt-3 max-w-xs">
+            <Filter label="Account source" value={filters.source} disabled={busy}
+              onChange={(value) => changeFilter("source", value)}
+              options={[["all", "All sources (including legacy)"], ["csv", "CSV-created"], ["manual", "Manually created"]]} />
+          </div>
+        </details>
       </div>
       <div aria-busy={loading}>
         {error ? (
@@ -345,7 +326,15 @@ export default function UserManagement() {
                   key={user._id}
                   className="rounded-xl border border-slate-200 bg-white p-4"
                 >
-                  <AccountDetails user={user} />
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="break-words font-semibold text-slate-900">{user.name || "Unnamed user"}</h3>
+                      <p className="mt-1 break-words text-sm text-slate-600">{user.institutionalId || "ID not recorded"}</p>
+                    </div>
+                    <StatusBadge allowWrap status={user.accountStatus || "Not recorded"} compact />
+                  </div>
+                  <p className="mt-2 break-all text-sm text-slate-700">{user.email || "Email not recorded"}</p>
+                  <p className="mt-1 text-sm capitalize text-slate-600">{user.role}</p>
                   <div className="mt-4">{actions(user)}</div>
                 </article>
               ))}
@@ -354,14 +343,12 @@ export default function UserManagement() {
                 <thead className="bg-maroon-800 text-white">
                   <tr>
                     {[
-                      "Institutional ID",
                       "Full name",
+                      "Institutional ID",
                       "Official email",
                       "Role",
-                      "Account source",
                       "Account status",
-                      "Date created",
-                      "Actions",
+                      "Details",
                     ].map((label) => (
                       <th scope="col" key={label} className="px-3 py-3">
                         {label}
@@ -372,26 +359,20 @@ export default function UserManagement() {
                 <tbody>
                   {users.map((user) => (
                     <tr key={user._id} className="border-t border-slate-200">
-                      <td className="px-3 py-3">
-                        {user.institutionalId || "Not recorded"}
-                      </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 font-medium text-slate-900">
                         {user.name || "Unnamed user"}
                       </td>
+                      <td className="px-3 py-3">{user.institutionalId || "Not recorded"}</td>
                       <td className="px-3 py-3 [overflow-wrap:anywhere]">
                         {user.email || "Not recorded"}
                       </td>
                       <td className="px-3 py-3 capitalize">{user.role}</td>
-                      <td className="px-3 py-3">
-                        {sourceLabel(user.accountSource)}
-                      </td>
                       <td className="px-3 py-3">
                         <StatusBadge allowWrap
                           status={user.accountStatus || "Not recorded"}
                           compact
                         />
                       </td>
-                      <td className="px-3 py-3">{dateLabel(user.createdAt)}</td>
                       <td className="px-3 py-3">{actions(user)}</td>
                     </tr>
                   ))}
@@ -410,6 +391,7 @@ export default function UserManagement() {
           </>
         )}
       </div>
+      </section>
       {manualOpen && (
         <ManualAccountForm
           onClose={() => setManualOpen(false)}
@@ -424,6 +406,9 @@ export default function UserManagement() {
         <UserDetails
           user={selected}
           loading={detailLoading}
+          busy={busy}
+          onReset={() => { if (!inFlight.current) setResetTarget(selected); }}
+          onStatus={() => requestStatus(selected)}
           onClose={() => {
             ++detailRequest.current;
             setSelected(null);
@@ -519,7 +504,7 @@ function AccountDetails({ user }) {
     </dl>
   );
 }
-function UserDetails({ user, loading, onClose }) {
+function UserDetails({ user, loading, busy, onReset, onStatus, onClose }) {
   const titleId = useId();
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, { onClose });
@@ -551,7 +536,17 @@ function UserDetails({ user, loading, onClose }) {
             <X aria-hidden="true" size={18} />
           </button>
         </div>
-        {loading ? <Loading /> : <AccountDetails user={user} />}
+        {loading ? <Loading /> : <>
+          <AccountDetails user={user} />
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-200 pt-5">
+            {["student", "faculty"].includes(user.role) && ["Active", "Inactive"].includes(user.accountStatus) &&
+              <button type="button" className="btn-secondary" disabled={busy} onClick={onReset}>Reset Password</button>}
+            {["Active", "Inactive"].includes(user.accountStatus) &&
+              <button type="button" className="btn-secondary" disabled={busy} onClick={onStatus}>
+                {user.accountStatus === "Active" ? "Deactivate Account" : "Activate Account"}
+              </button>}
+          </div>
+        </>}
       </section>
     </div>,
     document.body,

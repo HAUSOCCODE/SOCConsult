@@ -1,6 +1,5 @@
 import ResponsiveTable from "../../components/ResponsiveTable";
 import { deanUiError } from "../../utils/deanUiErrors";
-import { Link } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/apiClient";
@@ -9,7 +8,7 @@ import CSVValidationPreview from "../../components/accounts/CSVValidationPreview
 import CSVImportResult from "../../components/accounts/CSVImportResult";
 import ConfirmDialog from "../../components/ConfirmDialog";
 
-export default function CsvImport() {
+export default function CsvImport({ onImported } = {}) {
   const [search, setSearch] = useSearchParams();
   const previewId = search.get("preview");
   const [file, setFile] = useState(null);
@@ -26,7 +25,13 @@ export default function CsvImport() {
   const validationFlight = useRef(false);
   const uploadRequest = useRef(0);
   const mounted = useRef(true);
+  const reportedImport = useRef(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++uploadRequest.current; }; }, []);
+  useEffect(() => {
+    if (preview?.status !== "completed" || reportedImport.current === preview.previewId) return;
+    reportedImport.current = preview.previewId;
+    onImported?.();
+  }, [preview, onImported]);
   useEffect(() => {
     ++uploadRequest.current;
     if (!previewId) { setBusy(false); return; }
@@ -83,12 +88,17 @@ export default function CsvImport() {
   const selectFile = (value) => {
     if (inFlight.current || validationFlight.current) return;
     ++uploadRequest.current;
+    reportedImport.current = null;
     setCheckRequired(false);
     setBusy(false);
     setFile(value);
     setPreview(null);
     setError("");
-    setSearch({}, { replace: true });
+    setSearch((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("preview");
+      return next;
+    }, { replace: true });
   };
   const submit = async (event) => {
     event.preventDefault();
@@ -110,7 +120,11 @@ export default function CsvImport() {
       });
       if (request !== uploadRequest.current) return;
       setPreview(result);
-      setSearch({ preview: result.previewId }, { replace: true });
+      setSearch((current) => {
+        const next = new URLSearchParams(current);
+        next.set("preview", result.previewId);
+        return next;
+      }, { replace: true });
     } catch (err) {
       if (request === uploadRequest.current) setError(deanUiError(err, "csv"));
     } finally {
@@ -173,21 +187,19 @@ export default function CsvImport() {
   ];
 
   return (
-    <section className="rounded-2xl border bg-white p-4 sm:p-6">
-      <h2 className="text-xl font-bold text-maroon-900">CSV Import</h2>
-      <p className="mt-3 text-sm text-slate-600">
-        Download the project-defined sample template for development and
-        testing. Upload a CSV of up to 200 accounts, review every row, then confirm
-        account creation. Use multiple batches for larger populations.
-      </p>
+    <section id="csv-import" aria-labelledby="csv-import-title" className="min-w-0 border-t border-slate-200 pt-6">
+      <h3 id="csv-import-title" className="text-lg font-semibold text-maroon-900">Import from CSV</h3>
+      <p className="mt-1 text-sm text-slate-600">Upload up to 200 accounts per batch. Review validation results before creating accounts.</p>
       <a
-        className="btn-primary mt-5 inline-flex"
+        className="mt-3 inline-flex text-sm font-semibold text-maroon-800 underline underline-offset-2 hover:text-maroon-900"
         href="/templates/socconsult-account-import-template.csv"
         download="socconsult-account-import-template.csv"
       >
         Download CSV template
       </a>
-      <ResponsiveTable label="CSV column requirements" className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm">
+      <details className="mt-3 text-sm text-slate-700">
+        <summary className="w-fit cursor-pointer font-medium text-maroon-800">CSV format requirements</summary>
+      <ResponsiveTable label="CSV column requirements" className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm">
           <caption className="mb-3 text-left text-slate-600">
             Include the five required columns; middle_name is optional. The
             template includes all six. Trim surrounding whitespace; required
@@ -210,6 +222,7 @@ export default function CsvImport() {
             ))}
           </tbody>
         </table></ResponsiveTable>
+      </details>
       <CSVUploadPanel error={error}
         busy={busy || confirming || preview?.status === "processing"}
         onSelect={selectFile}
@@ -243,9 +256,6 @@ export default function CsvImport() {
         onConfirm={confirm}
         onCancel={() => { if (!inFlight.current) setDialogOpen(false); }}
       />
-      <Link className="btn-secondary mt-5 inline-flex" to="/dean/dashboard">
-        Back to Dean Management
-      </Link>
     </section>
   );
 }
