@@ -18,10 +18,14 @@ async function harness() {
   const imports = {
     useState: initial => { const slot = index++; if (!(slot in state)) state[slot] = typeof initial === "function" ? initial() : initial;
       return [state[slot], value => state[slot] = typeof value === "function" ? value(state[slot]) : value]; },
+    useRef: initial => { const slot = index++; if (!(slot in state)) state[slot] = { current: initial }; return state[slot]; },
     useEffect: fn => effects.push(fn),
     useSearchParams: () => [params, value => params = new URLSearchParams(value)],
     api: (path, options) => new Promise((resolve, reject) => pending.push({ path, options, resolve, reject })),
     APPOINTMENT_STATUSES, LEGACY_APPOINTMENT_STATUSES,
+    formatManilaDate: value => value || "Unavailable",
+    formatManilaTime: value => value || "Unavailable",
+    StatusBadge: ({ status }) => React.createElement("span", null, status),
     ConsultationDetailsDialog: ({ recordId }) => React.createElement("p", null, `Details ${recordId}`),
     monitoringDate: value => value || "Unavailable",
   };
@@ -39,36 +43,59 @@ test("monitoring compatibility query allowlist drops unsafe, duplicate and unsup
   const query = monitoringQuery("?search=Jane&status=No+Show&page=2&limit=100&start=2026-10-01&end=2026-10-16");
   assert.match(query, /status=No\+Show/); assert.match(query, /start=2026-10-01/);
 });
-test("monitoring loading, empty, filter reset, error and retry execute actual page handlers", async () => {
+test("monitoring loads, searches automatically, filters status, and retries errors", async () => {
   const h = await harness();
   let tree = h.render(); assert.match(h.html(tree), /Loading consultations/);
-  const cleanup = h.effects[1](); assert.equal(h.pending[0].path, "/dean/consultations");
+  const cleanup = h.effects[3](); assert.equal(h.pending[0].path, "/dean/consultations");
   h.pending[0].resolve(data); await settle(); tree = h.render();
-  assert.match(h.html(tree), /No consultations found/); assert.match(h.html(tree), /Attendance filtering will be available/);
+  assert.match(h.html(tree), /No consultations found/); assert.match(h.html(tree), /More filters/);
+  assert.doesNotMatch(h.html(tree), /Attendance Outcome|Apply filters|Reset filters/);
   assert.doesNotMatch(h.html(tree), /Confirm request|Cancel consultation|Mark Completed/);
   const search = elements(tree).find(element => element.props.type === "search");
   search.props.onChange({ target: { value: "Jane" } }); tree = h.render();
-  elements(tree).find(element => element.type === "form").props.onSubmit({ preventDefault() {} });
+  await new Promise(resolve => setTimeout(resolve, 350));
   assert.match(h.query, /search=Jane/); assert.match(h.query, /page=1/);
-  cleanup(); tree = h.render(); h.effects[1]();
+  cleanup(); tree = h.render(); h.effects[3]();
   assert.match(h.pending[1].path, /search=Jane/); h.pending[1].resolve(data); await settle(); tree = h.render();
   assert.match(h.html(tree), /No consultations match these filters/);
-  elements(tree).find(element => element.type === "button" && element.props.children === "Reset filters").props.onClick();
-  assert.equal(h.query, ""); tree = h.render(); h.effects[1]();
+  const status = elements(tree).find(element => element.type === "select" && element.props.value === "");
+  status.props.onChange({ target: { value: "Confirmed" } });
+  assert.match(h.query, /status=Confirmed/);
+  tree = h.render(); h.effects[3]();
   h.pending[2].reject(new Error()); await settle(); tree = h.render(); assert.match(h.html(tree), /Unable to load consultations/);
   elements(tree).find(element => element.type === "button" && element.props.children === "Retry").props.onClick();
-  tree = h.render(); h.effects[1](); h.pending[3].resolve(data); await settle(); assert.match(h.html(h.render()), /No consultations found/);
+  tree = h.render(); h.effects[3](); h.pending[3].resolve(data); await settle(); assert.match(h.html(h.render()), /No consultations match these filters/);
 });
 test("aborted stale responses cannot replace current filters and server pagination drives requests", async () => {
-  const h = await harness(); h.render(); const cleanup = h.effects[1]();
-  cleanup(); h.render(); h.effects[1]();
+  const h = await harness(); h.render(); const cleanup = h.effects[3]();
+  cleanup(); h.render(); h.effects[3]();
   h.pending[1].resolve({ consultations: [{ recordId: "safe-record", studentName: "Student", facultyName: "Faculty", subject: "Course", status: "No Show", legacy: true }], pagination: { page: 1, limit: 20, total: 21, totalPages: 2 } });
   await settle(); h.pending[0].resolve(data); await settle();
-  let tree = h.render(); assert.match(h.html(tree), /Course/); assert.match(h.html(tree), /No Show \(Legacy\)/);
+  let tree = h.render(); assert.match(h.html(tree), /Course/); assert.match(h.html(tree), /No Show/); assert.match(h.html(tree), /Legacy/);
+  assert.deepEqual([...h.html(tree).matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(match => match[1]), ["Student", "Faculty", "Subject/course", "Schedule", "Status", "View"]);
+  assert.doesNotMatch(h.html(tree), /<th[^>]*>Record ID|<th[^>]*>Created|<th[^>]*>Updated|<th[^>]*>Mode/);
   elements(tree).find(element => element.type === "button" && element.props.children === "View Details").props.onClick();
   assert.match(h.html(h.render()), /Details safe-record/);
   tree = h.render(); elements(tree).find(element => element.type === "button" && element.props.children === "Next").props.onClick();
-  assert.equal(h.query, "page=2"); h.render(); h.effects[1](); assert.match(h.pending.at(-1).path, /page=2/);
+  assert.equal(h.query, "page=2"); h.render(); h.effects[3](); assert.match(h.pending.at(-1).path, /page=2/);
+});
+test("advanced date range and mode filters update the URL without a submit action", async () => {
+  const h = await harness();
+  let tree = h.render();
+  elements(tree).find(element => element.props["aria-label"] === "Request start date").props.onChange({ target: { value: "2026-10-01" } });
+  assert.doesNotMatch(h.query, /start=/);
+  tree = h.render();
+  elements(tree).find(element => element.props["aria-label"] === "Request end date").props.onChange({ target: { value: "2026-10-16" } });
+  assert.match(h.query, /start=2026-10-01/);
+  assert.match(h.query, /end=2026-10-16/);
+  tree = h.render();
+  const mode = elements(tree).find(element => element.type === "select" && element.props.value === "" && element.props.children?.some?.(child => child?.props?.children === "Face-to-Face"));
+  mode.props.onChange({ target: { value: "Online" } });
+  assert.match(h.query, /mode=Online/);
+  tree = h.render();
+  elements(tree).find(element => element.props["aria-label"] === "Request start date").props.onChange({ target: { value: "" } });
+  assert.doesNotMatch(h.query, /start=|end=/);
+  assert.match(h.query, /mode=Online/);
 });
 test("route consolidation, details, history and document components enforce read-only presentation", async () => {
   const app = await source("App.jsx"), layout = await source("layouts/DeanLayout.jsx"), details = await source("components/dean/ConsultationDetailsDialog.jsx"), document = await source("components/dean/ConsultationDocumentViewer.jsx");
