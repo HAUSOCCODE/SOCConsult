@@ -1,5 +1,4 @@
 import { formatManilaDisplay } from "../../utils/formatDateTime";
-import { Link } from "react-router-dom";
 
 export default function CSVImportResult({ result, onNewImport }) {
   return (
@@ -18,8 +17,7 @@ export default function CSVImportResult({ result, onNewImport }) {
         ))}
       </dl>
       <div className="mt-5 flex flex-wrap gap-3">
-        <Link className="btn-primary" to="/dean/users">Go to User Management</Link>
-        <button className="btn-secondary" onClick={onNewImport}>Start New Import</button>
+        <button type="button" className="btn-secondary" onClick={onNewImport}>Start New Import</button>
       </div>
     </section>
   );

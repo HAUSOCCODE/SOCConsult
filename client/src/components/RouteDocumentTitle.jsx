@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 const titles = {
-  "/dean/import": "CSV Import | SOCConsult",
+  "/dean/import": "Account Management | SOCConsult",
   "/dean/attendance-review": "Attendance Review | SOCConsult",
   "/dean/account": "Account Settings | SOCConsult",
   "/dean/faculty": "My Faculty Dashboard | SOCConsult",
@@ -42,7 +42,7 @@ const titles = {
   "/dean": "Dean Dashboard | SOCConsult",
   "/dean/dashboard": "Dean Dashboard | SOCConsult",
   "/dean/audit-logs": "Audit Logs | SOCConsult",
-  "/dean/users": "User Management | SOCConsult",
+  "/dean/users": "Account Management | SOCConsult",
   "/dean/consultations": "Consultation Monitoring | SOCConsult",
   "/dean/appointments": "Consultation Monitoring | SOCConsult",
   "/dean/consultation-overview": "Consultation Monitoring | SOCConsult",
