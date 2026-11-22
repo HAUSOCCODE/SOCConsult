@@ -179,6 +179,36 @@ test("HTTP active Dean authorization and personal Faculty separation", async () 
     assert.equal((await h.request(`/dean/consultations/${row._id}`, "dean", "POST", input)).status, 403);
   } finally { await h.close(); }
 });
+test("Dean review proof is available to active management only; personal proof stays participant-only", async () => {
+  const h = await appointmentHttp(), originalFetch = globalThis.fetch;
+  const row = fixture({ status: "Attendance Review", student: h.users.student.id, faculty: h.users.faculty.id });
+  row.attendance = { ...attendanceEnrollment(row.endAt), reviewReason: "faculty_response_missing", reviewStartedAt: row.endAt };
+  h.state.appointments.push(row);
+  h.state.responses.push({ _id: newId(), appointment: row._id, participant: row.student, participantRole: "student",
+    outcome: "Completed", submittedAt: row.endAt, policyVersion: row.attendance.policyVersion,
+    proof: { originalName: "proof.jpg", mimeType: "image/jpeg", cloudinaryPublicId: "consultio/outcome-proofs/proof", resourceType: "image" } });
+  const managementPath = `/dean/attendance-review/${row._id}/proof`;
+  const personalPath = `/appointments/${row._id}/attendance-proof`;
+  globalThis.fetch = (input, options) => typeof input === "string" && input.startsWith("http://127.0.0.1:")
+    ? originalFetch(input, options) : Promise.resolve(new Response("proof bytes"));
+  try {
+    const proof = await h.request(managementPath, "dean");
+    assert.equal(proof.status, 200); assert.equal(await proof.text(), "proof bytes");
+    assert.equal(proof.headers.get("cache-control"), "no-store");
+    for (const role of [null, "student", "faculty", "otherStudent", "otherFaculty"])
+      assert.equal((await h.request(managementPath, role)).status, role ? 403 : 401);
+    assert.equal((await h.request(personalPath, "dean")).status, 404);
+    assert.equal((await h.request(personalPath, "student")).status, 200);
+    assert.equal((await h.request(personalPath, "otherStudent")).status, 404);
+    const dean = h.state.users.find(user => user.role === "dean");
+    dean.accountStatus = "Inactive";
+    assert.equal((await h.request(managementPath, "dean")).status, 403);
+    dean.accountStatus = "Active";
+    assert.equal((await h.request("/dean/attendance-review/bad/proof", "dean")).status, 400);
+    h.state.responses[0].proof = undefined;
+    assert.equal((await h.request(managementPath, "dean")).status, 404);
+  } finally { globalThis.fetch = originalFetch; await h.close(); }
+});
 test("Dean outcomes classify correctly and final missing-response cases do not wait", () => {
   for (const [outcome, category] of [["Completed", "verifiedCompleted"], ["Student No-show", "studentNoShow"], ["Faculty No-show", "facultyNoShow"]])
     assert.equal(attendanceClassification({ status: "Completed", attendance: { finalOutcome: outcome, finalizationSource: "dean_review" } }), category);

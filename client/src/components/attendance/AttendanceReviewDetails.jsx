@@ -21,7 +21,7 @@ export default function AttendanceReviewDetails({ recordId, onClose, onChanged }
   const openProof = async () => {
     changeBusy(true); setError("");
     try {
-      const { blob } = await api.download(`/appointments/${recordId}/attendance-proof`);
+      const { blob } = await api.download(`/dean/attendance-review/${recordId}/proof`);
       const url = URL.createObjectURL(blob); window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { setError("Unable to open the consultation proof."); }
