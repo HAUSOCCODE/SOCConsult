@@ -21,7 +21,7 @@ async function harness(path, name, props = {}) {
     useParams: () => ({}), useNavigate: () => () => {},
     api: (path, options) => new Promise((resolve, reject) => pending.push({ path, options, resolve, reject })),
     ConfirmDialog: props => React.createElement("aside", { "data-confirm": props.open }),
-    AttendanceReviewDetails: () => null, monitoringDate: value => value || "Unavailable",
+    AttendanceReviewDetails: () => null, formatManilaDate: value => value || "Unavailable", formatManilaDateTime: value => value || "Unavailable",
   };
   const Component = new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${code.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
   return { state, effects, pending, render() { index = 0; effects.length = 0; return Component(props); }, get query() { return params.toString(); } };
@@ -55,24 +55,56 @@ test("leave-under-review saves without final confirmation; stale and uncertain r
     tree.props.onSubmit({ preventDefault() {} }); assert.equal(h.pending.length, 1);
   }
 });
-test("queue actual handlers load, retry, reset, paginate and ignore aborted responses", async () => {
+test("queue loads, filters automatically, paginates and ignores aborted responses", async () => {
   const h = await harness("pages/Dean/AttendanceReview.jsx", "AttendanceReview");
-  let tree = h.render(); const cleanup = h.effects[2](); assert.match(h.pending[0].path, /\/dean\/attendance-review$/);
-  cleanup(); h.render(); h.effects[2]();
+  let tree = h.render(); const cleanup = h.effects[3](); assert.match(h.pending[0].path, /\/dean\/attendance-review$/);
+  cleanup(); h.render(); h.effects[3]();
   h.pending[1].resolve({ reviews: [], pagination: { page: 1, total: 0, totalPages: 0 } }); await settle();
   h.pending[0].reject(new Error("Old request")); await settle(); tree = h.render(); assert.ok(elements(tree).some(e => e.props?.role === "status" && /No unresolved/.test(e.props.children)));
-  const select = elements(tree).find(e => e.type === "select"); select.props.onChange({ target: { value: "responses_conflict" } });
-  tree = h.render(); elements(tree).find(e => e.type === "form").props.onSubmit({ preventDefault() {} }); assert.match(h.query, /reviewReason=responses_conflict/);
-  h.render(); h.effects[2](); h.pending[2].reject(new Error()); await settle(); tree = h.render();
-  elements(tree).find(e => e.type === "button" && e.props.children === "Retry").props.onClick(); h.render(); h.effects[2]();
+  assert.ok(elements(tree).some(e => e.type === "summary" && /More filters/.test(e.props.children[0])));
+  assert.equal(elements(tree).filter(e => e.type === "form").length, 0);
+  const select = elements(tree).find(e => e.type === "select" && e.props.value === "");
+  select.props.onChange({ target: { value: "responses_conflict" } }); assert.match(h.query, /reviewReason=responses_conflict/);
+  h.render(); h.effects[3](); h.pending[2].reject(new Error()); await settle(); tree = h.render();
+  elements(tree).find(e => e.type === "button" && e.props.children === "Retry").props.onClick(); h.render(); h.effects[3]();
   h.pending[3].resolve({ reviews: [], pagination: { page: 1, total: 21, totalPages: 2 } }); await settle(); tree = h.render();
   elements(tree).find(e => e.type === "button" && e.props.children === "Next").props.onClick(); assert.match(h.query, /page=2/);
-  elements(tree).find(e => e.type === "button" && e.props.children === "Reset filters").props.onClick(); assert.equal(h.query, "");
+  assert.ok(elements(tree).some(e => e.type === "input" && e.props.type === "search"));
+});
+test("page search is debounced and date range filters require a valid pair", async () => {
+  const h = await harness("pages/Dean/AttendanceReview.jsx", "AttendanceReview");
+  h.render(); h.effects[3]();
+  h.pending[0].resolve({ reviews: [
+    { recordId: "one", studentName: "Ada", facultyName: "Turing", subject: "Algorithms", reviewReason: "responses_conflict" },
+    { recordId: "two", studentName: "Bea", facultyName: "Lovelace", subject: "Databases", reviewReason: "faculty_response_missing" },
+  ], pagination: { page: 1, total: 2, totalPages: 1 } });
+  await settle();
+  let tree = h.render();
+  const search = elements(tree).find(e => e.type === "input" && e.props.type === "search");
+  search.props.onChange({ target: { value: "Ada" } });
+  h.render(); h.effects[1]();
+  await new Promise(resolve => setTimeout(resolve, 330));
+  tree = h.render();
+  assert.equal(elements(tree).filter(e => e.type === "article").length, 1);
+  const start = elements(tree).find(e => e.props?.["aria-label"] === "Review start date");
+  start.props.onChange({ target: { value: "2026-11-01" } });
+  assert.doesNotMatch(h.query, /start=/);
+  tree = h.render();
+  const end = elements(tree).find(e => e.props?.["aria-label"] === "Review end date");
+  end.props.onChange({ target: { value: "2026-11-23" } });
+  assert.match(h.query, /start=2026-11-01/);
+  assert.match(h.query, /end=2026-11-23/);
+  h.render();
+  elements(h.render()).find(e => e.props?.["aria-label"] === "Review start date").props.onChange({ target: { value: "" } });
+  assert.doesNotMatch(h.query, /(?:start|end)=/);
 });
 test("review routing, private detail and document delivery remain isolated from monitoring and AI", async () => {
   const [app, layout, details, form, confirmation] = await Promise.all([read("App.jsx"), read("layouts/DeanLayout.jsx"), read("components/attendance/AttendanceReviewDetails.jsx"), read("components/attendance/AttendanceResolutionForm.jsx"), read("components/ConfirmDialog.jsx")]);
   assert.match(app, /element={<AttendanceReview \/>}/); assert.match(layout, /path: "\/dean\/attendance-review"/);
   assert.match(details, /ConsultationDocumentViewer/); assert.match(details, /Private reason/); assert.match(details, /No response was submitted/);
+  assert.ok(details.indexOf("Original attendance responses") < details.indexOf("Dean resolution"));
+  assert.ok(details.indexOf("Dean resolution") < details.indexOf("Additional information"));
+  assert.match(details, /max-h-\[92dvh\]/); assert.match(details, /overflow-y-auto/); assert.match(details, /View consultation proof/);
   assert.match(form, /portalTarget={form.current\?\.closest\("dialog"\)}/); assert.match(confirmation, /portalTarget \|\| document.body/);
   assert.doesNotMatch(details + form, /groq|openai|chatWithAi|dangerouslySetInnerHTML|\.notes\b/i);
 });
