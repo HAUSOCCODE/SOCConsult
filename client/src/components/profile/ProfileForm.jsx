@@ -299,7 +299,7 @@ export default function ProfilePage() {
   );
 }
 
-export function SecuritySettings({ onPasswordChanged } = {}) {
+export function SecuritySettings({ onPasswordChanged, compact = false } = {}) {
   const { user, clearPasswordRecommendation } = useAuth();
   const toast = useToast();
   const empty = { currentPassword: "", newPassword: "", confirmPassword: "" };
@@ -374,7 +374,8 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
   };
 
   return (
-    <section aria-labelledby="security-settings-title" className="space-y-4">
+    <section aria-labelledby={compact ? "change-password-title" : "security-settings-title"} className={compact ? "min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" : "space-y-4"}>
+      {!compact && (
       <div>
         <h2
           id="security-settings-title"
@@ -386,9 +387,10 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
           Manage your account password and security.
         </p>
       </div>
-      <form aria-busy={submitting} onSubmit={submit} className="panel">
-        <h3 className="text-lg font-bold text-maroon-900">Change Password</h3>
-        <p className="mt-1 text-sm text-slate-500">
+      )}
+      <form aria-busy={submitting} onSubmit={submit} className={compact ? "min-w-0" : "panel"}>
+        {compact ? <h2 id="change-password-title" className="text-lg font-bold text-maroon-900">Change Password</h2> : <h3 className="text-lg font-bold text-maroon-900">Change Password</h3>}
+        <p id={compact ? "password-requirements" : undefined} className="mt-1 text-sm text-slate-500">
           Use at least 8 characters, one uppercase letter, and one number.
           Spaces are not allowed.
         </p>
@@ -401,7 +403,7 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
             {validationError}
           </p>
         )}
-        <div className="mt-6 grid gap-5 lg:grid-cols-3">
+        <div className={compact ? "mt-4 grid min-w-0 gap-4 lg:grid-cols-3" : "mt-6 grid gap-5 lg:grid-cols-3"}>
           {[
             ["currentPassword", "Current Password"],
             ["newPassword", "New Password"],
@@ -420,7 +422,7 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
                   }
                   className="field pr-11"
                   aria-invalid={Boolean(validationError)}
-                  aria-describedby={validationError ? "password-validation-error" : undefined}
+                  aria-describedby={compact ? (validationError ? "password-requirements password-validation-error" : "password-requirements") : (validationError ? "password-validation-error" : undefined)}
                   value={passwords[key]}
                   onChange={(event) => change(key, event.target.value)}
                 />
@@ -441,7 +443,8 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
             </label>
           ))}
         </div>
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className={compact ? "mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end" : "mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"}>
+          {!compact && (
           <button
             type="button"
             disabled={submitting}
@@ -453,10 +456,11 @@ export function SecuritySettings({ onPasswordChanged } = {}) {
           >
             Cancel
           </button>
+          )}
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={compact ? "btn-primary text-sm disabled:cursor-not-allowed disabled:opacity-60" : "btn-primary disabled:cursor-not-allowed disabled:opacity-60"}
           >
             {submitting ? "Changing Password..." : "Change Password"}
           </button>
