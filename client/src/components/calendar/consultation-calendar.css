@@ -1,0 +1,40 @@
+@import "@fullcalendar/react/skeleton.css";
+@import "@fullcalendar/react/themes/monarch/theme.css";
+@import "@fullcalendar/react/themes/monarch/palettes/red.css";
+
+.socconsult-fullcalendar { --fc-border-color:#e2e8f0; --fc-button-bg-color:#7f1d1d; --fc-button-border-color:#7f1d1d; --fc-button-hover-bg-color:#641717; --fc-button-hover-border-color:#641717; --fc-button-active-bg-color:#4c1111; --fc-button-active-border-color:#4c1111; --fc-today-bg-color:#fef3c7; --fc-neutral-bg-color:#f8fafc; min-width:0; }
+.socconsult-fullcalendar .fc-toolbar { align-items:center; display:flex; flex-wrap:wrap; gap:.75rem; }
+.socconsult-fullcalendar .fc-toolbar-title { color:#450a0a; font-size:1.2rem; font-weight:750; }
+.socconsult-fullcalendar .fc-button { min-height:2.5rem; font-weight:650; }
+.socconsult-fullcalendar .fc-event { border-radius:.5rem; cursor:pointer; font-size:.75rem; min-width:0; padding:0; }
+.socconsult-fullcalendar .fc-event:focus-visible,.socconsult-fullcalendar .fc-button:focus-visible { outline:3px solid #f59e0b; outline-offset:2px; }
+.socconsult-fullcalendar .fc-event-consultation { background:#7f1d1d; border-color:#641717; color:white; }
+.socconsult-fullcalendar .fc-event-proposal { background:#d97706; border-color:#b45309; color:white; }
+.socconsult-fullcalendar .fc-event-availability { background:#ecfdf5; border-color:#059669; color:#065f46; }
+.socconsult-fullcalendar .fc-event-unavailable { background:#f1f5f9; border-color:#94a3b8; color:#475569; }
+.socconsult-fullcalendar .fc-event-finalized { background:#f8fafc; border-color:#94a3b8; color:#475569; }
+.socconsult-fullcalendar .fc-event-holiday { background:#fdf2f8; border-color:#f9a8d4; color:#831843; }
+.socconsult-fullcalendar .fc-daygrid-event-dot { display:none; }
+.socconsult-fullcalendar .fc-daygrid-day-number { color:#334155; font-weight:650; }
+.socconsult-fullcalendar .fc-col-header-cell-cushion { color:#475569; font-size:.75rem; font-weight:750; text-transform:uppercase; }
+.socconsult-fullcalendar .fc-list-event:hover td { background:#fff7ed; }
+.socconsult-fullcalendar .fc-daygrid-day-frame { display:flex; flex-direction:column; min-height:8.75rem; }
+.socconsult-fullcalendar .fc-daygrid-day-top { flex:0 0 auto; }
+.socconsult-fullcalendar .fc-daygrid-day-events { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; padding:0 .2rem .2rem; }
+.socconsult-fullcalendar .fc-daygrid-event-harness { flex:0 0 auto; min-width:0; }
+.socconsult-fullcalendar .fc-daygrid-event-harness:has(.fc-event-holiday) { margin-top:auto; order:100; padding-top:.2rem; }
+.socconsult-fullcalendar .fc-daygrid-more-link { align-self:flex-start; color:#7f1d1d; font-size:.7rem; font-weight:700; margin:.1rem .2rem; }
+.socconsult-fullcalendar .soc-calendar-event-card { display:flex; flex-direction:column; gap:.12rem; min-width:0; overflow:hidden; padding:.35rem .4rem; width:100%; }
+.socconsult-fullcalendar .soc-calendar-event-meta { align-items:flex-start; display:flex; font-size:.62rem; font-weight:700; gap:.25rem; justify-content:space-between; line-height:1.2; min-width:0; opacity:.9; }
+.socconsult-fullcalendar .soc-calendar-event-meta span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.socconsult-fullcalendar .soc-calendar-event-meta span:last-child { text-align:right; }
+.socconsult-fullcalendar .soc-calendar-event-title { display:-webkit-box; font-size:.72rem; font-weight:750; line-height:1.25; overflow:hidden; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.socconsult-fullcalendar .soc-calendar-event-participant { display:block; font-size:.65rem; line-height:1.25; overflow:hidden; overflow-wrap:anywhere; text-overflow:ellipsis; white-space:nowrap; }
+.socconsult-fullcalendar .soc-calendar-holiday-label { align-items:flex-start; display:flex; font-size:.66rem; font-weight:700; gap:.25rem; line-height:1.25; min-width:0; overflow:hidden; padding:.3rem .4rem; width:100%; }
+.socconsult-fullcalendar .soc-calendar-holiday-label svg { flex:0 0 auto; margin-top:.05rem; }
+.socconsult-fullcalendar .soc-calendar-holiday-label span { display:-webkit-box; min-width:0; overflow:hidden; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.socconsult-fullcalendar .fc-timegrid-event .soc-calendar-event-card { gap:.2rem; padding:.4rem .45rem; }
+.socconsult-fullcalendar .fc-list-event .soc-calendar-event-card { color:inherit; gap:.2rem; padding:.25rem 0; }
+.socconsult-fullcalendar .fc-list-event .soc-calendar-event-meta { justify-content:flex-start; }
+@media (max-width:767px) { .socconsult-fullcalendar .fc-toolbar { align-items:stretch; flex-direction:column; } .socconsult-fullcalendar .fc-toolbar-chunk { display:flex; justify-content:center; min-width:0; } .socconsult-fullcalendar .fc-toolbar-title { font-size:1rem; text-align:center; } .socconsult-fullcalendar .fc-button { min-height:2.75rem; padding-inline:.65rem; } .socconsult-fullcalendar .fc-daygrid-day-frame { min-height:6.5rem; } .socconsult-fullcalendar .soc-calendar-event-card { padding:.25rem .3rem; } .socconsult-fullcalendar .soc-calendar-event-meta { display:block; } .socconsult-fullcalendar .soc-calendar-event-meta span { display:block; } .socconsult-fullcalendar .soc-calendar-event-meta span:last-child { display:none; } .socconsult-fullcalendar .soc-calendar-event-title { font-size:.66rem; -webkit-line-clamp:2; } .socconsult-fullcalendar .soc-calendar-event-participant { font-size:.6rem; } .socconsult-fullcalendar .soc-calendar-holiday-label { font-size:.6rem; padding:.25rem .3rem; } }
+@media (max-width:374px) { .socconsult-fullcalendar .fc-button { font-size:.72rem; padding-inline:.45rem; } .socconsult-fullcalendar .fc-col-header-cell-cushion { font-size:.65rem; } }

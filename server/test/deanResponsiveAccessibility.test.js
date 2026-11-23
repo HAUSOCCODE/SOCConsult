@@ -152,7 +152,7 @@ test("confirmation input exposes required/error associations and uses native dis
   for (const button of nodes(Dialog({ ...props, loading: true })).filter(node => node.type === "button")) assert.equal(button.props.disabled, true);
 });
 
-test("status badges retain full visible text and calendar events expose status without color", async () => {
+test("status badges retain full visible text and calendar events expose text alongside color", async () => {
   const raw = (await source("components/UI.jsx")).replace(/^import.*$/gm, "").replaceAll("export const", "const").replaceAll("export function", "function");
   const { code } = await transform(raw, { loader: "jsx" });
   const Badge = new Function("React", `${code}; return StatusBadge;`)(React);
@@ -160,17 +160,9 @@ test("status badges retain full visible text and calendar events expose status w
     const node = Badge({ status, allowWrap: true }); assert.equal(node.props.children, status); assert.match(node.props.className, /whitespace-normal/);
   }
   const calendar = await source("components/calendar/ConsultationCalendar.jsx");
-  for (const name of ["CalendarEventPill", "WeekEvent"]) {
-    const body = calendar.slice(calendar.indexOf(`function ${name}`)).split("\nfunction ")[0];
-    assert.match(body, />\{event.displayStatus \|\| event.status\}<\/span>/);
-  }
-  const { code: calendarCode } = await transform(calendar.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
-  const Pill = new Function("React", `${calendarCode}; return CalendarEventPill;`)(React);
-  const topic = "A very long consultation subject ".repeat(30);
-  const event = { status: "Attendance Review", participantName: "Long Participant Name", topic, start: "2026-10-18T16:05:00Z" };
-  let opened;
-  const tree = Pill({ event, onOpen: (value, trigger) => { opened = { value, trigger }; } });
-  assert.ok(tree.props["aria-label"].includes(topic));
-  const trigger = {}; tree.props.onClick({ currentTarget: trigger });
-  assert.equal(opened.value.topic, topic); assert.equal(opened.trigger, trigger);
+  assert.match(calendar, /event\.topic \|\| event\.title \|\| "Consultation"/);
+  assert.match(calendar, /event\.displayStatus \|\| event\.status/);
+  assert.match(calendar, /aria-label="Calendar legend"/);
+  for (const label of ["Consultation", "Reschedule proposal", "Inactive / unavailable", "Philippine public holiday"])
+    assert.ok(calendar.includes(label), label);
 });

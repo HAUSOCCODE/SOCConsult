@@ -110,9 +110,10 @@ test("dashboard loading, empty totals, safe routes and range rendering", async (
     "consultations",
     "attendance-review",
     "reports",
-    "import",
   ])
     assert.ok(html.includes(`/dean/${path}`));
+  assert.ok(html.includes("/dean/users#csv-import"));
+  assert.doesNotMatch(html, /href="\/dean\/import"/);
   assert.doesNotMatch(
     html,
     /Confirmed|Awaiting Attendance Update|Expired|Pending Registration/,

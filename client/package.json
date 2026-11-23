@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fullcalendar/react": "^7.1.5",
     "@vitejs/plugin-react": "^4.4.1",
-    "vite": "^6.3.5",
+    "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "7.18.2",
-    "lucide-react": "^0.511.0"
+    "temporal-polyfill": "^1.0.8",
+    "vite": "^6.3.5"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",

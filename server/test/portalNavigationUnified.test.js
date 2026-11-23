@@ -12,9 +12,11 @@ test("Student and Faculty navigation use the requested unified order without dup
     source("layouts/DeanLayout.jsx"), source("App.jsx"),
   ]);
   const labels = value => [...value.matchAll(/label: "([^"]+)"/g)].map(match => match[1]);
+  const deanPersonal = dean.slice(dean.indexOf("const personal = ["), dean.indexOf("export default function DeanLayout"));
   assert.deepEqual(labels(student), ["Dashboard", "Find Faculty", "Availability", "Calendar", "Consultations / Requests", "Consultation History", "Notifications", "Account Settings"]);
   assert.deepEqual(labels(faculty), ["Dashboard", "Find Student", "Availability", "Calendar", "Consultations / Requests", "Consultation History", "Reports", "Notifications", "Account Settings"]);
-  assert.deepEqual(labels(dean).slice(6, 15), ["Dashboard", "Find Student", "Availability", "Calendar", "Consultations / Requests", "Consultation History", "Reports", "Notifications", "Account Settings"]);
+  assert.deepEqual(labels(deanPersonal), ["Dashboard", "Find Student", "Availability", "Calendar", "Consultations / Requests", "Consultation History", "Reports"]);
+  assert.match(dean, /label: "Notifications"/); assert.match(dean, /label: "Account Settings"/);
   assert.doesNotMatch(student, /My Availability|My Consultations/);
   assert.doesNotMatch(faculty, /label: "Consultation Requests"|label: "My Consultations"/);
   assert.match(app, /path="students" element=\{<FindStudent/);

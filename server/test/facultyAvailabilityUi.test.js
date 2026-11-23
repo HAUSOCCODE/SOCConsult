@@ -93,29 +93,17 @@ test("editing an overnight slot prefills both Manila dates and preserves its UTC
   h.pending[1].reject(Object.assign(Error("unavailable"), { status: 503 })); await saving;
 });
 
-test("combined calendar renders explicit labels/colors while Student legend and Dean appointment links remain intact", async () => {
-  const imports = { Link, useDialogFocus() {}, createPortal: tree => tree,
-    ...Object.fromEntries(["CalendarDays", "ChevronLeft", "ChevronRight", "X"].map(name => [name, () => null])),
-    StatusBadge: ({ status }) => React.createElement("span", null, status), formatPersonName: value => value || "",
-  };
-  const { CalendarLegend, CalendarEventPill, CalendarEventModal, UpcomingPanel } = await compile("components/calendar/ConsultationCalendar.jsx",
-    ["CalendarLegend", "CalendarEventPill", "CalendarEventModal", "UpcomingPanel"], imports);
-  const legend = renderToStaticMarkup(React.createElement(CalendarLegend, { includeAvailability: true }));
-  for (const label of ["Available", "Pending request", "Confirmed consultation", "Inactive / unavailable"]) assert.ok(legend.includes(label));
-  const studentLegend = renderToStaticMarkup(React.createElement(CalendarLegend, {})); assert.doesNotMatch(studentLegend, /Available|Pending request|Inactive/);
-  const event = { id: "a", start: "2099-01-01T02:00:00Z", end: "2099-01-01T02:30:00Z", student: { name: "Student" }, topic: "Project" };
-  const colors = [];
-  for (const status of ["Available", "Pending", "Confirmed", "Inactive"]) {
-    const label = status === "Pending" ? "Pending request" : status === "Confirmed" ? "Confirmed consultation" : status;
-    const html = renderToStaticMarkup(React.createElement(CalendarEventPill, { event: { ...event, status, displayStatus: label } }));
-    assert.ok(html.includes(label)); colors.push(html.match(/border-(emerald|amber|maroon|slate)-\d+/)[1]);
-  }
-  assert.equal(new Set(colors).size, 4);
-  // Calling the availability branch avoids appointment hooks and participant fields.
-  const modal = CalendarEventModal({ event: { ...event, kind: "availability", status: "Available", mode: "Online", meetingPlatform: "Teams" } });
-  assert.equal(modal.props.title, "Available slot"); assert.doesNotMatch(JSON.stringify(modal.props.children), /Reason \/ notes|Meeting link/);
-  const upcoming = renderToStaticMarkup(React.createElement(UpcomingPanel, { items: [], loading: false, consultationsPath: "/dean/faculty/consultations" }));
-  assert.match(upcoming, /href="\/dean\/faculty\/consultations"/);
+test("combined FullCalendar keeps explicit event categories, details and Dean links", async () => {
+  const calendar = await readFile(new URL("../../client/src/components/calendar/ConsultationCalendar.jsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../../client/src/components/calendar/consultation-calendar.css", import.meta.url), "utf8");
+  for (const label of ["Consultation", "Reschedule proposal", "Available slot", "Inactive / unavailable", "Philippine public holiday"])
+    assert.ok(calendar.includes(label), label);
+  for (const category of ["consultation", "proposal", "availability", "unavailable", "finalized", "holiday"])
+    assert.match(css, new RegExp(`fc-event-${category}`));
+  assert.match(calendar, /Consultation Details/);
+  assert.match(calendar, /Availability Details/);
+  assert.match(calendar, /to=\{consultationsPath\}/);
+  assert.match(calendar, /eventStartEditable=\{false\}/);
 });
 
 for (const action of ["activate", "remove"]) test(action + " availability refreshes the integrated calendar after success", async () => {

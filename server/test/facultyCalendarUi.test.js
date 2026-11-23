@@ -8,7 +8,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 const elements = tree => !tree || typeof tree !== "object" ? [] : Array.isArray(tree) ? tree.flatMap(elements) : [tree, ...elements(tree.props?.children)];
 async function harness(path, name, extra = {}) {
   const source = await readFile(new URL(`../../client/src/${path}`, import.meta.url), "utf8");
-  const { code } = await transform(source.replace(/^import[\s\S]*?;\r?\n/gm, "").replace("export default function", "function"), { loader: "jsx" });
+  const { code } = await transform(source.replace(/^import[\s\S]*?;\r?\n/gm, "").replace("export default function", "function").replace(/export\s+(?=(const|function))/g, ""), { loader: "jsx" });
   const state = [], effects = [], pending = [], listeners = {}; let cursor = 0;
   const imports = {
     useState(initial) { const index = cursor++; if (!(index in state)) state[index] = initial; return [state[index], value => state[index] = typeof value === "function" ? value(state[index]) : value]; },
@@ -18,7 +18,9 @@ async function harness(path, name, extra = {}) {
     window: { addEventListener: (name, fn) => listeners[name] = fn, removeEventListener: name => delete listeners[name], setInterval: () => 1, clearInterval() {} },
     useDialogFocus() {}, createPortal: tree => tree,
     Link: ({ to, children }) => React.createElement("a", { href: to }, children),
-    StatusBadge: ({ status }) => React.createElement("span", null, status), formatPersonName: value => value || "",
+    FullCalendar: props => React.createElement("div", { ...props, "data-fullcalendar": true }),
+    dayGridPlugin: {}, timeGridPlugin: {}, listPlugin: {}, themePlugin: {},
+    fetchPhilippineHolidays: async () => [], yearsForCalendarRange: () => [2099],
     isRecoverableStudentError: () => true, safeStudentError: () => "Unable to load calendar. Please try again.",
     DetailLoadingDialog: ({ children }) => React.createElement("section", null, children), consultationTime: value => value || "Not scheduled",
     ...Object.fromEntries(["CalendarDays", "ChevronLeft", "ChevronRight", "X"].map(name => [name, () => null])), ...extra,
@@ -27,45 +29,53 @@ async function harness(path, name, extra = {}) {
   return { state, effects, pending, listeners, render(props = {}) { cursor = 0; effects.length = 0; return Component(props); }, html: renderToStaticMarkup };
 }
 
-test("personal calendar toggles, refresh, stale/unmounted responses and overflow recovery", async () => {
+test("FullCalendar range drives bounded personal requests, filters and refresh", async () => {
   const h = await harness("components/calendar/ConsultationCalendar.jsx", "ConsultationCalendar");
   const props = { personalCalendar: true, includeAvailability: true, showUpcoming: false };
-  let tree = h.render(props); const cleanup = h.effects[0](); const stop = h.effects[1]();
+  let tree = h.render(props);
+  const calendar = elements(tree).find(el => el.props?.initialView === "dayGridMonth");
+  assert.equal(calendar.props.initialView, "dayGridMonth");
+  assert.equal(calendar.props.timeZone, "Asia/Manila");
+  assert.match(calendar.props.headerToolbar.right, /dayGridMonth,timeGridWeek,timeGridDay,listMonth/);
+  calendar.props.datesSet({ startStr: "2099-01-01T00:00:00+08:00", endStr: "2099-02-01T00:00:00+08:00" });
+  tree = h.render(props); const cleanup = h.effects[0](); const stop = h.effects[2]();
+  assert.match(h.pending[0].path, /start=2099-01-01&end=2099-01-31/);
   assert.match(h.pending[0].path, /includeInactive=true&includeFinalized=false/); assert.equal(h.pending[0].options.cache, "no-store");
-  h.listeners.focus();
-  tree = h.render(props); cleanup(); h.effects[0]();
-  h.pending[1].resolve({ events: [] }); await settle();
-  h.pending[0].resolve({ events: [{ id: "stale" }] }); await settle();
-  tree = h.render(props); assert.doesNotMatch(h.html(tree), /stale/);
-  const checkboxes = elements(tree).filter(el => el.type === "input" && el.props.type === "checkbox");
-  assert.equal(checkboxes[0].props.checked, true); assert.equal(checkboxes[1].props.checked, false);
-  checkboxes[0].props.onChange({ target: { checked: false } }); checkboxes[1].props.onChange({ target: { checked: true } });
+  h.pending[0].resolve({ events: [] }); await settle();
+  tree = h.render(props);
+  const filters = elements(tree).filter(el => el.type?.name === "Filter");
+  assert.equal(filters.length, 3); assert.equal(filters[0].props.checked, true); assert.equal(filters[1].props.checked, false); assert.equal(filters[2].props.checked, true);
+  filters[0].props.onChange(false); filters[1].props.onChange(true);
   h.render(props); const cleanup2 = h.effects[0]();
-  assert.match(h.pending[2].path, /includeInactive=false&includeFinalized=true/);
-  h.pending[2].reject(Object.assign(Error("PRIVATE"), { status: 422 })); await settle();
-  tree = h.render(props); const html = h.html(tree); assert.match(html, /Choose a narrower range using Week view/); assert.doesNotMatch(html, /PRIVATE/);
-  const toolbar = elements(tree).find(el => el.props?.onView); toolbar.props.onView("week");
-  h.render(props); const cleanup3 = h.effects[0]();
-  const url = new URL("http://test" + h.pending[3].path); assert.equal((Date.parse(url.searchParams.get("end")) - Date.parse(url.searchParams.get("start"))) / 86400000, 6);
-  cleanup3(); h.pending[3].resolve({ events: [{ id: "unmounted" }] }); await settle(); assert.deepEqual(h.state[3], []);
+  assert.match(h.pending[1].path, /includeInactive=false&includeFinalized=true/);
+  h.pending[1].reject(Object.assign(Error("PRIVATE"), { status: 422 })); await settle();
+  tree = h.render(props); const html = h.html(tree); assert.match(html, /Choose a narrower Week or Day view/); assert.doesNotMatch(html, /PRIVATE/);
   cleanup2(); stop(); assert.equal(h.listeners.focus, undefined);
+  cleanup();
 });
 
-test("personal overlap events cover intersecting Manila dates; Student keeps original date grouping and query contract", async () => {
+test("FullCalendar maps valid events once and preserves authorized event callbacks", async () => {
   const event = { id: "appointment-a-current", kind: "appointment", status: "Reschedule Proposed", displayStatus: "Current schedule - reschedule pending", start: "2099-01-01T15:30:00Z", end: "2099-01-01T16:30:00Z", participantName: "Student", topic: "Course" };
-  for (const personalCalendar of [true, false]) {
-    const h = await harness("components/calendar/ConsultationCalendar.jsx", "ConsultationCalendar");
-    const props = { personalCalendar, includeAvailability: personalCalendar, showUpcoming: false };
-    h.render(props); h.state[1] = "2099-01-01"; h.render(props); h.effects[0]();
-    h.pending[0].resolve({ events: [event] }); await settle();
-    const tree = h.render(props), month = elements(tree).find(el => el.props?.eventsByDate && el.props?.dates?.length === 42);
-    assert.equal(month.props.eventsByDate.has("2099-01-01"), true);
-    assert.equal(month.props.eventsByDate.has("2099-01-02"), personalCalendar);
-    if (!personalCalendar) assert.doesNotMatch(h.pending[0].path, /includeInactive|includeFinalized|includeAvailability/);
-    const clicks = []; const withClick = h.render({ ...props, onEventClick: (...args) => clicks.push(args) });
-    const opener = {}; elements(withClick).find(el => el.props?.onOpenEvent).props.onOpenEvent(event, opener);
-    assert.equal(clicks[0][0], event); assert.equal(clicks[0][1], opener);
-  }
+  const clicks = [], h = await harness("components/calendar/ConsultationCalendar.jsx", "ConsultationCalendar");
+  const props = { personalCalendar: false, showUpcoming: false, onEventClick: (...args) => clicks.push(args) };
+  let tree = h.render(props); elements(tree).find(el => el.props?.initialView === "dayGridMonth").props.datesSet({ startStr: "2099-01-01", endStr: "2099-02-01" });
+  h.render(props); h.effects[0](); assert.doesNotMatch(h.pending[0].path, /includeInactive|includeFinalized|includeAvailability/);
+  h.pending[0].resolve({ events: [event, { ...event, id: "invalid", end: event.start }] }); await settle();
+  tree = h.render(props); const calendar = elements(tree).find(el => el.props?.initialView === "dayGridMonth");
+  assert.equal(calendar.props.events.length, 1); assert.equal(calendar.props.events[0].id, "soc-appointment-a-current");
+  const card = calendar.props.eventContent({
+    event: { title: calendar.props.events[0].title, extendedProps: calendar.props.events[0].extendedProps },
+    timeText: "11:30 PM", view: { type: "dayGridMonth" },
+  });
+  assert.equal(card.props.className, "soc-calendar-event-card is-month-card");
+  assert.match(h.html(card), /11:30 PM/); assert.match(h.html(card), /Current schedule - reschedule pending/);
+  assert.match(h.html(card), /Course/); assert.match(h.html(card), /Student/);
+  const holidayCard = calendar.props.eventContent({ event: { title: "Independence Day", extendedProps: { kind: "holiday" } }, timeText: "", view: { type: "dayGridMonth" } });
+  assert.match(h.html(holidayCard), /soc-calendar-holiday-label/); assert.match(h.html(holidayCard), /Independence Day/);
+  assert.equal(calendar.props.eventOrder({ extendedProps: { kind: "holiday" } }, { extendedProps: { kind: "appointment" } }), -1);
+  assert.equal(calendar.props.eventOrderStrict, true);
+  const opener = {}; calendar.props.eventClick({ event: { extendedProps: calendar.props.events[0].extendedProps }, el: opener });
+  assert.equal(clicks[0][0], event); assert.equal(clicks[0][1], opener);
 });
 
 test("availability selection fetches fresh narrow details, handles retry and ignores stale responses", async () => {

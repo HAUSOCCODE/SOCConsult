@@ -22,7 +22,7 @@ test("Faculty pages expose intentional loading, empty, and retry states", async 
   assert.match(requests, /Loading consultation requests/);
   assert.match(requests, /No pending consultation requests/);
   assert.match(availability, /No consultation schedules published yet/);
-  assert.match(calendar, /CalendarSkeleton/);
+  assert.match(calendar, /Loading consultation calendar/);
   assert.match(consultations, /No upcoming consultations/);
   assert.match(history, /No consultation history yet/);
   assert.match(history, /No historical consultations match the selected filters/);
