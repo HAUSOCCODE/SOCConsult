@@ -12,7 +12,7 @@ const MAX_SIZE = 4 * 1024 * 1024;
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const allowedExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
 
-export default function ProfilePictureEditor() {
+export default function ProfilePictureEditor({ compact = false }) {
   const { user, updateUser } = useAuth();
   const toast = useToast();
   const inputRef = useRef(null);
@@ -101,12 +101,13 @@ export default function ProfilePictureEditor() {
 
   return (
     <>
-      <div className="flex shrink-0 flex-col items-center gap-3">
+      <div className={compact ? "flex shrink-0 flex-col items-center gap-2" : "flex shrink-0 flex-col items-center gap-3"}>
         <div className="relative">
           <ProfileImagePreview
             user={user}
-            className="h-24 w-24 rounded-2xl bg-maroon-800 text-3xl font-bold text-gold-300 shadow-lg ring-4 ring-maroon-100 md:h-20 md:w-20"
+            className={compact ? "h-16 w-16 rounded-xl bg-maroon-800 text-2xl font-bold text-gold-300 ring-1 ring-maroon-100 sm:h-20 sm:w-20" : "h-24 w-24 rounded-2xl bg-maroon-800 text-3xl font-bold text-gold-300 shadow-lg ring-4 ring-maroon-100 md:h-20 md:w-20"}
           />
+          {!compact && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
@@ -115,20 +116,21 @@ export default function ProfilePictureEditor() {
           >
             <Pencil size={14} aria-hidden="true" />
           </button>
+          )}
         </div>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="btn-action-sm gap-1.5"
+          className={compact ? "min-h-9 rounded-lg px-2 text-xs font-semibold text-maroon-800 hover:bg-maroon-50 focus-visible:ring-2 focus-visible:ring-maroon-200" : "btn-action-sm gap-1.5"}
         >
-          <Pencil size={13} aria-hidden="true" className="md:hidden" />
+          {!compact && <Pencil size={13} aria-hidden="true" className="md:hidden" />}
           Change Photo
         </button>
         {user.profilePicture && (
           <button
             type="button"
             onClick={() => setRemoving(true)}
-            className="btn-danger-action-sm"
+            className={compact ? "min-h-9 rounded-lg px-2 text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-200" : "btn-danger-action-sm"}
           >
             Remove Photo
           </button>

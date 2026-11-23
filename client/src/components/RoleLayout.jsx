@@ -90,10 +90,7 @@ export default function RoleLayout({ role, navigation, workspaceLabel, notificat
   const currentPage =
     navigation.find(({ path, activePaths = [] }) => location.pathname === path.split("?")[0] || activePaths.includes(location.pathname))?.label ||
     ({ "/dean/appointments": "Appointments Management", "/dean/audit-logs": "Audit Logs", "/dean/faculty/calendar": "Consultation Calendar" }[location.pathname] || "Dashboard");
-  const displayName =
-    user.role === "dean" && ["ConsultIO Administrator", "SOCConsult Administrator", "ConsultIO Dean"].includes(user.name)
-      ? "SOCConsult Dean"
-      : formatPersonName(user);
+  const displayName = formatPersonName(user);
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
     try {
