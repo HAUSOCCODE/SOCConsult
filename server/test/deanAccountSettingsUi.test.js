@@ -10,7 +10,14 @@ test("Dean account UI has only approved edits, read-only identity and accurate s
   assert.doesNotMatch(app + page, /SystemSettings|System Settings|settings\/password/);
   const keys = JSON.parse(page.match(/const editable = (\[[^;]+\]);/)[1]);
   assert.deepEqual(keys, ["firstName", "middleName", "lastName", "office", "contactNumber"]);
-  for (const text of ["Dean profile", "Contact details", "Profile picture", "Account security", "eight-hour expiration", "Password changes do not sign out existing sessions."]) assert.ok(page.includes(text), text);
+  for (const text of ["Personal Information", "Account Information", "<ProfilePictureEditor compact", "<SecuritySettings compact", "eight-hour expiration", "Password changes do not sign out existing sessions."]) assert.ok(page.includes(text), text);
+  assert.doesNotMatch(page, /user\.(studentId|yearLevel)|Not recorded|ConsultIO/);
+  assert.match(page, /items.filter/);
+  assert.match(page, /formatPersonName\(user\)/);
+  assert.match(page, /user.accountStatus \|\| "Status unavailable"/);
+  const layout = await source("components/RoleLayout.jsx");
+  assert.match(layout, /const displayName = formatPersonName\(user\)/);
+  assert.doesNotMatch(layout, /ConsultIO Administrator|SOCConsult Dean/);
   for (const key of ["username", "email", "institutionalId", "employeeId", "position", "specialization", "accountSource", "accountStatus", "passwordChangedAt"]) assert.ok(page.includes(`user.${key}`));
   assert.match(page, /if \(pending.current\) return/); assert.match(page, /disabled=\{saving\}/);
   assert.match(picture, /if \(!selection \|\| pending.current\) return/);
