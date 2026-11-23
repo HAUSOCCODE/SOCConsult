@@ -5,8 +5,10 @@ const handle = (work) => async (req, res) => {
     const result = await work(req);
     return res.json(result);
   } catch (error) {
-    const status = [400, 403, 404, 409, 413].includes(error.statusCode) ? error.statusCode : 503;
+    const status = [400, 403, 404, 409, 413, 422, 429].includes(error.statusCode) ? error.statusCode : 503;
     if (error?.status === 429) res.set("Retry-After", "60");
+    const code = error.message === "AI_EMPTY_DATASET" ? "AI_EMPTY_DATASET" : error.message === "AI_IN_PROGRESS" ? "AI_IN_PROGRESS" : status === 503 ? (["APIConnectionTimeoutError", "AbortError"].includes(error.name) || error.code === "ETIMEDOUT" ? "AI_TIMEOUT" : error.message === "AI_INVALID_OUTPUT" ? "AI_INVALID_OUTPUT" : "AI_UNAVAILABLE") : undefined;
+    if (code) return res.status(status).json({ code, message: code === "AI_EMPTY_DATASET" ? "No consultations match these filters. Select another range or filter." : "AI summary is temporarily unavailable. PDF reports remain available." });
     return res.status(status).json({ message: status === 409 ? "This narrative has already been reviewed or its version changed. Reload it before continuing." : status === 503 ? "AI summary is temporarily unavailable. PDF reports remain available." : status === 413 ? "Narrative request exceeds safety limits. Narrow the filters." : "Invalid or unauthorized narrative request." });
   }
 };

@@ -13,10 +13,103 @@ import AuditLog from "../src/models/AuditLog.js";
 import ReportNarrative from "../src/models/ReportNarrative.js";
 import ReportNarrativeReview from "../src/models/ReportNarrativeReview.js";
 import { aggregateSnapshot, createNarrative, readNarrative, reviewNarrative, DISCLAIMER } from "../src/services/reportNarrativeService.js";
-import { generateNarrative } from "../src/services/reportNarrativeAdapter.js";
+import { generateNarrative, renderNarrative, narrativeMaterial } from "../src/services/reportNarrativeAdapter.js";
 import { buildReport, parseReportFilters, loadReportData } from "../src/services/deanReportDataService.js";
 const id = "1234567890abcdef12345678", filters = { start: "2026-10-01", end: "2026-10-16" }, actor = { id, _id: id, role: "dean", accountStatus: "Active" };
 const chain = value => { const q = { then: (yes, no) => Promise.resolve(value).then(yes, no) }; for (const k of ["select", "session", "option"]) q[k] = () => q; return q; };
+const completion = input => {
+  const { candidates, totalConsultations } = JSON.parse(input.messages[1].content);
+  return { choices: [{ finish_reason: "stop", message: { content: JSON.stringify(Object.fromEntries(Object.entries(candidates).map(([key, ids]) => [key, ids.slice(0, totalConsultations === 1 ? 1 : 2)]))) } }] };
+};
+const snapshotPayload = input => { const { candidates, candidateText, ...snapshot } = JSON.parse(input.messages[1].content); return snapshot; };
+
+test("structured narratives explain authoritative nonzero findings with targeted recommendations", async () => {
+  const rows = [
+    { status: "Completed", consultationMode: "Online", attendance: { finalOutcome: "Completed", finalizationSource: "dean_review" } },
+    { status: "Completed", consultationMode: "Online", attendance: { finalOutcome: "Student No-show", finalizationSource: "participant_agreement" } },
+    { status: "Completed", consultationMode: "Face-to-Face" },
+    { status: "Attendance Review", consultationMode: "Online" },
+    { status: "Pending" },
+  ];
+  const snapshot = aggregateSnapshot(filters, buildReport(rows, filters, new Date()).summary);
+  let calls = 0;
+  const client = { chat: { completions: { create: async input => { calls++; return completion(input); } } } };
+  const text = await generateNarrative(snapshot, client);
+  assert.equal(calls, 1);
+  assert.deepEqual(text.split("\n").filter(line => ["Executive Summary", "Consultation Activity", "Attendance Analysis", "Key Observations", "Recommendations"].includes(line)), ["Executive Summary", "Consultation Activity", "Attendance Analysis", "Key Observations", "Recommendations"]);
+  assert.match(text, /covers 5 consultation requests/);
+  assert.match(text, /3 requests were recorded as Completed/);
+  assert.match(text, /remaining 1 request fell into other workflow statuses/);
+  assert.match(text, /3 online requests, 1 face-to-face request and 1 request without a recorded mode/);
+  for (const phrase of ["1 consultation had verified attendance", "1 record had a verified student no-show", "1 historical completion remained unverified", "1 record was under attendance review", "1 record had no verified final attendance outcome"]) assert.ok(text.includes(phrase), phrase);
+  assert.doesNotMatch(text, /Expired|Cancelled|Rejected|Faculty No-show|: 0/);
+  assert.match(text, /does not establish attendance/);
+  assert.match(text, /prioritize outstanding attendance cases/i);
+  assert.ok(text.length < 2200);
+  const clean = aggregateSnapshot(filters, buildReport(rows.slice(0, 1), filters, new Date()).summary);
+  assert.deepEqual(Object.keys(narrativeMaterial(clean).recommendations), ["complete"]);
+});
+
+test("single-record narratives remain concise and distinguish verified attendance from workflow completion", async () => {
+  const run = async row => {
+    const snapshot = aggregateSnapshot(filters, buildReport([row], filters, new Date()).summary);
+    return generateNarrative(snapshot, { chat: { completions: { create: async input => completion(input) } } });
+  };
+  const verified = await run({ status: "Completed", consultationMode: "Online", attendance: { finalOutcome: "Completed", finalizationSource: "dean_review" } });
+  assert.match(verified, /covers 1 consultation request created/);
+  assert.match(verified, /1 request was recorded as Completed/);
+  assert.match(verified, /1 consultation had verified attendance/);
+  assert.doesNotMatch(verified, /no-show|unverified|Workflow completion alone|: 0/);
+  assert.ok(verified.split(/\s+/).length < 130);
+  const historical = await run({ status: "Completed", consultationMode: "Online" });
+  assert.match(historical, /1 historical completion remained unverified/);
+  assert.match(historical, /does not establish attendance/);
+  assert.doesNotMatch(historical, /1 consultation had verified attendance/);
+  assert.ok(historical.split(/\s+/).length < 160);
+  const noShow = await run({ status: "Completed", attendance: { finalOutcome: "Faculty No-show", finalizationSource: "dean_review" } });
+  assert.match(noShow, /1 record had a verified faculty no-show/);
+  assert.doesNotMatch(noShow, /1 consultation had verified attendance/);
+});
+
+test("invalid provider plans cannot inject claims, omit facts, or cause retries", async () => {
+  const snapshot = aggregateSnapshot(filters, buildReport([{ status: "Pending" }], filters, new Date()).summary);
+  const candidates = { observations: ["scope", "verification"], recommendations: ["review", "verification"] };
+  for (const content of ["not JSON", "null", "[]", JSON.stringify({ ...candidates, count: 99 }), JSON.stringify({ ...candidates, observations: ["scope", "scope"] }), JSON.stringify({ ...candidates, recommendations: ["review"] }), JSON.stringify({ ...candidates, observations: ["scope", "Attendance increased by 99%"] })]) {
+    let calls = 0;
+    const client = { chat: { completions: { create: async () => { calls++; return { choices: [{ finish_reason: "stop", message: { content } }] }; } } } };
+    await assert.rejects(generateNarrative(snapshot, client), /AI_INVALID_OUTPUT/);
+    assert.equal(calls, 1);
+  }
+  const timeout = Object.assign(new Error("private provider detail"), { name: "APIConnectionTimeoutError" });
+  let calls = 0;
+  await assert.rejects(generateNarrative(snapshot, { chat: { completions: { create: async () => { calls++; throw timeout; } } } }), error => error === timeout);
+  assert.equal(calls, 1);
+});
+
+test("empty datasets and unauthorized actors never invoke AI; duplicate requests are bounded", async () => {
+  const oldAggregate = Appointment.aggregate, oldAudit = AuditLog.create;
+  let calls = 0, release;
+  const adapter = async () => { calls++; await new Promise(resolve => { release = resolve; }); throw new Error("AI_UNAVAILABLE"); };
+  const oldNotification = Notification.create;
+  Notification.create = async records => records;
+  AuditLog.create = async records => records;
+  try {
+    Appointment.aggregate = () => chain([]);
+    await assert.rejects(createNarrative(filters, actor, adapter), { statusCode: 422 });
+    await assert.rejects(generateNarrative({ totalConsultations: 0 }, { chat: { completions: { create: () => assert.fail("empty provider call") } } }), { statusCode: 422 });
+    for (const identity of [{ ...actor, role: "faculty" }, { ...actor, role: "student" }, { ...actor, accountStatus: "Inactive" }]) await assert.rejects(createNarrative(filters, identity, adapter), { statusCode: 403 });
+    assert.equal(calls, 0);
+    Appointment.aggregate = () => chain([{ status: "Pending" }]);
+    const first = createNarrative(filters, actor, adapter);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 1);
+    await assert.rejects(createNarrative(filters, actor, adapter), { statusCode: 429 });
+    release(); await assert.rejects(first, /AI_UNAVAILABLE/);
+    // Failure releases the guard; a manual retry can load the dataset again.
+    Appointment.aggregate = () => chain([]);
+    await assert.rejects(createNarrative(filters, actor, adapter), { statusCode: 422 });
+  } finally { Appointment.aggregate = oldAggregate; AuditLog.create = oldAudit; Notification.create = oldNotification; }
+});
 
 test("aggregate payload matches report classifications and adapter has no tools or private data", async () => {
   const rows = [{ status: "Completed", attendance: {}, consultationMode: "Online", reason: "SECRET", student: { name: "SECRET" } }, { status: "Completed", attendance: { finalOutcome: "Student No-show", finalizationSource: "dean_review" }, consultationMode: "Face-to-Face" }];
@@ -25,9 +118,9 @@ test("aggregate payload matches report classifications and adapter has no tools 
   assert.equal(snapshot.attendanceOutcomeCounts["Historical unverified Completed"], 1);
   assert.equal(snapshot.attendanceOutcomeCounts["Student No-show"], 1);
   let request;
-  const client = { chat: { completions: { create: async input => { request = input; return { choices: [{ finish_reason: "stop", message: { content: "Two consultations were recorded." } }] }; } } } };
-  assert.equal(await generateNarrative(snapshot, client), "Two consultations were recorded.");
-  assert.deepEqual(JSON.parse(request.messages[1].content), snapshot);
+  const client = { chat: { completions: { create: async input => { request = input; return completion(input); } } } };
+  assert.equal(await generateNarrative(snapshot, client), renderNarrative(snapshot, JSON.parse(completion(request).choices[0].message.content)));
+  assert.deepEqual(snapshotPayload(request), snapshot);
   assert.equal(request.tools, undefined); assert.equal(request.tool_choice, undefined);
   assert.doesNotMatch(JSON.stringify(request), /SECRET/);
   for (const message of [{ content: "" }, { content: "x".repeat(3001) }, { content: "https://secret.test" }, { content: "ok", tool_calls: [{}] }, { content: "ok", function_call: {} }]) {
@@ -64,12 +157,12 @@ test("server aggregate reaches mocked Groq without any private field or mutation
   patch(ReportNarrative, "create", async ([record]) => [{ ...record, _id: id }]);
   patch(Groq.prototype, "post", async (path, options) => {
     calls++; assert.equal(path, "/openai/v1/chat/completions"); outbound = options.body;
-    return { choices: [{ finish_reason: "stop", message: { content: "One consultation was completed." } }] };
+    return completion(outbound);
   });
   try {
     const result = await createNarrative(filters, actor);
     assert.equal(calls, 1);
-    const payload = JSON.parse(outbound.messages[1].content);
+    const payload = snapshotPayload(outbound);
     assert.deepEqual(payload, aggregateSnapshot(filters, buildReport([{
       status: "Completed", consultationMode: "Online", attendance: { finalOutcome: "Completed", finalizationSource: "dean_review" },
     }], filters, new Date()).summary));
@@ -143,7 +236,7 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
   const oldAggregate = Appointment.aggregate, oldKey = process.env.GROQ_API_KEY;
   delete process.env.GROQ_API_KEY;
   let protectedReads = 0;
-  Appointment.aggregate = () => { protectedReads++; return chain([]); };
+  Appointment.aggregate = () => { protectedReads++; return chain([{ status: "Pending", consultationMode: "Online" }]); };
   User.findById = value => chain({ ...actor, id: value, _id: value, role: value.startsWith("f") ? "faculty" : value.startsWith("s") ? "student" : "dean" });
   const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}/api`;
@@ -155,6 +248,9 @@ test("HTTP isolation, authorization, rate limits, no-store and sanitized parser/
     assert.equal(protectedReads, 0, "authorization must precede aggregate reads");
     const unavailable = await request("/dean/reports/ai-summaries", filters, "dean-unavailable");
     assert.equal(unavailable.status, 503); assert.match(await unavailable.text(), /PDF reports remain available/);
+    Appointment.aggregate = () => chain([]);
+    const empty = await request("/dean/reports/ai-summaries", filters, "dean-empty");
+    assert.equal(empty.status, 422); assert.equal((await empty.json()).code, "AI_EMPTY_DATASET");
     for (const [body, status] of [['{"SECRET":', 400], [JSON.stringify({ SECRET: "x".repeat(2200) }), 413]]) { const r = await request("/dean/reports/ai-summaries", body); assert.equal(r.status, status); assert.equal(r.headers.get("cache-control"), "no-store"); assert.doesNotMatch(await r.text(), /SECRET/); }
     assert.equal((await request("/dean/reports/ai-summaries?total=9", filters)).status, 400);
     for (let i = 0; i < 3; i++) assert.equal((await request("/dean/reports/ai-summaries", { ...filters, prompt: "SECRET" })).status, 400);
@@ -177,7 +273,7 @@ test("AI failure notices preserve original errors and skip uncertain commit outc
   let mode = "provider", attempts = 0;
   const raw = new Error("AI_INVALID_OUTPUT");
   patch(AuditLog, "create", async records => records);
-  patch(Appointment, "aggregate", () => chain([]));
+  patch(Appointment, "aggregate", () => chain([{ status: "Pending", consultationMode: "Online" }]));
   patch(mongoose, "startSession", async () => ({
     async withTransaction() {
       if (mode === "uncertain") throw Object.assign(new Error("SECRET uncertain"), { hasErrorLabel: label => label === "UnknownTransactionCommitResult" });
