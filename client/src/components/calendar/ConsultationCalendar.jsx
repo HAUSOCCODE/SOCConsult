@@ -46,6 +46,31 @@ export function mapSocConsultEvent(event) {
   };
 }
 
+export function calendarEventOrder(first, second) {
+  const firstHoliday = first.extendedProps?.kind === "holiday";
+  const secondHoliday = second.extendedProps?.kind === "holiday";
+  if (firstHoliday !== secondHoliday) return firstHoliday ? -1 : 1;
+  return String(first.startStr || first.start || "").localeCompare(String(second.startStr || second.start || ""));
+}
+
+function renderEventContent(info) {
+  const { event, timeText, view } = info;
+  const details = event.extendedProps;
+  if (details.kind === "holiday") return <span className="soc-calendar-holiday-label"><CalendarDays size={12} aria-hidden="true" /><span>{event.title}</span></span>;
+
+  const source = details.socconsultEvent || {};
+  const availability = details.kind === "availability";
+  const participant = source.participantName || source.facultyName || source.student?.name || "Consultation participant";
+  const subject = source.topic || source.title || (availability ? "Consultation availability" : "Consultation");
+  const status = source.displayStatus || source.status || (availability ? "Available" : "Scheduled");
+  const compact = view.type === "dayGridMonth";
+  return <span className={`soc-calendar-event-card ${compact ? "is-month-card" : "is-time-card"}`}>
+    <span className="soc-calendar-event-meta"><span>{timeText}</span><span>{status}</span></span>
+    <span className="soc-calendar-event-title">{subject}</span>
+    {!availability && <span className="soc-calendar-event-participant">{participant}</span>}
+  </span>;
+}
+
 export default function ConsultationCalendar({ apiPath = "/faculty/calendar", includeAvailability = false,
   consultationsPath = "/faculty/appointments", title = "Consultation Calendar",
   description = "View your confirmed and rescheduled faculty-student consultations by date.", onEventClick,
@@ -139,7 +164,7 @@ export default function ConsultationCalendar({ apiPath = "/faculty/calendar", in
       <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-4" aria-busy={loading}>
         {loading && <div className="mb-3 rounded-lg bg-maroon-50 px-3 py-2 text-sm font-semibold text-maroon-800" role="status">Loading consultation calendar…</div>}
         {holidayWarning && <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">{holidayWarning}</div>}
-        <div className="socconsult-fullcalendar"><FullCalendar plugins={PLUGINS} themeSystem="monarch" initialView="dayGridMonth" timeZone={TIMEZONE} events={calendarEvents} datesSet={handleDatesSet} eventClick={openEvent} editable={false} eventStartEditable={false} eventDurationEditable={false} selectable={false} nowIndicator stickyHeaderDates dayMaxEvents={3} height="auto" expandRows headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listMonth" }} buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "List" }} views={{ timeGridWeek: { dayHeaderFormat: { weekday: "short", month: "numeric", day: "numeric" } }, listMonth: { noEventsContent: emptyMessage || "No consultations are scheduled in this period." } }} slotMinTime="06:00:00" slotMaxTime="22:00:00" eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }} /></div>
+        <div className="socconsult-fullcalendar"><FullCalendar plugins={PLUGINS} themeSystem="monarch" initialView="dayGridMonth" timeZone={TIMEZONE} events={calendarEvents} datesSet={handleDatesSet} eventClick={openEvent} eventContent={renderEventContent} eventOrder={calendarEventOrder} eventOrderStrict editable={false} eventStartEditable={false} eventDurationEditable={false} selectable={false} nowIndicator stickyHeaderDates dayMaxEvents={4} height="auto" expandRows headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listMonth" }} buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "List" }} views={{ timeGridWeek: { dayHeaderFormat: { weekday: "short", month: "numeric", day: "numeric" } }, listMonth: { noEventsContent: emptyMessage || "No consultations are scheduled in this period." } }} slotMinTime="06:00:00" slotMaxTime="22:00:00" eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }} /></div>
         {!loading && events.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">{emptyMessage || "No consultations are scheduled in this period."}</p>}
         <CalendarLegend includeAvailability={includeAvailability} showFinalized={includeFinalized} showHolidays={showHolidays} />
       </section>

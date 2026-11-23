@@ -41,7 +41,7 @@ async function harness(path, name, extra = {}) {
   const raw = await source(path);
   const icons = /import \{([^}]+)\} from "lucide-react"/s.exec(raw);
   if (icons) for (const name of icons[1].split(",").map(value => value.trim()).filter(Boolean)) imports[name] ??= () => null;
-  const body = raw.replaceAll("import.meta.env.VITE_API_URL", "undefined").replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replaceAll("export default function", "function").replaceAll("export function", "function").replaceAll("export const", "const");
+  const body = raw.replaceAll("import.meta.env.VITE_API_URL", "undefined").replace(/^import[\s\S]*?from\s+["'][^"']+["'];?/gm, "").replace(/^import\s+["'][^"']+["'];?\s*$/gm, "").replaceAll("export default function", "function").replaceAll("export function", "function").replaceAll("export const", "const");
   const compiled = await transform(body, { loader: "jsx" });
   for (const key of Object.keys({ ...sharedClientImports, ...imports })) { if (new RegExp(`(?:function|const) ${key}\\b`).test(body)) delete imports[key]; }
   const Component = new Function("React", ...Object.keys({ ...sharedClientImports, ...imports }), `${compiled.code}; return ${name};`)(React, ...Object.values({ ...sharedClientImports, ...imports }));
@@ -147,15 +147,18 @@ test("AI conflict requires a read-only refresh and unmounted generation cannot r
   const summary = { id: "id", version: 1, filters: props.filters, reviewState: "unreviewed", narrative: "Safe aggregate narrative" };
   let tree = h.render(props); h.effects(); let pending = find(tree, "button")[0].props.onClick();
   h.requests[0].resolve(summary); await pending; tree = h.render(props);
-  assert.match(text(tree), /ready for review/);
+  assert.match(text(tree), /Draft ready for Dean review\./);
   pending = find(tree, "button")[1].props.onClick(); h.requests[1].reject({ status: 409, message: "SECRET" }); await pending;
   tree = h.render(props); assert.doesNotMatch(text(tree), /SECRET/);
-  assert.equal(find(tree, "button").at(-1).props.disabled, true);
+  assert.equal(find(tree, "button").find(n => n.props.children === "I have reviewed and approve this narrative").props.disabled, true);
   pending = find(tree, "button").find(n => n.props.children === "Refresh narrative status").props.onClick();
-  assert.equal(h.requests[2].options, undefined); h.requests[2].resolve({ ...summary, reviewState: "reviewed" }); await pending;
+  assert.equal(h.requests[2].options.method, undefined);
+  assert.equal(h.requests[2].options.body, undefined);
+  assert.equal(h.requests[2].options.signal instanceof AbortSignal, true);
+  h.requests[2].resolve({ ...summary, reviewState: "reviewed", version: 2, reviewedAt: "2026-10-18T08:00:00.000Z" }); await pending;
   assert.match(text(h.render(props)), /Review completed/);
   pending = find(h.render(props), "button")[0].props.onClick(); h.unmount(); h.requests[3].resolve({ ...summary, id: "stale" }); await pending;
-  assert.equal(h.state[0].id, "id");
+  assert.equal(h.state[0], null);
 });
 
 test("shared notification mutations guard synchronous duplicates for Dean, Student and Faculty", async () => {

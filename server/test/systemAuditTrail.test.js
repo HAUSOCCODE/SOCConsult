@@ -170,7 +170,12 @@ test("CSV validation is atomic with its safe count-only audit, rejects safely, r
 
 test("AI attempts distinguish known rejection, timeout, successful persistence and uncertain commit", async () => {
   const audits = []; let mode = "provider";
-  patch(Appointment, "aggregate", () => chain([]));
+  patch(Appointment, "aggregate", () => chain([{
+    status: "Confirmed", consultationMode: "Online",
+    createdAt: new Date("2026-01-10T00:00:00Z"),
+    startAt: new Date("2026-01-20T01:00:00Z"), endAt: new Date("2026-01-20T01:30:00Z"),
+    attendance: {},
+  }]));
   patch(User, "findById", () => chain(actor));
   patch(Notification, "create", async values => values);
   patch(AuditLog, "create", async (values, options) => { for (const value of values) { validateAudit(value); audits.push({ ...value, atomic: Boolean(options?.session) }); } return values; });

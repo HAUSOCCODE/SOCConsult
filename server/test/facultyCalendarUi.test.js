@@ -63,6 +63,17 @@ test("FullCalendar maps valid events once and preserves authorized event callbac
   h.pending[0].resolve({ events: [event, { ...event, id: "invalid", end: event.start }] }); await settle();
   tree = h.render(props); const calendar = elements(tree).find(el => el.props?.initialView === "dayGridMonth");
   assert.equal(calendar.props.events.length, 1); assert.equal(calendar.props.events[0].id, "soc-appointment-a-current");
+  const card = calendar.props.eventContent({
+    event: { title: calendar.props.events[0].title, extendedProps: calendar.props.events[0].extendedProps },
+    timeText: "11:30 PM", view: { type: "dayGridMonth" },
+  });
+  assert.equal(card.props.className, "soc-calendar-event-card is-month-card");
+  assert.match(h.html(card), /11:30 PM/); assert.match(h.html(card), /Current schedule - reschedule pending/);
+  assert.match(h.html(card), /Course/); assert.match(h.html(card), /Student/);
+  const holidayCard = calendar.props.eventContent({ event: { title: "Independence Day", extendedProps: { kind: "holiday" } }, timeText: "", view: { type: "dayGridMonth" } });
+  assert.match(h.html(holidayCard), /soc-calendar-holiday-label/); assert.match(h.html(holidayCard), /Independence Day/);
+  assert.equal(calendar.props.eventOrder({ extendedProps: { kind: "holiday" } }, { extendedProps: { kind: "appointment" } }), -1);
+  assert.equal(calendar.props.eventOrderStrict, true);
   const opener = {}; calendar.props.eventClick({ event: { extendedProps: calendar.props.events[0].extendedProps }, el: opener });
   assert.equal(clicks[0][0], event); assert.equal(clicks[0][1], opener);
 });
