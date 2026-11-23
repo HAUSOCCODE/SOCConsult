@@ -123,26 +123,28 @@ export default function ReportsAnalytics() {
     }
   };
   return (
-    <div className="space-y-6 pb-16">
+    <div className="mx-auto max-w-7xl space-y-6 pb-16">
       <div>
         <h1 className="text-2xl font-bold text-maroon-900">
-          School of Computing PDF Reports
+          Reports & Analytics
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Generate an authorized SOC-wide consultation report. Dates use request
-          creation time in Asia/Manila.
+          School of Computing consultation reporting. Choose one set of filters
+          for your PDF report and SOC Insights.
         </p>
       </div>
       <form aria-describedby={error ? "report-filter-error" : undefined}
         onSubmit={generate}
-        className="space-y-5 rounded-2xl border bg-white p-6"
+        className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
         aria-busy={busy}
       >
         <fieldset
           disabled={busy}
-          aria-describedby={error ? "report-filter-error" : undefined} className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-describedby={error ? "report-filter-error" : undefined} className="min-w-0 space-y-4"
         >
-          <legend className="mb-3 font-semibold">Report filters</legend>
+          <legend className="text-lg font-semibold text-slate-900">Report filters</legend>
+          <p className="text-sm text-slate-600">Applies to both features below. Dates use request creation time in Asia/Manila (up to 366 days).</p>
+          <div className="grid min-w-0 gap-4 text-sm font-medium text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
           <label>
             Start date
             <input aria-describedby={error ? "report-filter-error" : undefined}
@@ -164,17 +166,7 @@ export default function ReportsAnalytics() {
             />
           </label>
           <div>
-            <label>
-              Find faculty
-              <input aria-describedby={error ? "report-filter-error" : undefined}
-                className="field mt-1"
-                type="search"
-                maxLength={100}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
-            <label className="mt-2 block">
+            <label className="block">
               Faculty
               <select aria-describedby={error ? "report-filter-error" : undefined}
                 className="field mt-1"
@@ -195,7 +187,20 @@ export default function ReportsAnalytics() {
                 ))}
               </select>
             </label>
-            <p className="mt-1 text-xs text-slate-500">
+            <details className="mt-2 text-xs font-normal text-slate-600">
+              <summary className="cursor-pointer rounded py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-maroon-700">Search faculty directory</summary>
+            <label>
+              Faculty name
+              <input aria-describedby={error ? "report-filter-error" : undefined}
+                className="field mt-1 text-sm"
+                type="search"
+                maxLength={100}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            </details>
+            <p className="mt-1 text-xs font-normal text-slate-500" role="status">
               {optionsState === "loading"
                 ? "Loading faculty…"
                 : optionsState === "error"
@@ -207,6 +212,14 @@ export default function ReportsAnalytics() {
                       : "Includes historical faculty and Dean providers."}
             </p>
           </div>
+          </div>
+          <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+            <summary className="cursor-pointer rounded text-sm font-semibold text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-maroon-700">
+              More filters{[filters.status, filters.attendanceOutcome, filters.mode].filter(Boolean).length > 0 && ` (${
+                [filters.status, filters.attendanceOutcome, filters.mode].filter(Boolean).length
+              } active)`}
+            </summary>
+            <div className="mt-4 grid min-w-0 gap-4 text-sm font-medium text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
           {[
             ["status", "Appointment status", APPOINTMENT_STATUSES],
             ["attendanceOutcome", "Attendance outcome", outcomes],
@@ -228,8 +241,15 @@ export default function ReportsAnalytics() {
               </select>
             </label>
           ))}
+            </div>
+          </details>
         </fieldset>
-        <p className="text-sm text-slate-600">
+        <div className="border-t border-slate-200 pt-5">
+          <p className="insights-eyebrow">Academic report export</p>
+          <h2 className="mt-1 font-display text-2xl text-maroon-900">PDF report</h2>
+          <p className="mt-1 text-sm text-slate-600">Download an academic report with an executive overview, classification tables, and consultation records.</p>
+        </div>
+        <p className="text-xs leading-relaxed text-slate-500">
           Maximum 366 days and 1,000 records. Completed status alone does not
           establish attendance. Historical records are labeled separately.
           Counts are not Faculty rankings or disciplinary findings.

@@ -17,7 +17,7 @@ test("Reports narrative panel keeps filters intact, guards duplicates, reviews e
   const copied = [];
   let copyFailure = false;
   const navigator = { clipboard: { writeText: async text => { if (copyFailure) throw new Error(); copied.push(text); } } };
-  const Panel = new Function(...Object.keys(sharedClientImports), "React", "useState", "useRef", "api", "useEffect", "deanUiError", "navigator", code + "; return ReportNarrativePanel;")(...Object.values(sharedClientImports), React, useState, useRef, api, () => {}, deanUiError, navigator);
+  const Panel = new Function(...Object.keys(sharedClientImports), "React", "useState", "useRef", "api", "useEffect", "deanUiError", "navigator", "Sparkles", code + "; return ReportNarrativePanel;")(...Object.values(sharedClientImports), React, useState, useRef, api, () => {}, deanUiError, navigator, require("lucide-react").Sparkles);
   const filters = { start: "2026-10-01", end: "2026-10-16", facultyId: "", status: "", mode: "", attendanceOutcome: "" };
   const original = { ...filters };
   const render = () => { index = 0; return Panel({ filters }); };
@@ -95,4 +95,98 @@ test("Reports narrative panel keeps filters intact, guards duplicates, reviews e
   const css = await readFile(new URL("../../client/src/components/dean/ReportNarrativePanel.css", import.meta.url), "utf8");
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(css, /animation: none/);
+});
+
+
+test("SOC Insights uses a bounded fast-response transition and discards drafts made stale during it", async () => {
+  const raw = await readFile(new URL("../../client/src/components/dean/ReportNarrativePanel.jsx", import.meta.url), "utf8");
+  const { code } = await transform(raw.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
+  let index = 0, now = 0, nextTimer = 0, stateWrites = 0;
+  const state = [], requests = [], timers = new Map(), effects = [];
+  const imports = {
+    ...sharedClientImports, React, Sparkles: require("lucide-react").Sparkles, deanUiError,
+    useState(initial) { const slot = index++; if (!(slot in state)) state[slot] = initial; return [state[slot], value => { stateWrites++; state[slot] = value; }]; },
+    useRef(initial) { const slot = index++; if (!(slot in state)) state[slot] = { current: initial }; return state[slot]; },
+    useEffect(fn) { effects.push(fn); },
+    api: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })),
+    performance: { now: () => now },
+    setTimeout(fn, delay) { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+  };
+  const Panel = new Function(...Object.keys(imports), code + "; return ReportNarrativePanel;")(...Object.values(imports));
+  const filters = { start: "2026-11-01", end: "2026-11-23", mode: "" };
+  const render = () => { index = 0; return Panel({ filters }); };
+  const generateButton = () => nodes(render()).find(node => node.type === "button");
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const summary = (id, selected = {}) => ({ id, filters: { start: filters.start, end: filters.end, ...selected },
+    narrative: "Executive Summary\nA briefing based on the saved statistics.", reviewState: "unreviewed", version: 1, generatedAt: "2026-11-23T04:00:00Z" });
+  const finishTransition = () => {
+    const visual = [...timers.entries()].find(([, timer]) => timer.delay < 1000);
+    assert.ok(visual, "a fast successful response has a short transition");
+    timers.delete(visual[0]); visual[1].fn();
+  };
+
+  let tree = render();
+  const cleanup = effects[0]();
+  assert.equal(tree.props["aria-label"], "SOC Insights");
+  assert.match(JSON.stringify(tree), /AI-assisted academic briefing/);
+  let pending = generateButton().props.onClick();
+  await generateButton().props.onClick();
+  assert.equal(requests.length, 1);
+  tree = render();
+  assert.equal(tree.props["data-generating"], true);
+  assert.ok(nodes(tree).some(node => node.props?.className === "narrative-skeleton" && node.props["aria-hidden"] === "true"));
+  const progress = nodes(tree).find(node => node.props?.role === "status");
+  assert.equal(progress.props["aria-live"], "polite");
+  assert.doesNotMatch(JSON.stringify(progress), /[0-9]+%|Analyzing|Fetching|Stage/);
+
+  now = 100;
+  requests[0].resolve(summary("fast"));
+  await settle();
+  assert.equal([...timers.values()][0].delay, 500, "only the remainder of 600ms is used");
+  assert.equal(generateButton().props.disabled, true);
+  assert.equal(nodes(render()).filter(node => node.type === "article").length, 0);
+  filters.mode = "Online"; render();
+  finishTransition(); await pending;
+  assert.equal(nodes(render()).filter(node => node.type === "article").length, 0, "filters changing during transition invalidate the response");
+
+  pending = generateButton().props.onClick();
+  now += 1200;
+  requests[1].resolve(summary("slow", { mode: "Online" }));
+  await pending;
+  assert.equal(timers.size, 0, "normal and slow responses have no artificial delay");
+  tree = render();
+  assert.match(JSON.stringify(tree), /Draft ready for Dean review/);
+  assert.ok(nodes(tree).some(node => node.type === "article"));
+  const approve = nodes(tree).find(node => node.props?.children === "I have reviewed and approve this narrative");
+  pending = approve.props.onClick();
+  requests[2].resolve({ ...summary("slow", { mode: "Online" }), reviewState: "reviewed", version: 2, reviewedAt: "2026-11-23T04:01:00Z" });
+  await pending;
+  assert.equal(timers.size, 0, "approval is never delayed for generation visuals");
+  assert.match(JSON.stringify(render()), /Review completed/);
+
+  pending = generateButton().props.onClick();
+  requests[3].reject(new Error("offline"));
+  await pending;
+  assert.equal(timers.size, 0, "failures appear immediately");
+  assert.equal(generateButton().props.children, "Try again");
+  pending = generateButton().props.onClick();
+  requests[4].reject({ code: "AI_EMPTY_DATASET" });
+  await pending;
+  assert.match(JSON.stringify(render()), /No report data for this selection/);
+  assert.equal(generateButton().props.disabled, false);
+
+  pending = generateButton().props.onClick();
+  requests[5].resolve(summary("unmounted", { mode: "Online" }));
+  await settle();
+  cleanup();
+  const before = stateWrites;
+  finishTransition(); await pending;
+  assert.equal(stateWrites, before, "unmounting during transition prevents state updates");
+
+  const css = await readFile(new URL("../../client/src/components/dean/ReportNarrativePanel.css", import.meta.url), "utf8");
+  assert.match(css, /@keyframes insights-shimmer/);
+  assert.match(css, /@keyframes insights-reveal/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
+  assert.doesNotMatch(css, /gradient|backdrop-filter/);
 });

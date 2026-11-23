@@ -224,3 +224,33 @@ test("download helper reads authoritative report total from server header", asyn
     "Bearer test-only-token",
   );
 });
+
+
+test("report filters keep dates and faculty visible and retain collapsed selections for PDF and AI", async () => {
+  const h = await harness();
+  let tree = h.render();
+  const details = find(tree, "details");
+  const more = details.find(node => JSON.stringify(node).includes("More filters"));
+  assert.ok(more);
+  assert.ok(!more.props.open, "advanced filters are collapsed by default");
+  assert.equal(find(more, "select").length, 3);
+  assert.equal(find(more, "input").length, 0);
+  assert.equal(find(tree, "input").filter(node => node.props.type === "date").length, 2);
+  assert.equal(find(tree, "input").filter(node => node.props.type === "search").length, 1);
+  const directory = details.find(node => JSON.stringify(node).includes("Search faculty directory"));
+  assert.equal(find(directory, "input")[0].props.type, "search");
+  assert.ok(!directory.props.open);
+  find(tree, "select")[0].props.onChange({ target: { value: "historical-provider" } });
+  find(more, "select")[0].props.onChange({ target: { value: "Completed" } });
+  find(more, "select")[1].props.onChange({ target: { value: "Student No-show" } });
+  find(more, "select")[2].props.onChange({ target: { value: "Face-to-Face" } });
+  tree = h.render();
+  assert.match(JSON.stringify(find(tree, "summary")), /3 active/);
+  assert.ok(find(tree, "option").some(node => node.props.value === "historical-provider"));
+  const panel = elements(tree).find(node => node.type?.name === "ReportNarrativePanel");
+  assert.equal(panel.props.filters.facultyId, "historical-provider");
+  const pending = find(tree, "form")[0].props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(h.downloads[0].options.body), panel.props.filters);
+  h.downloads[0].resolve({ blob: new Blob(["pdf"], { type: "application/pdf" }), total: 1 });
+  await pending;
+});

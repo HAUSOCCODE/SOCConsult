@@ -1,11 +1,70 @@
+.soc-insights {
+  min-width: 0;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid #761f31;
+  border-radius: 1rem;
+  background: #fff;
+  color: #334155;
+}
+.insights-header { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; flex-wrap: wrap; }
+.insights-identity { display: flex; align-items: center; gap: .875rem; }
+.insights-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 3rem; height: 3rem; border: 1px solid #e5c36d; border-radius: .875rem; background: #fdf9ef; color: #761f31; }
+.insights-mark svg path:last-child { stroke: #9c7028; }
+.insights-eyebrow { font-size: .6875rem; line-height: 1.5; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #64748b; }
+.insights-identity h2 { margin-top: .125rem; font-family: Georgia, serif; font-size: 1.875rem; line-height: 1.2; letter-spacing: -.025em; color: #4b101c; }
+.insights-description { max-width: 44rem; margin-top: 1rem; font-size: .875rem; line-height: 1.75; color: #64748b; }
+.soc-insights button { transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.soc-insights button:focus-visible { outline: 2px solid #9c7028; outline-offset: 3px; }
+.soc-insights button:disabled { cursor: wait; }
+.narrative-generating { margin-top: 1.5rem; padding: 1.25rem 0 .25rem; border-top: 1px solid #e2e8f0; }
+.insights-progress { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; font-size: .875rem; line-height: 1.7; font-weight: 600; color: #681827; }
+.insights-progress-note { margin-top: .375rem; color: #64748b; font-size: .8125rem; line-height: 1.7; }
+.soc-insights[data-generating="true"] .insights-mark svg { animation: insights-spark 2.4s ease-in-out infinite; transform-origin: center; }
 .narrative-dots { display: inline-flex; gap: 4px; }
 .narrative-dots span { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: narrative-pulse 1.5s ease-in-out infinite; }
 .narrative-dots span:nth-child(2) { animation-delay: .2s; }
 .narrative-dots span:nth-child(3) { animation-delay: .4s; }
-.narrative-skeleton span { display: block; height: .65rem; border-radius: .25rem; background: #e2e8f0; animation: narrative-pulse 1.8s ease-in-out infinite; }
-.narrative-skeleton span:nth-child(2) { width: 92%; }
-.narrative-skeleton span:nth-child(3) { width: 76%; }
-@keyframes narrative-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+.narrative-skeleton { max-width: 44rem; margin: 1.5rem 0 .5rem; }
+.narrative-skeleton > div + div { margin-top: 1.5rem; }
+.narrative-skeleton span { position: relative; display: block; height: .5rem; margin-top: .65rem; overflow: hidden; border-radius: .125rem; background: #edf0f3; }
+.narrative-skeleton .skeleton-heading { width: 28%; height: .625rem; margin-bottom: 1rem; background: #e8dde0; }
+.narrative-skeleton .skeleton-short { width: 72%; }
+.narrative-skeleton span::after { content: ""; position: absolute; inset: 0; width: 35%; background: #fff; opacity: .6; transform: translateX(-110%); animation: insights-shimmer 1.8s ease-in-out infinite; }
+.insights-notice { margin-top: 1.25rem; padding: 1rem; border-left: 3px solid; border-radius: .25rem; font-size: .875rem; line-height: 1.75; }
+.insights-notice-title { margin-bottom: .25rem; font-weight: 600; }
+.insights-error { background: #fff5f5; border-color: #b91c1c; color: #991b1b; }
+.insights-empty { background: #fdf9ef; border-color: #be9135; color: #475569; }
+.insights-result { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e2e8f0; animation: insights-reveal 240ms ease-out both; }
+.insights-result > * + * { margin-top: 1.25rem; }
+.insights-ready { font-size: .8125rem; line-height: 1.6; color: #681827; }
+.insights-statistics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+.insights-statistic { padding: 1rem; }
+.insights-statistic + .insights-statistic { border-left: 1px solid #e2e8f0; }
+.insights-briefing { max-width: 46rem; margin-inline: auto; padding-block: .75rem; counter-reset: briefing; }
+.insights-briefing-section + .insights-briefing-section { margin-top: 2rem; }
+.insights-briefing h3 { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .75rem; font-family: Georgia, serif; font-size: 1.25rem; line-height: 1.5; color: #4b101c; }
+.insights-briefing h3::before { counter-increment: briefing; content: counter(briefing, decimal-leading-zero); font-family: Inter, system-ui, sans-serif; font-size: .6875rem; font-weight: 600; letter-spacing: .08em; color: #9c7028; }
+.insights-briefing p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9375rem; line-height: 1.9; color: #334155; }
+.insights-briefing p + p { margin-top: .875rem; }
+.insights-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+@keyframes narrative-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes insights-spark { 0%, 100% { transform: scale(1) rotate(0); opacity: .75; } 50% { transform: scale(1.08) rotate(5deg); opacity: 1; } }
+@keyframes insights-shimmer { to { transform: translateX(300%); } }
+@keyframes insights-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 640px) {
+  .soc-insights { padding: 1rem; }
+  .insights-header { align-items: flex-start; }
+  .insights-generate { width: 100%; }
+  .insights-statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .insights-statistic { padding: .875rem .5rem; }
+  .insights-statistic:nth-child(3) { border-left: 0; }
+  .insights-statistic:nth-child(n+3) { border-top: 1px solid #e2e8f0; }
+  .insights-actions { align-items: stretch; flex-direction: column; }
+  .insights-actions button { white-space: normal; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .narrative-dots span, .narrative-skeleton span { animation: none; opacity: 1; }
+  .soc-insights *, .soc-insights *::before, .soc-insights *::after { animation: none !important; transition: none !important; }
+  .narrative-skeleton span::after { display: none; }
+  .narrative-dots span { opacity: 1; }
 }

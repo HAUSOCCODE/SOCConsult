@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import Groq from "groq-sdk";
+import PDFDocument from "pdfkit";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
@@ -543,4 +544,58 @@ test("ReportExport blocks application mutations and rejects extra private fields
   );
   metadata.isNew = false;
   await assert.rejects(metadata.save(), /immutable/);
+});
+
+
+test("PDF layout keeps long names, all classifications and record-limit datasets inside page bounds", async () => {
+  const originalText = PDFDocument.prototype.text;
+  let calls = [];
+  PDFDocument.prototype.text = function(value, x, y, options) {
+    if (typeof x === "number" && typeof y === "number") calls.push({
+      value: String(value), x, y, width: options.width, page: this.page,
+      height: this.heightOfString(String(value), options),
+    });
+    return originalText.call(this, value, x, y, options);
+  };
+  try {
+    for (const count of [0, 1, 80, 1000]) {
+      calls = [];
+      const rows = Array.from({ length: count }, (_, index) => ({
+        ...row,
+        student: { name: index === count - 1 ? "Final Student Endmarker" : "Alexandria ".repeat(20).trim() },
+        faculty: { name: "Ana Santos" },
+        status: [...APPOINTMENT_STATUSES, ...LEGACY_APPOINTMENT_STATUSES][index % 14],
+      }));
+      const report = buildReport(rows, { ...filters, facultyId: id }, now);
+      const bytes = await generateReportPdf(report);
+      const content = pdfText(bytes);
+      assert.match(content, new RegExp(`Total consultations: ${count}`));
+      assert.ok(content.includes("Executive overview"));
+      assert.ok(content.includes("Attendance classification"));
+      assert.ok(content.includes("Historical unverified Completed"));
+      assert.ok(content.includes("Faculty: Ana Santos") || count === 0);
+      assert.ok(bytes.length < PDF_LIMIT);
+      if (count) assert.match(content, /Final Student\s*Endmarker/);
+      const pages = new Set(calls.map(call => call.page));
+      const actualPages = [...bytes.toString("latin1").matchAll(/\/Type \/Page\b/g)].length;
+      assert.equal(actualPages, pages.size, "no extra blank pages are created while drawing footers");
+      if (count <= 1) assert.equal(actualPages, 1, "empty and short reports fit on one page");
+      assert.ok(count < 80 || pages.size > 2);
+      for (const call of calls) {
+        assert.ok(call.x >= 32 && call.x + call.width <= 810, `horizontal bounds: ${call.value}`);
+        assert.ok(call.y >= 24, `top bound: ${call.value}`);
+        const footer = call.value.includes("Administrative reference | Asia/Manila | Page");
+        assert.ok(call.y + call.height <= (footer ? 579 : 540), `bottom bound: ${call.value} at ${call.y}`);
+      }
+      for (const page of pages) {
+        const pageCalls = calls.filter(call => call.page === page);
+        assert.equal(pageCalls.filter(call => call.value.includes("| Page")).length, 1);
+        if (pageCalls.some(call => call.value === "Final Student" || call.value.startsWith("Alexandria"))) {
+          assert.ok(pageCalls.some(call => call.value === "Request date"), "record page repeats its table header");
+        }
+      }
+    }
+  } finally {
+    PDFDocument.prototype.text = originalText;
+  }
 });
