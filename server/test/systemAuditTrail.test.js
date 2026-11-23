@@ -188,7 +188,7 @@ test("AI attempts distinguish known rejection, timeout, successful persistence a
   assert.doesNotMatch(JSON.stringify(audits), /PRIVATE|Safe report narrative|prompt|snapshot/);
 });
 
-test("source contracts keep secrets out of audit writers and expose audit only under Advanced", async () => {
+test("source contracts keep secrets out of audit writers and expose audit only to Dean account management", async () => {
   for (const file of ["services/activityService.js", "services/appointmentTransitionService.js", "services/attendanceReviewService.js", "services/attendanceService.js", "services/reportNarrativeService.js", "controllers/accountImportController.js"]) {
     const source = await readFile(new URL(`../src/${file}`, import.meta.url), "utf8");
     for (const match of source.matchAll(/metadata:\s*\{([^}]*)\}/g)) assert.doesNotMatch(match[1], /\b(reason|password|token|cookie|authorization|apiKey|prompt|body|file|topic|facultyName|studentName)\b/);
@@ -198,5 +198,7 @@ test("source contracts keep secrets out of audit writers and expose audit only u
   const navigation = await readFile(new URL("../../client/src/layouts/DeanLayout.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(navigation, /audit-logs|Audit Logs/);
   const accounts = await readFile(new URL("../../client/src/pages/Dean/UserManagement.jsx", import.meta.url), "utf8");
-  assert.match(accounts, /Advanced/); assert.match(accounts, /\/dean\/audit-logs/);
+  assert.match(accounts, /<h2[^>]*>User Accounts<\/h2>/);
+  assert.match(accounts, /<Link[^>]*to="\/dean\/audit-logs"[^>]*>Audit logs<\/Link>/);
+  assert.doesNotMatch(accounts, /Audit logs[\s\S]*to="\/(student|faculty)\//);
 });

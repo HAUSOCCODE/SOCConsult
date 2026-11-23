@@ -58,7 +58,7 @@ test("Student pages expose required loading, empty, retry, and stale-slot states
   assert.match(files[1], /onRetry=/);
   assert.match(files[3], /if \(pending\.current\) return/);
   assert.match(files[4], /onRetry=\{load\}/);
-  assert.match(files[5], /CalendarSkeleton/);
+  assert.match(files[5], /Loading consultation calendar/);
   assert.match(files[5], /onRetry=/);
   assert.match(files[6], /No historical consultations match the selected filters/);
   assert.match(files[7], /Loading notifications/);
