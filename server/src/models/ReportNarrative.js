@@ -5,10 +5,10 @@ const schema = new mongoose.Schema({
   generatedAt: { type: Date, required: true },
   filters: { type: filtersSchema, required: true },
   snapshot: { type: snapshotSchema, required: true },
-  narrative: { type: String, required: true, maxlength: 3000 },
+  narrative: { type: String, required: true, maxlength: 12000 },
   reviewState: { type: String, enum: ["unreviewed"], default: "unreviewed", required: true },
   version: { type: Number, enum: [1], default: 1, required: true },
-  promptVersion: { type: String, enum: ["dea14-v1"], default: "dea14-v1", required: true },
+  promptVersion: { type: String, enum: ["dea14-v1", "dea14-v2", "dea14-v3"], default: "dea14-v3", required: true },
   dateBasis: { type: String, enum: ["createdAt"], default: "createdAt", required: true },
   timezone: { type: String, enum: ["Asia/Manila"], default: "Asia/Manila", required: true },
 }, { strict: "throw", versionKey: false });

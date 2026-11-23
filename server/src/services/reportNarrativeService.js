@@ -34,9 +34,19 @@ function response(summary, review = null) {
   return { id: String(value._id), filters: value.filters, snapshot: value.snapshot, narrative: value.narrative, generatedAt: value.generatedAt, reviewState: review ? "reviewed" : "unreviewed", reviewedAt: review?.reviewedAt || null, version: review ? 2 : 1, disclaimer: DISCLAIMER };
 }
 // An acknowledged start survives provider errors and database outages during outcome recording.
+const generating = new Set();
 export async function createNarrative(input, actor, adapter = generateNarrative) {
   authorize(actor);
+  const key = String(actor.id || actor._id);
+  if (generating.has(key)) throw Object.assign(new Error("AI_IN_PROGRESS"), { statusCode: 429 });
+  generating.add(key);
+  try { return await createNarrativeRecord(input, actor, adapter); }
+  finally { generating.delete(key); }
+}
+async function createNarrativeRecord(input, actor, adapter) {
+  authorize(actor);
   const { filters, summary } = await loadReportData(input, actor);
+  if (!summary.total) throw Object.assign(new Error("AI_EMPTY_DATASET"), { statusCode: 422 });
   const snapshot = aggregateSnapshot(filters, summary);
   const attemptId = randomUUID(), attemptTarget = new mongoose.Types.ObjectId();
   const event = (action, metadata, target = attemptTarget, type = "AuditAttempt") => ({
