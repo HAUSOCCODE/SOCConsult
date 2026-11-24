@@ -40,3 +40,22 @@ test("password form's actual submission handler suppresses same-tick repeats and
   const first = run(...args); await run(...args); assert.equal(calls, 1); release(); await first;
   assert.equal(cleared, 1); assert.equal(pending.current, false);
 });
+
+test("shared password form checks UTF-8 bytes before sending and accepts the exact boundary", async () => {
+  const code = await source("components/profile/ProfileForm.jsx");
+  const begin = code.indexOf("  const submit = async (event) => {");
+  const end = code.indexOf("\n  };", begin);
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const run = new AsyncFunction("event", "pending", "passwords", "setValidationError", "setSubmitting", "api", "clear", "toast", "onPasswordChanged", "mounted", "user", "clearPasswordRecommendation", code.slice(begin + "  const submit = async (event) => {".length, end));
+  for (const role of ["student", "faculty", "dean"]) for (const newPassword of ["A1" + "a".repeat(70), "A1" + "é".repeat(35), "A1" + "a".repeat(71), "A1" + "é".repeat(36), "A1" + "😀".repeat(18)]) {
+    let calls = 0, error = "";
+    await run({ preventDefault() {} }, { current: false }, { currentPassword: " exact historical password ", newPassword, confirmPassword: newPassword },
+      value => error = value, () => {}, async (_path, options) => { calls++; assert.equal(JSON.parse(options.body).newPassword, newPassword); },
+      () => {}, { success() {}, error() {} }, undefined, { current: true }, { role }, () => {});
+    const tooLong = Buffer.byteLength(newPassword, "utf8") > 72;
+    assert.equal(calls, tooLong ? 0 : 1);
+    assert.equal(error, tooLong ? "New password must be at most 72 UTF-8 bytes." : "");
+    assert.ok(!error.includes(newPassword));
+  }
+  assert.match(code, /Maximum 72 UTF-8 bytes/);
+});

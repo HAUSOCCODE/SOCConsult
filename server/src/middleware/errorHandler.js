@@ -8,7 +8,7 @@ export const errorHandler = (err, _req, res, _next) => {
     const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 503;
     return res.status(status).json({ message: status === 503 ? "Audit records are temporarily unavailable." : "Invalid audit request." });
   }
-  if (/^\/api\/auth\/(?:login\/faculty|logout)(?:\/|\?|$)/i.test(_req.originalUrl || "")) {
+  if (/^\/api\/auth\/(?:login\/(?:faculty|student)|logout)(?:\/|\?|$)/i.test(_req.originalUrl || "")) {
     const status = err?.type === "entity.too.large" ? 413 : err?.type === "entity.parse.failed" ? 400 : 503;
     return res.status(status).json({ code: status === 503 ? "AUTH_UNAVAILABLE" : "AUTH_INPUT_INVALID",
       message: status === 503 ? "Authentication temporarily unavailable." : "Invalid authentication request." });

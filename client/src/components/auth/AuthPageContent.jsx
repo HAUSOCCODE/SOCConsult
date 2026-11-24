@@ -56,7 +56,7 @@ export default function AuthPageContent({ role: fixedRole }) {
         : new RegExp(`^/${logged.role}(?:/|$)`).test(from);
       navigate(allowedDestination ? from : `/${logged.role}/dashboard`, { replace: true });
     } catch (e) {
-      setError(e.message);
+      setError(role === "student" && e.status === 401 ? "Invalid email or password." : e.message);
     } finally {
       pending.current = false;
       setBusy(false);

@@ -93,7 +93,7 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
   assert.deepEqual(userFilter, {
     accountStatus: "Active",
     $or: [
-      { role: "faculty", registrationStatus: "Approved" },
+      { role: "faculty", registrationStatus: { $in: ["Approved", null] } },
       { role: "dean" },
     ],
   });

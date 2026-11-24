@@ -26,6 +26,28 @@ test('Faculty form preserves exact password, prevents same-tick submits, and wai
   await submit(); assert.equal(calls, 0); loading = false;
   const first = submit(); await submit(); assert.equal(calls, 1); finish(); await first; assert.deepEqual(navigations, ['/faculty/dashboard']);
 });
+
+test('Student form renders neutral credential failures, preserves operational messages and prevents duplicate submissions', async () => {
+  let status = 401, finish, calls = 0;
+  const h = await load('components/auth/AuthPageContent.jsx', 'AuthPageContent', {
+    useParams: () => ({}), useLocation: () => ({ state: null }), useNavigate: () => () => assert.fail('Failed login must not navigate'),
+    useAuth: () => ({ loading: false, login: async (_role, credentials) => {
+      calls++; assert.equal(credentials.password, ' exact password ');
+      await new Promise(resolve => finish = resolve);
+      throw Object.assign(new Error(status === 401 ? 'Account not found: PRIVATE' : 'Please try again later.'), { status });
+    } }), Link: 'link', Navigate: 'navigate', Brand: 'brand', ArrowLeft: 'icon', Eye: 'icon', EyeOff: 'icon',
+  });
+  const render = () => h.render({ role: 'student' });
+  nodes(render()).filter(n => n.type === 'input')[1].props.onChange({ target: { value: ' exact password ' } });
+  const submit = () => nodes(render()).find(n => n.type === 'form').props.onSubmit({ preventDefault() {} });
+  const first = submit(); await submit(); assert.equal(calls, 1); finish(); await first;
+  assert.match(JSON.stringify(render()), /Invalid email or password/);
+  assert.doesNotMatch(JSON.stringify(render()), /Account not found|PRIVATE/);
+  for (status of [429, 503]) {
+    const pending = submit(); finish(); await pending;
+    assert.match(JSON.stringify(render()), /Please try again later/);
+  }
+});
 test('Faculty recommendation persists across hydration and clears after password change and logout', async () => {
   const storage = new Map(); globalThis.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }; globalThis.localStorage = { removeItem() {} };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };

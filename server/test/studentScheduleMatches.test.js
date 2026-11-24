@@ -174,7 +174,7 @@ test("Student schedule matching is backend-owned, private, conflict-safe, and op
     assert.equal(deanResult.status, 200);
     assert.equal(deanResult.data.schedules[0]._id, "dean-slot");
     assert.deepEqual(providerFilter.$or, [
-      { role: "faculty", registrationStatus: "Approved" },
+      { role: "faculty", registrationStatus: { $in: ["Approved", null] } },
       { role: "dean" },
     ]);
 

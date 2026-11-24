@@ -1,3 +1,4 @@
+import { eligibleAccountFilter } from "../services/accountEligibility.js";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
 import Availability from "../models/Availability.js";
@@ -10,11 +11,7 @@ export async function getPublicStats(_req, res) {
         status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
       }),
       Appointment.countDocuments({ status: "Completed" }),
-      User.countDocuments({
-        role: "faculty",
-        registrationStatus: "Approved",
-        accountStatus: "Active",
-      }),
+      User.countDocuments(eligibleAccountFilter("faculty")),
       Availability.findOne({ isActive: true, endAt: { $gt: now } })
         .sort({ startAt: 1 })
         .select("startAt"),

@@ -37,7 +37,7 @@ test("Find Student reuses a bounded, eligible, privacy-minimized directory and p
   try {
     const result = await searchEligibleStudents({ faculty: "507f1f77bcf86cd799439012", input: { q: "Eligible", page: "2" } });
     assert.deepEqual({ role: filter.role, accountStatus: filter.accountStatus, registrationStatus: filter.registrationStatus },
-      { role: "student", accountStatus: "Active", registrationStatus: "Approved" });
+      { role: "student", accountStatus: "Active", registrationStatus: { $in: ["Approved", null] } });
     assert.equal(selected, "name program yearLevel studentId institutionalId"); assert.deepEqual(sorted, { name: 1, _id: 1 });
     assert.equal(skipped, 12); assert.equal(limited, 12);
     assert.deepEqual(result.students.map(student => ({ id: student.id, name: student.name })), [{ id: "507f1f77bcf86cd799439011", name: "Eligible Student" }]);

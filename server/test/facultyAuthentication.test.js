@@ -53,7 +53,7 @@ test('Faculty provisioned credentials, conservative recommendation, equivalent d
   } finally { [User.findOne, User.findById, AuditLog.create] = originals; }
 });
 
-test('Faculty HTTP safety, refresh without bcrypt, logout and unchanged Student errors', async () => {
+test('Faculty HTTP safety, refresh without bcrypt, logout and generic Student errors', async () => {
   const originals = [User.findOne, User.findById, AuditLog.create, bcrypt.compare];
   const id = new mongoose.Types.ObjectId();
   const user = { _id: id, id: String(id), role: 'faculty', accountStatus: 'Active' };
@@ -70,7 +70,9 @@ test('Faculty HTTP safety, refresh without bcrypt, logout and unchanged Student 
     User.findOne = () => { throw new Error('PRIVATE_DATABASE_DETAIL'); };
     let res = await request('/login/faculty', 'POST', '{"identifier":"x","password":"SECRET"}'); assert.equal(res.status, 503); assert.doesNotMatch(await res.text(), /PRIVATE|SECRET/);
     User.findOne = () => chain(null);
-    res = await request('/login/student', 'POST', '{"identifier":"x","password":"x"}'); assert.equal(res.status, 404); assert.match((await res.json()).message, /No Student account/);
+    bcrypt.compare = originals[3];
+    res = await request('/login/student', 'POST', '{"identifier":"x","password":"x"}'); assert.equal(res.status, 401); assert.deepEqual(await res.json(), { message: "Invalid email or password." });
+    bcrypt.compare = () => { throw new Error("Unexpected refresh comparison"); };
     const token = jwt.sign({ sub: String(id) }, env.jwtSecret);
     res = await request('/me', 'GET', undefined, token); assert.equal(res.status, 200); assert.equal((await res.json()).recommendPasswordChange, undefined);
     res = await request('/logout', 'POST', '{}', token); assert.equal(res.status, 200); assert.equal(res.headers.get('cache-control'), 'no-store'); assert.equal(events.at(-1).action, 'logout');

@@ -1,3 +1,4 @@
+import { eligibleProviderFilter } from "../services/accountEligibility.js";
 import { BLOCKING_STATUSES } from "../config/appointmentStatus.js";
 import Availability from "../models/Availability.js";
 import Appointment from "../models/Appointment.js";
@@ -30,13 +31,7 @@ const scheduleShape = (availability, window) => ({
 
 export const getAvailableFaculty = async (req, res) => {
   const now = new Date();
-  const faculty = await User.find({
-    accountStatus: "Active",
-    $or: [
-      { role: "faculty", registrationStatus: "Approved" },
-      { role: "dean" },
-    ],
-  }).select(
+  const faculty = await User.find(eligibleProviderFilter()).select(
     "name role position specialization office +profilePicture",
   );
   const ids = faculty.map((item) => item.id);
@@ -89,11 +84,7 @@ export const getFacultyAvailability = async (req, res) => {
       return res.status(404).json({ message: "Consultation provider not found." });
     const provider = await User.exists({
       _id: facultyId,
-      accountStatus: "Active",
-      $or: [
-        { role: "faculty", registrationStatus: "Approved" },
-        { role: "dean" },
-      ],
+      ...eligibleProviderFilter(),
     });
     if (!provider)
       return res.status(404).json({ message: "Consultation provider not found." });
