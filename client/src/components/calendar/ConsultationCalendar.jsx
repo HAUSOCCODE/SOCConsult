@@ -112,7 +112,7 @@ export default function ConsultationCalendar({ apiPath = "/faculty/calendar", in
       if (requestError.name === "AbortError" || controller.signal.aborted || sequence !== requestSequence.current) return;
       setEvents([]); setUpcoming([]);
       setErrorRetryable(requestError.status === 422 || isRecoverableStudentError(requestError));
-      setError(personalCalendar && requestError.status === 422 ? "Too many calendar records. Choose a narrower Week or Day view." : safeStudentError(requestError, "We couldn't load the calendar. Please try again."));
+      setError(requestError.status === 422 ? "Too many calendar records. Choose a narrower Week or Day view." : safeStudentError(requestError, "We couldn't load the calendar. Please try again."));
     }).finally(() => { if (!controller.signal.aborted && sequence === requestSequence.current) setLoading(false); });
     return () => controller.abort();
   }, [apiPath, includeAvailability, includeFinalized, includeInactive, personalCalendar, range, retryKey, revision]);
@@ -160,16 +160,17 @@ export default function ConsultationCalendar({ apiPath = "/faculty/calendar", in
       {personalCalendar && <><Filter checked={includeInactive} onChange={setIncludeInactive}>Show inactive / unavailable slots</Filter><Filter checked={includeFinalized} onChange={setIncludeFinalized}>Show past finalized consultations</Filter></>}
       <Filter checked={showHolidays} onChange={setShowHolidays}>Show Philippine public holidays</Filter>
     </div>
-    {error ? <CalendarError message={error} retryable={errorRetryable} onRetry={() => setRetryKey((value) => value + 1)} /> : <div className={`${showUpcoming ? "faculty-calendar-layout" : ""} grid min-w-0 gap-4 xl:gap-5`}>
+    {error && <CalendarError message={error} retryable={errorRetryable} onRetry={() => setRetryKey((value) => value + 1)} />}
+    <div className={`${showUpcoming && !error ? "faculty-calendar-layout" : ""} grid min-w-0 gap-4 xl:gap-5`}>
       <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:p-4" aria-busy={loading}>
         {loading && <div className="mb-3 rounded-lg bg-maroon-50 px-3 py-2 text-sm font-semibold text-maroon-800" role="status">Loading consultation calendar…</div>}
         {holidayWarning && <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">{holidayWarning}</div>}
-        <div className="socconsult-fullcalendar"><FullCalendar plugins={PLUGINS} themeSystem="monarch" initialView="dayGridMonth" timeZone={TIMEZONE} events={calendarEvents} datesSet={handleDatesSet} eventClick={openEvent} eventContent={renderEventContent} eventOrder={calendarEventOrder} eventOrderStrict editable={false} eventStartEditable={false} eventDurationEditable={false} selectable={false} nowIndicator stickyHeaderDates dayMaxEvents={4} height="auto" expandRows headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listMonth" }} buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "List" }} views={{ timeGridWeek: { dayHeaderFormat: { weekday: "short", month: "numeric", day: "numeric" } }, listMonth: { noEventsContent: emptyMessage || "No consultations are scheduled in this period." } }} slotMinTime="06:00:00" slotMaxTime="22:00:00" eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }} /></div>
-        {!loading && events.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">{emptyMessage || "No consultations are scheduled in this period."}</p>}
+        <div className="socconsult-fullcalendar"><FullCalendar plugins={PLUGINS} themeSystem="monarch" initialView="dayGridMonth" timeZone={TIMEZONE} events={calendarEvents} datesSet={handleDatesSet} eventClick={openEvent} eventContent={renderEventContent} eventOrder={calendarEventOrder} eventOrderStrict editable={false} eventStartEditable={false} eventDurationEditable={false} selectable={false} nowIndicator stickyHeaderDates dayMaxEvents={4} height="auto" expandRows headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listMonth" }} buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day", list: "List" }} views={{ timeGridWeek: { dayHeaderFormat: { weekday: "short", month: "numeric", day: "numeric" } }, listMonth: { noEventsContent: error ? "Consultations for this view could not be loaded." : emptyMessage || "No consultations are scheduled in this period." } }} slotMinTime="06:00:00" slotMaxTime="22:00:00" eventTimeFormat={{ hour: "numeric", minute: "2-digit", meridiem: "short" }} /></div>
+        {!loading && !error && events.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">{emptyMessage || "No consultations are scheduled in this period."}</p>}
         <CalendarLegend includeAvailability={includeAvailability} showFinalized={includeFinalized} showHolidays={showHolidays} />
       </section>
-      {showUpcoming && <UpcomingPanel consultationsPath={consultationsPath} items={upcoming} loading={loading} onOpenEvent={openSocConsultEvent} />}
-    </div>}
+      {showUpcoming && !error && <UpcomingPanel consultationsPath={consultationsPath} items={upcoming} loading={loading} onOpenEvent={openSocConsultEvent} />}
+    </div>
     {selectedEvent && <CalendarEventModal event={selectedEvent.event} opener={selectedEvent.opener} onClose={() => setSelectedEvent(null)} />}
     {selectedHoliday && <HolidayModal selection={selectedHoliday} onClose={() => setSelectedHoliday(null)} />}
   </div>;
@@ -186,7 +187,7 @@ function UpcomingPanel({ consultationsPath, items, loading, onOpenEvent }) {
   return <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:p-5"><h2 className="font-bold text-maroon-900">Upcoming consultations</h2>{loading ? <p className="mt-4 text-sm text-slate-500">Loading upcoming consultations…</p> : items.length ? <div className="mt-4 space-y-3">{items.map((event) => <button type="button" key={event.id} onClick={(click) => onOpenEvent(event, click.currentTarget)} className="block w-full rounded-xl border border-slate-200 p-3 text-left hover:border-maroon-300 hover:bg-maroon-50"><p className="truncate font-semibold text-slate-900">{event.topic}</p><p className="mt-1 text-xs text-slate-500">{fullDateLabel(event.start)} · {timeLabel(event.start)}</p></button>)}</div> : <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center"><CalendarDays size={24} className="mx-auto text-maroon-700" /><p className="mt-2 font-bold text-slate-800">No upcoming consultations</p></div>}<Link to={consultationsPath} className="btn-secondary mt-4 flex h-11 w-full">View all appointments</Link></aside>;
 }
 
-function CalendarError({ message, onRetry, retryable }) { return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center"><p className="font-bold text-red-800">Unable to load the calendar</p><p className="mt-1 text-sm text-red-700">{message}</p>{retryable && <button type="button" onClick={onRetry} className="btn-secondary mt-4">Retry</button>}</div>; }
+function CalendarError({ message, onRetry, retryable }) { return <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center"><p className="font-bold text-red-800">Unable to load the calendar</p><p className="mt-1 text-sm text-red-700">{message}</p>{retryable && <button type="button" onClick={onRetry} className="btn-secondary mt-4">Retry</button>}</div>; }
 
 function CalendarEventModal({ event, opener, onClose }) {
   const availability = event.kind === "availability";

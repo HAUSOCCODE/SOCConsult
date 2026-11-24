@@ -1,6 +1,4 @@
-const clock = value => value ? new Date(`2000-01-01T${value}:00+08:00`).toLocaleTimeString("en-PH", {
-  timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit",
-}) : "Not provided";
+import { preferredTimeLabel as clock, requestedDateLabel } from "../../utils/appointmentSchedule";
 
 export default function RequestedAvailability({ appointment, className = "" }) {
   const participant = appointment.initiatedByRole === "faculty" ? "Faculty" : "Student";
@@ -8,7 +6,8 @@ export default function RequestedAvailability({ appointment, className = "" }) {
   return <section className={`min-w-0 rounded-xl border border-maroon-100 bg-white p-4 sm:p-5 ${className}`}>
     <h3 className="font-bold text-maroon-900">Requested Schedule and Availability</h3>
     <dl className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
-      <Field label="Requested Date" value={appointment.requestedConsultationDate || "Requested date was not provided"} />
+      <Field label="Requested Date" value={requestedDateLabel(appointment.requestedConsultationDate)} />
+      {appointment.requestedConsultationTime && <Field label="Preferred Time (Asia/Manila)" value={clock(appointment.requestedConsultationTime)} />}
       <Field label="Requesting Participant" value={participant} />
       <Field label="Preferred Consultation Mode" value={appointment.consultationMode || "Not provided"} />
       <div className="min-w-0 sm:col-span-2">

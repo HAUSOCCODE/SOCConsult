@@ -18,6 +18,7 @@ import StudentConsultationRecord from "../consultations/StudentConsultationRecor
 import OutcomeReportSummary from "../attendance/OutcomeReportSummary";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import RequestedAvailability from "./RequestedAvailability";
+import { hasConfirmedSchedule } from "../../utils/appointmentSchedule";
 
 const ATTENDANCE_STATUSES = new Set([
   "Awaiting Attendance Update",
@@ -37,6 +38,7 @@ const clock = (value) =>
   safeDate(value, { hour: "numeric", minute: "2-digit" });
 export default function StudentAppointmentDetailsModal({
   appointment,
+  opener,
   onClose,
   onRespondToProposal,
   onRespondToFacultyRequest,
@@ -55,23 +57,24 @@ export default function StudentAppointmentDetailsModal({
   const appointmentEnd = new Date(appointment?.endAt);
   const consultationEnded =
     Number.isFinite(appointmentEnd.getTime()) && Date.now() >= appointmentEnd.getTime();
-  const confirmedSchedule = ["Confirmed", "Completed", "Awaiting Attendance Update", "Attendance Review"].includes(appointment.status);
+  const confirmedSchedule = hasConfirmedSchedule(appointment);
   const shouldLoadAttendance = Boolean(appointmentId) &&
     (ATTENDANCE_STATUSES.has(appointment?.status) || appointment?.status === "Confirmed" && consultationEnded);
-  useDialogFocus(dialogRef, { onClose });
-  const loadAttendance = async () => {
+  useDialogFocus(dialogRef, { onClose, restoreTarget: opener });
+  const loadAttendance = async (signal) => {
     if (!shouldLoadAttendance) return null;
     setAttendanceLoading(true);
     setAttendanceError("");
     try {
-      const data = await api(`/appointments/${appointmentId}/attendance`);
+      const data = await api(`/appointments/${appointmentId}/attendance`, { signal });
+      if (signal?.aborted) return null;
       setAttendance(data.attendance || null);
       return data.attendance || null;
     } catch (error) {
-      setAttendanceError(safeStudentError(error, "Unable to load attendance information. Please try again."));
+      if (!signal?.aborted) setAttendanceError(safeStudentError(error, "Unable to load attendance information. Please try again."));
       return null;
     } finally {
-      setAttendanceLoading(false);
+      if (!signal?.aborted) setAttendanceLoading(false);
     }
   };
   const submitAttendance = async (input) => {
@@ -110,9 +113,11 @@ export default function StudentAppointmentDetailsModal({
     await onAttendanceUpdated?.();
   };
   useEffect(() => {
+    const controller = new AbortController();
     setAttendance(null);
     setAttendanceError("");
-    if (shouldLoadAttendance) void loadAttendance();
+    if (shouldLoadAttendance) void loadAttendance(controller.signal);
+    return () => controller.abort();
   }, [appointmentId, appointment?.status]);
 
   return createPortal(
@@ -174,7 +179,7 @@ export default function StudentAppointmentDetailsModal({
             <Section title="Faculty Information">
               <Detail
                 label="Faculty Name"
-                value={formatPersonName(appointment.faculty?.name)}
+                value={formatPersonName(appointment.faculty)}
               />
               <Detail
                 label="Position / Designation"
@@ -189,10 +194,10 @@ export default function StudentAppointmentDetailsModal({
           </div>
 
           <RequestedAvailability appointment={appointment} />
-          <Section title={confirmedSchedule ? "Confirmed Schedule" : appointment.startAt ? "Proposed Appointment Schedule" : "Confirmed Schedule"}>
+          <Section title={confirmedSchedule ? "Confirmed Schedule" : appointment.startAt ? historyMode ? "Recorded Appointment Schedule" : "Proposed Appointment Schedule" : "Confirmed Schedule"}>
             <Detail
               label="Consultation Date"
-              value={appointment.requestedConsultationDate || safeDate(appointment.startAt, {
+              value={safeDate(appointment.startAt, {
                 weekday: "long",
                 year: "numeric",
                 month: "long",
@@ -222,7 +227,7 @@ export default function StudentAppointmentDetailsModal({
           {shouldLoadAttendance && attendanceError && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
               <p className="break-words">{attendanceError}</p>
-              {!attendance?.ownResponse && <button type="button" onClick={loadAttendance} className="mt-3 font-bold underline">Try again</button>}
+              {!attendance?.ownResponse && <button type="button" onClick={() => loadAttendance()} className="mt-3 font-bold underline">Try again</button>}
             </div>
           )}
           {!readOnly && ["Confirmed", "Awaiting Attendance Update"].includes(appointment.status) && consultationEnded && attendance && !attendance.ownResponse && attendance.eligible && (
@@ -236,7 +241,7 @@ export default function StudentAppointmentDetailsModal({
             </p>
           )}
           {attendance?.ownResponse && <AttendanceResponseSummary attendance={attendance} />}
-          <OutcomeReportSummary appointmentId={appointmentId} attendance={attendance} viewerRole="student" onChanged={onAttendanceUpdated} />
+          <OutcomeReportSummary appointmentId={appointmentId} attendance={attendance} viewerRole={readOnly ? undefined : "student"} onChanged={onAttendanceUpdated} />
           {!attendance?.ownResponse && ["Attendance Review", "Completed", "Expired"].includes(appointment.status) && attendance && (
             <AttendanceResponseSummary attendance={attendance} />
           )}

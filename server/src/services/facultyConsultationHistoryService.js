@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
 import User from "../models/User.js";
 import { ATTENDANCE_OUTCOMES } from "../config/attendance.js";
-import { manilaHistoryBoundary } from "./studentConsultationHistoryService.js";
+import { manilaHistoryBoundary, safeRequestedPreferences } from "./studentConsultationHistoryService.js";
 
 export const FACULTY_HISTORY_STATUSES = Object.freeze(["Completed", "Cancelled", "Rejected", "Expired", "Attendance Review"]);
 export const FACULTY_HISTORY_MODES = Object.freeze(["Online", "Face-to-Face"]);
@@ -40,7 +40,7 @@ export function facultyHistoryQuery({ faculty, filters, studentIds }) {
 
 export function safeFacultyHistoryRecord(row) {
   const student = row.student ? { _id: row.student._id, name: row.student.name, firstName: row.student.firstName, middleName: row.student.middleName, lastName: row.student.lastName, studentId: row.student.studentId, institutionalId: row.student.institutionalId } : null;
-  return { _id: row._id, student, subject: row.subject, reason: row.reason, startAt: row.startAt, endAt: row.endAt, consultationMode: row.consultationMode, status: row.status, finalAttendanceOutcome: row.attendance?.finalOutcome || null, hasSupportingDocuments: Boolean(row.supportingDocument?.name || row.supportingDocuments?.length) };
+  return { _id: row._id, student, subject: row.subject, reason: row.reason, ...safeRequestedPreferences(row), startAt: row.startAt, endAt: row.endAt, consultationMode: row.consultationMode, status: row.status, finalAttendanceOutcome: row.attendance?.finalOutcome || null, hasSupportingDocuments: Boolean(row.supportingDocument?.name || row.supportingDocuments?.length) };
 }
 
 async function matchingStudents(search, faculty, filters) {
@@ -57,7 +57,7 @@ export async function listFacultyConsultationHistory({ faculty, input }) {
   const filters = parseFacultyHistoryInput(input);
   const studentIds = await matchingStudents(filters.search, faculty, filters);
   const query = facultyHistoryQuery({ faculty, filters, studentIds });
-  const projection = "student subject reason startAt endAt consultationMode status supportingDocument.name supportingDocuments +attendance";
+  const projection = "student subject reason requestedConsultationDate requestedConsultationTime availableTimeSlots startAt endAt consultationMode status supportingDocument.name supportingDocuments +attendance";
   const [rows, total] = await Promise.all([
     Appointment.find(query).select(projection).populate("student", "name firstName middleName lastName studentId institutionalId").sort({ startAt: -1, _id: -1 }).skip((filters.page - 1) * filters.limit).limit(filters.limit).lean(),
     Appointment.countDocuments(query),

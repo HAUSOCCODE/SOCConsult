@@ -5,18 +5,13 @@ import { api } from "../../api/apiClient";
 import StudentAppointmentDetailsModal from "../../components/appointments/StudentAppointmentDetailsModal";
 import Pagination from "../../components/Pagination";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
+import { formatManilaHistorySchedule } from "../../utils/appointmentSchedule";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
 const HISTORY_STATUSES = ["Completed", "Rejected", "Cancelled", "Expired", "Attendance Review"];
 const MODES = ["Online", "Face-to-Face"];
 const EMPTY_FILTERS = { from: "", to: "", faculty: "", status: "", mode: "" };
-const MANILA_DATE = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric" });
-const MANILA_TIME = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" });
-const validDate = value => {
-  const date = value ? new Date(value) : null;
-  return date && Number.isFinite(date.getTime()) ? date : null;
-};
 
 export default function StudentConsultationHistory() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -94,12 +89,13 @@ export default function StudentConsultationHistory() {
           <button type="button" onClick={clearFilters} disabled={!filtered} className="btn-secondary inline-flex min-h-10 items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"><FilterX size={16} /> Clear filters</button>
         </div>
         <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <Filter label="From"><input type="date" value={filters.from} onChange={event => updateFilter("from", event.target.value)} className="field" /></Filter>
-          <Filter label="To"><input type="date" value={filters.to} onChange={event => updateFilter("to", event.target.value)} className="field" /></Filter>
+          <Filter label="From (appointment date)"><input type="date" value={filters.from} onChange={event => updateFilter("from", event.target.value)} className="field" /></Filter>
+          <Filter label="To (appointment date)"><input type="date" value={filters.to} onChange={event => updateFilter("to", event.target.value)} className="field" /></Filter>
           <Filter label="Faculty / Provider"><select value={filters.faculty} onChange={event => updateFilter("faculty", event.target.value)} className="field"><option value="">All providers</option>{providers.map(provider => <option key={provider._id} value={provider._id}>{formatPersonName(provider) || "Consultation Provider"}</option>)}</select></Filter>
           <Filter label="Status"><select value={filters.status} onChange={event => updateFilter("status", event.target.value)} className="field"><option value="">All statuses</option>{HISTORY_STATUSES.map(status => <option key={status}>{status}</option>)}</select></Filter>
           <Filter label="Consultation mode"><select value={filters.mode} onChange={event => updateFilter("mode", event.target.value)} className="field"><option value="">All modes</option>{MODES.map(mode => <option key={mode}>{mode}</option>)}</select></Filter>
         </div>
+        <p className="mt-3 text-sm text-slate-600">Date filters use recorded appointment schedules. Requests without an assigned schedule appear when date filters are cleared.</p>
         {dateError && <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{dateError}</p>}
       </section>
 
@@ -130,10 +126,7 @@ function HistoryResults({ consultations, onView }) {
   </>;
 }
 
-function schedule(consultation) {
-  const start = validDate(consultation.startAt), end = validDate(consultation.endAt);
-  return start ? `${MANILA_DATE.format(start)} · ${MANILA_TIME.format(start)}${end ? ` – ${MANILA_TIME.format(end)}` : ""}` : "Schedule not available";
-}
+function schedule(consultation) { return formatManilaHistorySchedule(consultation); }
 function provider(consultation) { return formatPersonName(consultation.faculty) || "Consultation Provider"; }
 function HistoryTableRow({ consultation, onView }) {
   const ModeIcon = consultation.consultationMode === "Face-to-Face" ? MapPin : Monitor;
