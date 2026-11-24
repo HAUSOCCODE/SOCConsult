@@ -179,7 +179,7 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} outcomeMode={outcomeMode} onClose={closeDetails} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} outcomeMode={outcomeMode} onClose={closeDetails} onRespondToFacultyRequest={() => { setFacultyRequestTarget(details); setDetails(null); }} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
       {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
       {facultyRequestTarget && <FacultyRequestResponseModal appointment={facultyRequestTarget} onClose={() => setFacultyRequestTarget(null)} onSuccess={async () => { setFacultyRequestTarget(null); setDetails(null); await load(); }} />}
     </div>

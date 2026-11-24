@@ -7,7 +7,7 @@ import { appointmentHttp } from "./helpers/appointmentHttp.js";
 const id = "1234567890abcdef12345678", owner = "abcdef123456789012345678";
 const now = new Date("2026-10-19T04:00:00Z"), before = new Date(+now - 1), after = new Date(+now + 1);
 const chain = value => { const q = { then: (yes, no) => Promise.resolve(value).then(yes, no) }; for (const k of ["select", "populate", "maxTimeMS", "lean"]) q[k] = () => q; return q; };
-const row = extra => ({ _id: id, faculty: owner, student: { name: "Student", email: "PRIVATE", studentId: "PRIVATE", program: "PRIVATE" }, status: "Confirmed", startAt: before, endAt: after, consultationMode: "Online", meetingLink: "https://meeting.example/test", subject: "Course", reason: "Concern", __v: 2, notes: "PRIVATE", reservationToken: "PRIVATE", ...extra });
+const row = extra => ({ _id: id, faculty: owner, student: { name: "Student", email: "PRIVATE", studentId: "PRIVATE", program: "PRIVATE" }, status: "Confirmed", requestedConsultationDate: "2099-11-25", availableTimeSlots: [{ startTime: "08:00", endTime: "10:00" }, { startTime: "13:00", endTime: "15:00" }], startAt: before, endAt: after, consultationMode: "Online", meetingLink: "https://meeting.example/test", subject: "Course", reason: "Concern", __v: 2, notes: "PRIVATE", reservationToken: "PRIVATE", ...extra });
 test("exact half-open grouping includes running Confirmed and requires valid schedules", () => {
   assert.equal(sectionFor(row(), now), "Upcoming");
   assert.equal(sectionFor(row({ endAt: now }), now), "Awaiting Attendance Update");
@@ -48,6 +48,7 @@ test("detail projections gate links by assignment/state/mode/schedule, history r
     const actor = { id: owner, role };
     for (const status of ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed", "Pending", "Reschedule Proposed", "Cancelled", "Rejected", "Expired", "No Show"]) {
       const result = detailRecord(row({ status }), actor, now);
+      assert.deepEqual(result.availableTimeSlots, row().availableTimeSlots);
       assert.equal(Boolean(result.meetingLink), ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(status));
       assert.doesNotMatch(JSON.stringify(result), /PRIVATE|notes|reservationToken|studentId|email|program/);
     }

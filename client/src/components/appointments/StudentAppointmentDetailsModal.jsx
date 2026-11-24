@@ -17,6 +17,7 @@ import { safeStudentError } from "../../utils/studentUiErrors";
 import StudentConsultationRecord from "../consultations/StudentConsultationRecord";
 import OutcomeReportSummary from "../attendance/OutcomeReportSummary";
 import useDialogFocus from "../../hooks/useDialogFocus";
+import RequestedAvailability from "./RequestedAvailability";
 
 const ATTENDANCE_STATUSES = new Set([
   "Awaiting Attendance Update",
@@ -38,6 +39,7 @@ export default function StudentAppointmentDetailsModal({
   appointment,
   onClose,
   onRespondToProposal,
+  onRespondToFacultyRequest,
   onCancelConsultation,
   onAttendanceUpdated,
   outcomeMode = false,
@@ -53,6 +55,7 @@ export default function StudentAppointmentDetailsModal({
   const appointmentEnd = new Date(appointment?.endAt);
   const consultationEnded =
     Number.isFinite(appointmentEnd.getTime()) && Date.now() >= appointmentEnd.getTime();
+  const confirmedSchedule = ["Confirmed", "Completed", "Awaiting Attendance Update", "Attendance Review"].includes(appointment.status);
   const shouldLoadAttendance = Boolean(appointmentId) &&
     (ATTENDANCE_STATUSES.has(appointment?.status) || appointment?.status === "Confirmed" && consultationEnded);
   useDialogFocus(dialogRef, { onClose });
@@ -185,7 +188,8 @@ export default function StudentAppointmentDetailsModal({
             </Section>
           </div>
 
-          <Section title="Schedule">
+          <RequestedAvailability appointment={appointment} />
+          <Section title={confirmedSchedule ? "Confirmed Schedule" : appointment.startAt ? "Proposed Appointment Schedule" : "Confirmed Schedule"}>
             <Detail
               label="Consultation Date"
               value={appointment.requestedConsultationDate || safeDate(appointment.startAt, {
@@ -198,11 +202,9 @@ export default function StudentAppointmentDetailsModal({
             <Detail
               label="Consultation Time"
               value={
-                appointment.startAt
+                appointment.startAt && appointment.endAt
                   ? `${clock(appointment.startAt)} – ${clock(appointment.endAt)}`
-                  : appointment.requestedConsultationTime
-                    ? `${appointment.requestedConsultationTime} (preferred, Asia/Manila)`
-                    : "Not scheduled yet"
+                  : "Not scheduled yet"
               }
             />
             <Detail
@@ -392,6 +394,11 @@ export default function StudentAppointmentDetailsModal({
           {!readOnly && appointment.status === "Reschedule Proposed" && onRespondToProposal && (
             <button type="button" onClick={onRespondToProposal} className="btn-primary w-full sm:w-auto">
               View Proposal / Respond
+            </button>
+          )}
+          {!readOnly && appointment.status === "Pending" && appointment.initiatedByRole === "faculty" && onRespondToFacultyRequest && (
+            <button type="button" onClick={onRespondToFacultyRequest} className="btn-primary w-full sm:w-auto">
+              Respond to Faculty Request
             </button>
           )}
           <button

@@ -39,10 +39,14 @@ test("Student HTTP acceptance of a Faculty request confirms once without unrelat
     const response = await h.request("/appointments/faculty-request", "faculty", "POST", {
       studentId: h.users.student.id, subject: "Progress review", reason: "Discuss progress",
       startAt: "2099-05-10T10:00:00+08:00", endAt: "2099-05-10T10:30:00+08:00",
+      availableTimeSlots: [{ startTime: "09:00", endTime: "11:00" }, { startTime: "13:00", endTime: "15:00" }],
       mode: "Face-to-Face", location: "SOC Room 201",
     });
     assert.equal(response.status, 201);
     const created = (await response.json()).appointment;
+    assert.deepEqual(created.availableTimeSlots, [
+      { startTime: "09:00", endTime: "11:00" }, { startTime: "13:00", endTime: "15:00" },
+    ]);
     const accepted = await h.request(`/appointments/${created._id}/respond`, "student", "PUT", {
       decision: "accept", expectedVersion: created.__v,
     });

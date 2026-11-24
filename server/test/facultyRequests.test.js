@@ -7,7 +7,7 @@ import { appointmentHttp } from "./helpers/appointmentHttp.js";
 
 const id = "1234567890abcdef12345678", docId = "abcdef123456789012345678";
 const chain = value => { const q = { then: (yes, no) => Promise.resolve(value).then(yes, no) }; for (const key of ["select", "populate", "maxTimeMS", "lean"]) q[key] = () => q; return q; };
-const row = (extra = {}) => ({ _id: id, student: { name: "Student", studentId: "PRIVATE", email: "PRIVATE" }, faculty: "PRIVATE", subject: "<b>Course</b>", reason: "Concern\n".repeat(90), status: "Pending", createdAt: new Date(), startAt: null, supportingDocuments: [{ _id: docId, originalName: "file.txt", mimeType: "text/plain", cloudinaryUrl: "PRIVATE", cloudinaryPublicId: "PRIVATE" }], meetingLink: "PRIVATE", reservationToken: "PRIVATE", attendance: { reviewReason: "PRIVATE" }, __v: 3, ...extra });
+const row = (extra = {}) => ({ _id: id, student: { name: "Student", studentId: "PRIVATE", email: "PRIVATE" }, faculty: "PRIVATE", subject: "<b>Course</b>", reason: "Concern\n".repeat(90), status: "Pending", createdAt: new Date(), requestedConsultationDate: "2099-11-25", availableTimeSlots: [{ startTime: "08:00", endTime: "10:00" }, { startTime: "13:00", endTime: "15:00" }], startAt: null, supportingDocuments: [{ _id: docId, originalName: "file.txt", mimeType: "text/plain", cloudinaryUrl: "PRIVATE", cloudinaryPublicId: "PRIVATE" }], meetingLink: "PRIVATE", reservationToken: "PRIVATE", attendance: { reviewReason: "PRIVATE" }, __v: 3, ...extra });
 
 test("request query rejects owner IDs, arrays, invalid statuses and unbounded pages", () => {
   assert.deepEqual(parseRequestQuery(), { status: "Pending", page: 1 });
@@ -50,6 +50,7 @@ test("fresh details query ownership before legacy metadata and return only safe 
     SupportingDocument.findOne = filter => { assert.deepEqual(filter, { _id: docId, appointment: id }); return chain({ _id: docId, originalName: "file.txt", cloudinaryUrl: "PRIVATE" }); };
     const result = await facultyRequestDetails({ id, faculty: docId });
     assert.equal(result.appointment.reason, row().reason);
+    assert.deepEqual(result.appointment.availableTimeSlots, row().availableTimeSlots);
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE|studentId|meetingLink|reviewReason/);
     assert.deepEqual(result.appointment.supportingDocuments, [{ _id: docId, originalName: "file.txt", mimeType: undefined, size: undefined }]);
   } finally { Appointment.findOne = old; SupportingDocument.findOne = oldDoc; }

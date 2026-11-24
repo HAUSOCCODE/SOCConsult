@@ -3,13 +3,16 @@ import { api } from "../../api/apiClient";
 import { Modal } from "../UI";
 import { safeUiError } from "../../utils/safeUiErrors";
 import { useToast } from "../../context/ToastContext";
+import AvailableTimeSlots from "./AvailableTimeSlots";
+import { validateAvailableTimeSlots } from "../../utils/availableTimeSlots";
 
-const initial = { studentId: "", subject: "", reason: "", startAt: "", endAt: "", mode: "Face-to-Face", location: "", meetingPlatform: "", meetingLink: "" };
+const initial = { studentId: "", subject: "", reason: "", startAt: "", endAt: "", availableTimeSlots: [{ startTime: "", endTime: "" }], mode: "Face-to-Face", location: "", meetingPlatform: "", meetingLink: "" };
 const timestamp = value => value ? `${value}:00+08:00` : "";
 export default function FacultyConsultationRequestModal({ open, onClose, onSuccess, opener, initialStudent }) {
   const toast = useToast();
   const [form, setForm] = useState(initial), [query, setQuery] = useState(""), [students, setStudents] = useState([]);
   const [searching, setSearching] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [slotErrors, setSlotErrors] = useState([]);
   const inFlight = useRef(false);
   const formId = useId();
   useEffect(() => {
@@ -27,7 +30,10 @@ export default function FacultyConsultationRequestModal({ open, onClose, onSucce
     finally { setSearching(false); }
   };
   const submit = async event => {
-    event.preventDefault(); if (inFlight.current) return; inFlight.current = true; setBusy(true); setError("");
+    event.preventDefault(); if (inFlight.current) return;
+    const validation = validateAvailableTimeSlots(form.availableTimeSlots, { date: form.startAt.slice(0, 10) });
+    if (!validation.valid) { setSlotErrors(validation.errors); setError(validation.message || "Review the highlighted available time slots."); return; }
+    inFlight.current = true; setBusy(true); setError(""); setSlotErrors([]);
     try {
       await api("/appointments/faculty-request", { method: "POST", body: JSON.stringify({ ...form,
         startAt: timestamp(form.startAt), endAt: timestamp(form.endAt) }) });
@@ -46,7 +52,8 @@ export default function FacultyConsultationRequestModal({ open, onClose, onSucce
       </fieldset>
       <label className="block font-semibold">Consultation subject<input className="field mt-1 w-full" required maxLength={150} value={form.subject} onChange={event => change("subject", event.target.value)} /></label>
       <label className="block font-semibold">Reason for consultation<textarea className="field mt-1 w-full" required maxLength={1000} rows={4} value={form.reason} onChange={event => change("reason", event.target.value)} /></label>
-      <div className="grid gap-3 sm:grid-cols-2"><label className="font-semibold">Start — Asia/Manila<input className="field mt-1 w-full" type="datetime-local" required value={form.startAt} onChange={event => change("startAt", event.target.value)} /></label><label className="font-semibold">End — Asia/Manila<input className="field mt-1 w-full" type="datetime-local" required value={form.endAt} onChange={event => change("endAt", event.target.value)} /></label></div>
+      <div className="grid gap-3 sm:grid-cols-2"><label className="font-semibold">Proposed appointment start — Asia/Manila<input className="field mt-1 w-full" type="datetime-local" required value={form.startAt} onChange={event => change("startAt", event.target.value)} /></label><label className="font-semibold">Proposed appointment end — Asia/Manila<input className="field mt-1 w-full" type="datetime-local" required value={form.endAt} onChange={event => change("endAt", event.target.value)} /></label></div>
+      <AvailableTimeSlots value={form.availableTimeSlots} onChange={value => { change("availableTimeSlots", value); setSlotErrors([]); }} errors={slotErrors} disabled={busy} idPrefix="faculty-availability" />
       <p className="rounded-lg border border-gold-200 bg-gold-50 p-3 text-sm text-slate-700">This proposed time remains a Pending request until the Student accepts. SOCConsult checks conflicts again before confirmation.</p>
       <label className="block font-semibold">Consultation mode<select className="field mt-1 w-full" value={form.mode} onChange={event => change("mode", event.target.value)}><option>Face-to-Face</option><option>Online</option></select></label>
       {form.mode === "Face-to-Face" ? <label className="block font-semibold">Location<input className="field mt-1 w-full" required maxLength={150} value={form.location} onChange={event => change("location", event.target.value)} /></label> : <><label className="block font-semibold">Meeting platform<input className="field mt-1 w-full" required maxLength={100} value={form.meetingPlatform} onChange={event => change("meetingPlatform", event.target.value)} /></label><label className="block font-semibold">Meeting link (optional)<input className="field mt-1 w-full" type="url" maxLength={500} value={form.meetingLink} onChange={event => change("meetingLink", event.target.value)} /></label></>}

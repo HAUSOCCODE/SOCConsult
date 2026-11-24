@@ -6,6 +6,7 @@ import { authenticate, authorize } from "../middleware/auth.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
 import { transitionAppointment, createAppointmentRequest } from "../services/appointmentTransitionService.js";
 import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
+import { parseAvailableTimeSlots, scheduleFitsAvailableTimeSlot, validateAvailableTimeSlots } from "../services/availableTimeSlotService.js";
 
 const router = Router();
 router.use(authenticate);
@@ -61,6 +62,7 @@ router.post(
     const yearLevel = String(req.body.yearLevel || req.user.yearLevel || "").trim();
     const requestedConsultationDate = String(req.body.requestedConsultationDate || "").trim();
     const requestedConsultationTime = String(req.body.requestedConsultationTime || "").trim();
+    const availableTimeSlots = parseAvailableTimeSlots(req.body.availableTimeSlots);
     const duration = Number(req.body.estimatedDurationMinutes);
     const hasPreferredSchedule = Boolean(req.body.startAt || req.body.endAt);
     const isDateOnlyRequest = Boolean(requestedConsultationDate) && !hasPreferredSchedule;
@@ -88,10 +90,14 @@ router.post(
       return invalid(res, "Your Student profile contains an invalid year level. Please update your profile or contact the Dean.", "INVALID_YEAR_LEVEL");
     if (isDateOnlyRequest && !requestedDateIsValid(requestedConsultationDate))
       return invalid(res, "Please choose a valid preferred consultation date.", "INVALID_REQUESTED_DATE");
-    if (isDateOnlyRequest && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(requestedConsultationTime))
+    if (isDateOnlyRequest && availableTimeSlots == null && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(requestedConsultationTime))
       return invalid(res, "Please choose a valid preferred consultation time.", "INVALID_REQUESTED_TIME");
-    if (isDateOnlyRequest && new Date(`${requestedConsultationDate}T${requestedConsultationTime}:00+08:00`) <= new Date())
+    if (isDateOnlyRequest && availableTimeSlots == null && new Date(`${requestedConsultationDate}T${requestedConsultationTime}:00+08:00`) <= new Date())
       return invalid(res, "Please choose a future preferred consultation date and time.", "PAST_REQUESTED_SCHEDULE");
+    if (isDateOnlyRequest && availableTimeSlots != null) {
+      const slotError = validateAvailableTimeSlots({ date: requestedConsultationDate, slots: availableTimeSlots });
+      if (slotError) return invalid(res, slotError.message, slotError.code);
+    }
     if (!isDateOnlyRequest && (!Number.isInteger(duration) || duration < 5 || duration > 240))
       return invalid(res, "Consultation duration must be between 5 and 240 minutes.", "INVALID_DURATION");
     if (hasPreferredSchedule && (!req.body.startAt || !req.body.endAt ||
@@ -139,7 +145,8 @@ router.post(
         _id: appointmentId, student: req.user.id, faculty: facultyId,
         bookingMethod: "schedule_request", subject, reason, ...(yearLevel && { yearLevel }),
         supportingDocuments: documents.entries,
-        ...(isDateOnlyRequest && { requestedConsultationDate, requestedConsultationTime, consultationMode: mode }),
+        ...(isDateOnlyRequest && { requestedConsultationDate, consultationMode: mode,
+          ...(availableTimeSlots != null ? { availableTimeSlots } : { requestedConsultationTime }) }),
         ...(!hasPreferredSchedule && !isDateOnlyRequest && { estimatedDurationMinutes: duration }),
         ...(hasPreferredSchedule && {
           estimatedDurationMinutes: duration,
@@ -230,6 +237,12 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
       message: "Use Reschedule Request to propose a different consultation time.",
       code: "REQUESTED_TIME_MISMATCH",
     });
+  if (appointment.availableTimeSlots?.length && !scheduleFitsAvailableTimeSlot({
+    date: appointment.requestedConsultationDate, slots: appointment.availableTimeSlots, startAt, endAt,
+  })) return res.status(400).json({
+    message: "Choose a consultation time that fits within one of the Student's available time slots, or use Reschedule Request.",
+    code: "SCHEDULE_OUTSIDE_AVAILABLE_TIME",
+  });
   const studentIsActive = await User.exists({
     _id: appointment.student,
     role: "student",

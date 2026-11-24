@@ -35,6 +35,14 @@ describe("schedule request model", () => {
     assert.equal(request.startAt, undefined);
     assert.equal(request.endAt, undefined);
   });
+  it("stores multiple availability preferences without fabricating a confirmed schedule", () => {
+    const availableTimeSlots = [{ startTime: "08:00", endTime: "10:00" }, { startTime: "13:00", endTime: "15:00" }];
+    const request = new Appointment({ ...data, bookingMethod: "schedule_request", status: "Pending",
+      requestedConsultationDate: "2099-11-25", availableTimeSlots, consultationMode: "Online" });
+    assert.equal(request.validateSync(), undefined);
+    assert.deepEqual(request.availableTimeSlots.map(({ startTime, endTime }) => ({ startTime, endTime })), availableTimeSlots);
+    assert.equal(request.startAt, undefined); assert.equal(request.endAt, undefined);
+  });
   it("keeps legacy date-only preferences valid without fabricating a time", () => {
     const request = new Appointment({ ...data, bookingMethod: "schedule_request", status: "Pending",
       requestedConsultationDate: "2099-01-15", consultationMode: "Online" });
