@@ -107,20 +107,27 @@ export async function submitReview({ id, actor, input, now = new Date() }) {
       const [review] = await AttendanceReview.create([{ appointment: id, dean: actor.id, action: input.action, reason, reviewedAt,
         previousStatus: row.status, resultingStatus: status, finalOutcome, isFinal, appointmentVersion: input.expectedVersion,
         studentResponse: responses.find(response => response.participantRole === "student")?._id || null,
-        facultyResponse: responses.find(response => response.participantRole === "faculty")?._id || null }], { session });
+        facultyResponse: responses.find(response => response.participantRole === "faculty")?._id || null }], { session })
+        .catch(error => {
+          // Only a collision on the final review index is a review conflict.
+          if (isFinal && error.code === 11000 && error.keyPattern?.appointment === 1 &&
+              Object.keys(error.keyPattern).length === 1)
+            fail("This review was already resolved. Refresh before continuing.");
+          throw error;
+        });
       await AuditLog.create([{ subjectUser: row.student, subjectRole: "student", subjectUsers: [row.student, row.faculty],
         actorUser: actor.id, actorRole: "dean", action: isFinal ? "attendance_review_resolved" : "attendance_review_retained", category: "Appointment",
         description: "Dean attendance review action recorded", relatedEntityType: "Appointment", relatedEntityId: row._id,
         changes: { before: { status: row.status }, after: { status, finalOutcome } }, metadata: { reviewId: String(review._id), action: input.action }, createdAt: reviewedAt }], { session });
       if (isFinal) {
-        await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event: "finalized", session });
+        await createStudentConsultationNotification({ student: row.student, appointmentId: row._id,
+          event: "finalized", session, transitionVersion: updated.__v });
         await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id,
           event: "faculty_finalized", session, transitionVersion: updated.__v });
       }
       result = { reviewId: String(review._id), status, finalOutcome, version: updated.__v, state: isFinal ? "Resolved" : "Unresolved" };
     });
-  } catch (error) { if (error.code === 11000) fail("This review was already resolved. Refresh before continuing."); throw error; }
-  finally { await session.endSession(); }
+  } finally { await session.endSession(); }
   if (result?.state === "Resolved") {
     await bestEffortStudentConsultationEmail({ student: studentId, appointmentId: id, event: "finalized" });
     await bestEffortFacultyConsultationEmail({ faculty: facultyId, appointmentId: id, event: "faculty_finalized" });
