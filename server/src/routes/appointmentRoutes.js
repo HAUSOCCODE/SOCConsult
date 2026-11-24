@@ -25,6 +25,7 @@ import {
   generateConsultationIcs,
 } from "../services/icsService.js";
 import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
+import { studentAppointmentDetails } from "../services/studentAppointmentDetailsService.js";
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
@@ -250,6 +251,11 @@ router.get("/student-history", authorize("student"), async (req, res) => {
     input: req.query,
   }));
 });
+
+router.get("/student-details/:id", authorize("student"), requestRead(async (req, res) => {
+  if (Object.keys(req.query).length) return res.status(400).json({ message: "Invalid consultation details request." });
+  res.json(await studentAppointmentDetails({ student: req.user.id, id: req.params.id }));
+}));
 
 // One shared participant endpoint; never runs attendance processing or writes state.
 router.get("/:appointmentId/calendar.ics", authorize("student", "faculty", "dean"), async (req, res) => {

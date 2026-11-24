@@ -15,7 +15,10 @@ const safeError = error => error?.status === 400 ? "Select a valid date range of
 export default function FacultyReports() {
   const [filters, setFilters] = useState(initialFilters), [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const inFlight = useRef(false), mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const change = (key, value) => { setFilters(current => ({ ...current, [key]: value })); setError(""); setMessage(""); };
   const clear = () => { setFilters(initialFilters()); setError(""); setMessage(""); };
   const generate = async event => {
@@ -26,10 +29,15 @@ export default function FacultyReports() {
     try {
       const body = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
       const result = await api.download("/faculty/reports/pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (result.blob.type !== "application/pdf") throw Object.assign(new Error(), { status: 503 });
-      const url = URL.createObjectURL(result.blob), anchor = document.createElement("a");
+      if (!(result?.blob instanceof Blob) || result.blob.type !== "application/pdf" || !result.blob.size) throw Object.assign(new Error(), { status: 503 });
+      if (!mounted.current) return;
+      const anchor = document.createElement("a"), url = URL.createObjectURL(result.blob);
       anchor.href = url; anchor.download = result.filename || `faculty-consultation-report-${filters.startDate}-to-${filters.endDate}.pdf`;
-      document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      try {
+        document.body.appendChild(anchor); anchor.click();
+      } finally {
+        anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
       if (mounted.current) setMessage(`PDF generated successfully for ${result.total} consultation record${result.total === 1 ? "" : "s"}.`);
     } catch (failure) { if (mounted.current) setError(safeError(failure)); }
     finally { inFlight.current = false; if (mounted.current) setBusy(false); }

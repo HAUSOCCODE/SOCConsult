@@ -43,17 +43,20 @@ const safeDocument = document => ({
   size: document?.size,
   uploadedAt: document?.uploadedAt || document?.createdAt,
 });
-async function safeDocuments(appointments) {
-  const legacyIds = appointments.flatMap(row => (row.supportingDocuments || [])
-    .filter(document => mongoose.isValidObjectId(document) && !document?.originalName));
-  const legacy = legacyIds.length
-    ? await SupportingDocument.find({ _id: { $in: legacyIds } }).select("originalName mimeType size createdAt").lean()
+export async function safeDocuments(appointments) {
+  const legacyRequests = appointments.flatMap(row => {
+    const ids = (row.supportingDocuments || [])
+      .filter(document => mongoose.isValidObjectId(document) && !document?.originalName);
+    return ids.length ? [{ appointment: row._id, _id: { $in: ids } }] : [];
+  });
+  const legacy = legacyRequests.length
+    ? await SupportingDocument.find({ $or: legacyRequests }).select("appointment originalName mimeType size createdAt").lean()
     : [];
-  const byId = new Map(legacy.map(document => [String(document._id), document]));
+  const byAppointmentAndId = new Map(legacy.map(document => [`${document.appointment}:${document._id}`, document]));
   return appointments.map(row => ({
     ...row,
     supportingDocuments: (row.supportingDocuments || []).map(document =>
-      document?.originalName ? safeDocument(document) : safeDocument(byId.get(String(document))))
+      document?.originalName ? safeDocument(document) : safeDocument(byAppointmentAndId.get(`${row._id}:${document}`)))
       .filter(document => document.originalName),
   }));
 }
@@ -101,6 +104,8 @@ export function safeStudentHistoryRecord(row) {
     } : null,
     subject: row.subject,
     reason: row.reason,
+    initiatedByRole: row.initiatedByRole,
+    ...safeRequestedPreferences(row),
     startAt: row.startAt,
     endAt: row.endAt,
     estimatedDurationMinutes: row.estimatedDurationMinutes,
@@ -122,6 +127,13 @@ export function safeStudentHistoryRecord(row) {
     statusHistory: safeStatusHistory(row.statusHistory),
   };
 }
+export function safeRequestedPreferences(row) {
+  return {
+    requestedConsultationDate: row.requestedConsultationDate,
+    requestedConsultationTime: row.requestedConsultationTime,
+    availableTimeSlots: (row.availableTimeSlots || []).map(slot => ({ startTime: slot.startTime, endTime: slot.endTime })),
+  };
+}
 export async function listStudentConsultationHistory({ student, input, now = new Date() }) {
   if (Object.keys(input).some(key => !["page", "status", "mode", "faculty", "from", "to", "appointment"].includes(key))) fail("Invalid history filter.");
   const page = Number(input.page || 1);
@@ -131,7 +143,7 @@ export async function listStudentConsultationHistory({ student, input, now = new
     faculty: input.faculty, from: input.from, to: input.to, now });
   if (input.appointment) query._id = input.appointment;
   const base = { student, ...historicalEligibility(now) };
-  const projection = "faculty subject reason startAt endAt estimatedDurationMinutes consultationMode location meetingPlatform status createdAt responseNote cancellationReason expirationReason supportingDocument.name supportingDocument.mimeType supportingDocument.size supportingDocuments statusHistory +attendance";
+  const projection = "faculty subject reason initiatedByRole requestedConsultationDate requestedConsultationTime availableTimeSlots startAt endAt estimatedDurationMinutes consultationMode location meetingPlatform status createdAt responseNote cancellationReason expirationReason supportingDocument.name supportingDocument.mimeType supportingDocument.size supportingDocuments statusHistory +attendance";
   const [rows, total, providerRows] = await Promise.all([
     Appointment.find(query).select(projection).populate("faculty", "name firstName middleName lastName position specialization office").sort({ startAt: -1, _id: -1 }).skip((page - 1) * STUDENT_HISTORY_PAGE_SIZE).limit(STUDENT_HISTORY_PAGE_SIZE).lean(),
     Appointment.countDocuments(query),

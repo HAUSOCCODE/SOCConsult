@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/apiClient";
 import FacultyAppointmentDetailsModal from "../../components/appointments/FacultyAppointmentDetailsModal";
 import { EmptyState, ErrorState, Loading, Modal, StatusBadge } from "../../components/UI";
-import { formatManilaDisplay } from "../../utils/formatDateTime";
+import { formatManilaHistorySchedule } from "../../utils/appointmentSchedule";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 
@@ -73,6 +73,7 @@ export default function FacultyConsultationHistory() {
         <Field label="Consultation Mode"><Select value={draft.mode} onChange={mode => setDraft(v => ({ ...v, mode }))} empty="All modes" values={MODES} /></Field>
         <Field label="Student name or institutional ID"><div className="relative"><Search className="absolute left-3 top-3 text-slate-400" size={16} /><input className="field pl-9" maxLength={100} value={draft.search} onChange={e => setDraft(v => ({ ...v, search: e.target.value }))} placeholder="Search Student" /></div></Field>
       </div>
+      <p className="mt-3 text-sm text-slate-600">Date filters use recorded appointment schedules. Requests without an assigned schedule appear when date filters are cleared.</p>
       {dateError && <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{dateError}</p>}
       <button type="submit" disabled={Boolean(dateError)} className="btn-primary mt-4 min-h-10 disabled:opacity-50">Apply Filters</button>
     </form>
@@ -88,8 +89,7 @@ export default function FacultyConsultationHistory() {
 
 function Field({ label, children }) { return <label className="min-w-0 text-sm font-bold text-slate-700"><span className="mb-1.5 block">{label}</span>{children}</label>; }
 function Select({ value, onChange, empty, values }) { return <select className="field" value={value} onChange={e => onChange(e.target.value)}><option value="">{empty}</option>{values.map(item => <option key={item}>{item}</option>)}</select>; }
-function when(value) { return value ? formatManilaDisplay(new Date(value), { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, "timestamp") : "Schedule unavailable"; }
-function HistoryItem({ item, onView }) { return <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr_1fr_auto] lg:items-center"><div className="min-w-0"><h2 className="break-words font-bold text-slate-900">{item.subject || "Consultation"}</h2><p className="mt-1 break-words text-sm text-slate-600">{formatPersonName(item.student) || "Student unavailable"}{item.student?.studentId || item.student?.institutionalId ? ` · ${item.student.studentId || item.student.institutionalId}` : ""}</p><p className="mt-2 flex items-start gap-2 text-sm text-slate-600"><CalendarDays size={15} className="mt-0.5 shrink-0" />{when(item.startAt)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Appointment Status</p><div className="mt-1"><StatusBadge appointment status={item.status} allowWrap compact /></div></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Attendance Outcome</p><p className="mt-1 break-words text-sm font-semibold text-slate-800">{item.finalAttendanceOutcome || "Not finalized"}</p><p className="mt-1 text-sm text-slate-600">{item.consultationMode}</p></div><button type="button" onClick={onView} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2"><Eye size={16} /> View Details</button></article>; }
+function HistoryItem({ item, onView }) { return <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr_1fr_auto] lg:items-center"><div className="min-w-0"><h2 className="break-words font-bold text-slate-900">{item.subject || "Consultation"}</h2><p className="mt-1 break-words text-sm text-slate-600">{formatPersonName(item.student) || "Student unavailable"}{item.student?.studentId || item.student?.institutionalId ? ` · ${item.student.studentId || item.student.institutionalId}` : ""}</p><p className="mt-2 flex items-start gap-2 text-sm text-slate-600"><CalendarDays size={15} className="mt-0.5 shrink-0" />{formatManilaHistorySchedule(item)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Appointment Status</p><div className="mt-1"><StatusBadge appointment status={item.status} allowWrap compact /></div></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Attendance Outcome</p><p className="mt-1 break-words text-sm font-semibold text-slate-800">{item.finalAttendanceOutcome || "Not finalized"}</p><p className="mt-1 text-sm text-slate-600">{item.consultationMode}</p></div><button type="button" onClick={onView} className="btn-primary inline-flex min-h-10 items-center justify-center gap-2"><Eye size={16} /> View Details</button></article>; }
 function DetailState({ title, onClose }) {
   return <Modal title="Consultation record" onClose={onClose} actions={<button type="button" className="btn-secondary" onClick={onClose}>Close</button>}><p className="break-words text-sm text-slate-700" role="status">{title}</p></Modal>;
 }
