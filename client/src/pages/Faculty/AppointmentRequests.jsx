@@ -12,7 +12,7 @@ import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 const filters = ["Pending", "Reschedule Proposed", "Confirmed", "Rejected", "Cancelled", "Expired", "All"];
 const timestamp = value => value && Number.isFinite(new Date(value).getTime()) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
 
-export default function AppointmentRequests({ embedded = false }) {
+export default function AppointmentRequests({ embedded = false, directOnly = false, initialAppointmentId = "", onDirectClose, onDirectDecision } = {}) {
   const toast = useToast();
   const searchParams = new URLSearchParams(window.location?.search || "");
   const linkedAppointment = searchParams.getAll("appointment").length === 1 && /^[a-f\d]{24}$/i.test(searchParams.get("appointment") || "")
@@ -33,6 +33,7 @@ export default function AppointmentRequests({ embedded = false }) {
   const detailRequest = useRef(null);
   const busyRef = useRef(false);
   useEffect(() => {
+    if (directOnly) return undefined;
     let controller;
     const load = async () => {
       controller?.abort(); controller = new AbortController();
@@ -56,6 +57,7 @@ export default function AppointmentRequests({ embedded = false }) {
     detailRequest.current?.abort(); setSelectedId(""); setDetail({}); setRejecting(false); setNote(""); setConfirming(false); setDecisionError("");
     if (linkedAppointment) { const next = new URLSearchParams(window.location?.search || ""); next.delete("appointment");
       window.history?.replaceState(null, "", `${window.location?.pathname || ""}${next.size ? `?${next}` : ""}${window.location?.hash || ""}`); }
+    onDirectClose?.();
   };
   const open = async id => {
     detailRequest.current?.abort();
@@ -68,6 +70,7 @@ export default function AppointmentRequests({ embedded = false }) {
   };
   useEffect(() => () => { listRequest.current?.abort(); detailRequest.current?.abort(); }, []);
   useEffect(() => { if (linkedAppointment && linkedAppointment !== selectedId) void open(linkedAppointment); }, [linkedAppointment]);
+  useEffect(() => { if (initialAppointmentId && initialAppointmentId !== selectedId) void open(initialAppointmentId); }, [initialAppointmentId]);
   const decide = async decision => {
     if (busyRef.current || !detail.appointment) return;
     if (!Number.isInteger(detail.appointment.__v)) { setDecisionError("Reload these details before deciding."); return; }
@@ -88,7 +91,8 @@ export default function AppointmentRequests({ embedded = false }) {
   };
   const appointment = detail.appointment;
   const pending = appointment?.status === "Pending";
-  return <div className="min-w-0 space-y-5">
+  return <div className={directOnly ? "contents" : "min-w-0 space-y-5"}>
+    {!directOnly && <>
     {!embedded && <><h1 className="text-2xl font-bold text-maroon-900">Appointment Requests</h1>
     <p className="text-sm text-slate-600">Review your Student requests. Times are shown in Asia/Manila.</p></>}
     {!embedded && <label className="block text-sm font-semibold">Status
@@ -119,6 +123,7 @@ export default function AppointmentRequests({ embedded = false }) {
         <button className="btn-secondary" disabled={page >= (list.data?.pagination.totalPages || 0)} onClick={() => setPage(value => value + 1)}>Next</button>
       </nav>
     </>}
+    </>}
     {selectedId && !appointment && <RequestLoadingDialog loading={detail.loading} onClose={close} onRetry={() => void open(selectedId)} />}
     {appointment && !legacyReview && <AppointmentRequestDetailsModal appointment={appointment} personalRequest onClose={close} actions={pending && <>
       {decisionError && <p role="alert" className="w-full text-red-700">{decisionError}</p>}
@@ -128,7 +133,7 @@ export default function AppointmentRequests({ embedded = false }) {
       {!rejecting && appointment.bookingMethod === "schedule_request" ? <button className="btn-primary" disabled={busy} onClick={() => setLegacyReview(appointment)}>Review Request</button> : !rejecting && appointment.startAt && appointment.endAt ? <button className="btn-primary" disabled={busy} onClick={() => confirming ? void decide("Confirmed") : setConfirming(true)}>{confirming ? "Confirm appointment" : "Confirm"}</button> : null}
       <button className="btn-secondary" disabled={busy} onClick={() => rejecting ? void decide("Rejected") : setRejecting(true)}>{busy ? "Saving..." : rejecting ? "Confirm rejection" : "Reject"}</button>
     </>} />}
-    {legacyReview && <OneTimeScheduleRequests key={legacyReview._id} reviewRequest={legacyReview} onClose={() => setLegacyReview(null)} onConflict={async () => { setLegacyReview(null); await open(appointment._id); }} onDecided={() => { close(); setRevision(value => value + 1); }} />}
+    {legacyReview && <OneTimeScheduleRequests key={legacyReview._id} reviewRequest={legacyReview} onClose={() => setLegacyReview(null)} onConflict={async () => { setLegacyReview(null); await open(appointment._id); }} onDecided={() => { close(); setRevision(value => value + 1); onDirectDecision?.(); }} />}
   </div>;
 }
 

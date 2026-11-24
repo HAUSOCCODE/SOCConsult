@@ -24,6 +24,7 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
     StatusBadge: ({ status }) => React.createElement("span", null, status), EmptyState: ({ title, text }) => React.createElement("p", null, title, text),
     Loading: ({ message }) => React.createElement("p", null, message), ErrorState: ({ message, onRetry }) => React.createElement("div", null, React.createElement("p", null, message), React.createElement("button", { onClick: onRetry }, "Try again")),
     AppointmentRequestDetailsModal: ({ appointment, actions }) => React.createElement("div", null, appointment.reason, actions),
+    RequestedAvailability: () => React.createElement("section", null, "Requested availability"),
     OneTimeScheduleRequests: () => null, ...overrides,
   };
   const name = file.includes("FacultyRescheduleModal") ? "FacultyRescheduleModal" : file.includes("AppointmentRequestDetailsModal") ? "AppointmentRequestDetailsModal" : file.includes("SupportingDocumentViewer") ? "ProtectedRequestDocuments" : file.includes("OneTimeScheduleRequests") ? "OneTimeScheduleRequests" : "AppointmentRequests";

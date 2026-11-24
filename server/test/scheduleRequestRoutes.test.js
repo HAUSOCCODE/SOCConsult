@@ -115,6 +115,30 @@ test("Student date-only request preserves the Manila date without inventing or r
   } finally { await h.close(); }
 });
 
+test("Student availability ranges remain Pending and Faculty approval must fit one range", async () => {
+  const h = await appointmentHttp();
+  try {
+    const body = { facultyId: h.users.faculty.id, subject: "Availability preferences", reason: "Two class-free periods",
+      requestedConsultationDate: "2099-11-25", availableTimeSlots: [
+        { startTime: "08:00", endTime: "10:00" }, { startTime: "13:00", endTime: "15:00" },
+      ], mode: "Online" };
+    const response = await h.request("/schedule-requests", "student", "POST", body);
+    assert.equal(response.status, 201);
+    const created = (await response.json()).appointment;
+    assert.equal(created.status, "Pending"); assert.equal(created.startAt, undefined); assert.equal(h.state.holds.length, 0);
+    assert.deepEqual(created.availableTimeSlots, body.availableTimeSlots);
+    const outside = await h.request(`/schedule-requests/${created._id}/approve`, "faculty", "PUT", {
+      startAt: "2099-11-25T10:00:00+08:00", durationMinutes: 30, mode: "Online", meetingPlatform: "Teams", expectedVersion: created.__v,
+    });
+    assert.equal(outside.status, 400); assert.equal((await outside.json()).code, "SCHEDULE_OUTSIDE_AVAILABLE_TIME");
+    const approved = await h.request(`/schedule-requests/${created._id}/approve`, "faculty", "PUT", {
+      startAt: "2099-11-25T13:30:00+08:00", durationMinutes: 30, mode: "Online", meetingPlatform: "Teams", expectedVersion: created.__v,
+    });
+    assert.equal(approved.status, 200); assert.equal(h.state.appointments[0].status, "Confirmed"); assert.equal(h.state.holds.length, 30);
+    assert.deepEqual(h.state.appointments[0].availableTimeSlots, body.availableTimeSlots);
+  } finally { await h.close(); }
+});
+
 test("preferred schedule request rejects missing, malformed, and past Manila times", async () => {
   const h = await appointmentHttp();
   const base = { facultyId: h.users.faculty.id, subject: "Date preference", reason: "Faculty selects time", mode: "Online", requestedConsultationTime: "14:00" };
@@ -218,8 +242,8 @@ test("alternative request form maps safe API validation codes and never renders 
     assert.match(source, new RegExp(code));
   assert.match(source, /Preferred Consultation Mode/);
   assert.match(source, /Preferred consultation date/);
-  assert.match(source, /Preferred consultation time \(Asia\/Manila\)/);
-  assert.match(source, /preferred date and time will be reviewed by the Faculty/);
+  assert.match(source, /AvailableTimeSlots/);
+  assert.match(source, /available times will be reviewed by the Faculty/);
   assert.doesNotMatch(source, /datetime-local|estimatedDurationMinutes|startAt|endAt/);
   assert.doesNotMatch(source, /Meeting platform|Meeting link|>Location</);
   assert.match(source, /requestErrorMessage/);

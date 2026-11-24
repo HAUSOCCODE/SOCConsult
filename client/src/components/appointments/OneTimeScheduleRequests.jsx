@@ -46,6 +46,8 @@ const initial = {
   meetingPlatform: "Google Meet",
   meetingLink: "",
 };
+const firstAvailableTime = request => request?.availableTimeSlots?.[0]?.startTime || request?.requestedConsultationTime || "";
+const displayTime = value => value ? new Date(`2000-01-01T${value}:00+08:00`).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }) : "Not provided";
 
 export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDecided, onConflict } = {}) {
   const toast = useToast();
@@ -54,7 +56,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
   const [details, setDetails] = useState(null);
   const requestedDate = reviewRequest?.requestedConsultationDate || "";
   const [form, setForm] = useState({ ...initial, date: requestedDate,
-    time: reviewRequest?.requestedConsultationTime || "",
+    time: firstAvailableTime(reviewRequest),
     mode: reviewRequest?.consultationMode || "Face-to-Face",
     durationMinutes: String(reviewRequest?.estimatedDurationMinutes || 30), reason: "" });
   const [reviewAction, setReviewAction] = useState("approve");
@@ -83,7 +85,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
     setForm({
       ...initial,
       date: request.requestedConsultationDate || "",
-      time: request.requestedConsultationTime || "",
+      time: firstAvailableTime(request),
       mode: request.consultationMode || "Face-to-Face",
       durationMinutes: String(request.estimatedDurationMinutes || 30), reason: "",
     });
@@ -122,6 +124,11 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
         const startAt = `${form.date}T${form.time}:00+08:00`;
         if (!Number.isFinite(new Date(startAt).getTime()) || new Date(startAt) <= new Date()) {
           setDecisionError("Please choose a future consultation time."); return;
+        }
+        if (decision === "approve" && selected.availableTimeSlots?.length) {
+          const end = new Date(new Date(startAt).getTime() + durationMinutes * 60000);
+          const fits = selected.availableTimeSlots.some(slot => new Date(startAt) >= new Date(`${form.date}T${slot.startTime}:00+08:00`) && end <= new Date(`${form.date}T${slot.endTime}:00+08:00`));
+          if (!fits) { setDecisionError("Choose a start time and duration that fit within one of the Student's available time slots, or use Reschedule Request."); return; }
         }
         body = {
           startAt,
@@ -251,7 +258,9 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                 <p className="mt-1 break-words text-sm text-slate-600">
                   {selected.reason}
                 </p>
-                <p className="mt-1 text-sm text-slate-600">Requested date: <strong>{selected.requestedConsultationDate || "Legacy request"}</strong> · Preferred time: <strong>{selected.requestedConsultationTime || "Not provided"}</strong> · Preferred mode: <strong>{selected.consultationMode || "Not provided"}</strong></p>
+                <p className="mt-1 text-sm text-slate-600">Requested date: <strong>{selected.requestedConsultationDate || "Legacy request"}</strong> · Preferred mode: <strong>{selected.consultationMode || "Not provided"}</strong></p>
+                {selected.availableTimeSlots?.length ? <div className="mt-3 rounded-lg border border-maroon-100 bg-maroon-50/50 p-3 text-sm"><p className="font-bold text-maroon-900">Student available times (Asia/Manila)</p><ul className="mt-1 list-disc space-y-1 pl-5">{selected.availableTimeSlots.map((slot, index) => <li key={`${slot.startTime}-${slot.endTime}-${index}`}>{displayTime(slot.startTime)} – {displayTime(slot.endTime)}</li>)}</ul></div>
+                  : <p className="mt-1 text-sm text-slate-600">Preferred time: <strong>{selected.requestedConsultationTime || "Not provided"}</strong></p>}
               </header>
               <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
                 <label className="mb-4 block text-sm font-semibold">Review Action
@@ -274,7 +283,7 @@ export default function OneTimeScheduleRequests({ reviewRequest, onClose, onDeci
                   </label>
                   <label className="text-sm font-semibold">
                     Start time (Asia/Manila)
-                    <input disabled={busy || (reviewAction === "approve" && Boolean(selected.requestedConsultationTime))}
+                    <input disabled={busy || (reviewAction === "approve" && Boolean(selected.requestedConsultationTime) && !selected.availableTimeSlots?.length)}
                       type="time"
                       className="field mt-1"
                       value={form.time}

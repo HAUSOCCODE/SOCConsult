@@ -7,6 +7,7 @@ import { StatusBadge } from "../UI";
 import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { formatPersonName } from "../../utils/formatPersonName";
+import RequestedAvailability from "./RequestedAvailability";
 
 const dateTime = (value) =>
   value ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
@@ -26,6 +27,7 @@ export default function AppointmentRequestDetailsModal({
 }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, { onClose });
+  const confirmed = ["Confirmed", "Completed", "Awaiting Attendance Update", "Attendance Review"].includes(appointment.status);
 
 
   return createPortal(
@@ -51,7 +53,19 @@ export default function AppointmentRequestDetailsModal({
             <p className="mt-1 text-sm text-slate-500">
               Submitted {dateTime(appointment.createdAt)}
             </p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-maroon-700">Requested by {appointment.initiatedByRole === "faculty" ? "Faculty" : "Student"}</p>
+            <div className="mt-2"><StatusBadge appointment status={appointment.status} allowWrap /></div>
           </div>
+
+          <RequestedAvailability appointment={appointment} />
+          <DetailSection title={confirmed ? "Confirmed Schedule" : appointment.startAt ? "Proposed Appointment Schedule" : "Confirmed Schedule"}>
+            {appointment.startAt && appointment.endAt ? <>
+              <Detail label="Date and Start" value={dateTime(appointment.startAt)} />
+              <Detail label="End Time (Asia/Manila)" value={time(appointment.endAt)} />
+              <Detail label="Duration" value={`${Math.round((new Date(appointment.endAt) - new Date(appointment.startAt)) / 60000)} minutes`} />
+              <Detail label="Mode" value={appointment.consultationMode} />
+            </> : <p className="text-sm text-slate-600 sm:col-span-2">Not scheduled yet</p>}
+          </DetailSection>
           <button
             type="button"
             aria-label="Close appointment request details"
@@ -89,31 +103,6 @@ export default function AppointmentRequestDetailsModal({
             </DetailSection>
             <DetailSection title="Consultation Information">
               <Detail label={personalRequest ? "Subject / Course" : "Subject / Topic"} value={appointment.subject} />
-              <Detail
-                label="Requested Date"
-                value={
-                  appointment.requestedConsultationDate || (appointment.startAt
-                    ? formatManilaDisplay(new Date(appointment.startAt), {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        }, "date")
-                    : "Pending Faculty schedule")
-                }
-              />
-              {appointment.requestedConsultationTime && <Detail
-                label="Preferred Consultation Time"
-                value={`${appointment.requestedConsultationTime} (Asia/Manila)`}
-              />}
-              {appointment.startAt && <Detail
-                label="Faculty Availability Window"
-                value={
-                  appointment.startAt
-                    ? `${time(appointment.startAt)} – ${time(appointment.endAt)}`
-                    : "Not scheduled"
-                }
-              />}
               {appointment.estimatedDurationMinutes && <Detail
                 label="Estimated Consultation Time"
                 value={

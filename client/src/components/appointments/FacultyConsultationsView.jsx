@@ -31,6 +31,7 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
   const listRequest = useRef(null), detailRequest = useRef(null), busyRef = useRef(false), opener = useRef(null);
   const [reasonError, setReasonError] = useState("");
   const [requesting, setRequesting] = useState(false), [proposalDecision, setProposalDecision] = useState("");
+  const [directReviewId, setDirectReviewId] = useState("");
   useEffect(() => {
     if (detailOnly || section === "Incoming Requests") return undefined;
     const load = async () => {
@@ -89,6 +90,10 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
   }, [selection]);
   useEffect(() => { if (!detailOnly && linkedAppointment && linkedAppointment !== selected) void open(linkedAppointment); }, [detailOnly, linkedAppointment]);
   const a = detail?.appointment;
+  const openDirectReview = id => {
+    detailRequest.current?.abort();
+    setSelected(""); setDetail(null); setActionError(""); setDirectReviewId(id);
+  };
   return <div className="min-w-0 space-y-5">
     {!detailOnly && <>
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-maroon-900">Consultations / Requests</h1><p>Manage your consultation requests, upcoming appointments, and scheduling responses.</p></div><button type="button" className="btn-primary" onClick={() => setRequesting(true)}>Request Consultation</button></div>
@@ -111,7 +116,7 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     {selected && !a && <DetailLoadingDialog onClose={close} opener={opener.current}>{detail?.loading ? "Loading consultation details..." : <><p role="alert">{detail?.error}</p><button type="button" className="btn-secondary" onClick={() => open(selected)}>Retry details</button></>}<button type="button" className="btn-secondary" onClick={close}>Close details</button></DetailLoadingDialog>}
     {a && <FacultyAppointmentDetailsModal appointment={a} personal opener={opener.current} onClose={close} onAttendanceSubmitted={async () => { setRevision(v => v + 1); onChanged?.(); await open(selected); }}>
       <div className="flex flex-wrap gap-3">
-        {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <button type="button" className="btn-secondary" onClick={() => { close(); setSection("Incoming Requests"); }}>Review request decisions</button>}
+        {a.status === "Pending" && (a.actions.confirm || a.actions.reject || a.actions.propose) && <button type="button" className="btn-secondary" onClick={() => openDirectReview(a._id)}>Review Request Decisions</button>}
         {a.status === "Confirmed" && a.actions.propose && <button type="button" className="btn-secondary" onClick={() => setProposing(true)}>Propose reschedule</button>}
         {a.status === "Reschedule Proposed" && a.actions.accept_proposal && <button type="button" className="btn-primary" onClick={() => setProposalDecision("accept")}>Accept Student Proposal</button>}
         {a.status === "Reschedule Proposed" && a.actions.reject_proposal && <button type="button" className="btn-secondary" onClick={() => setProposalDecision("reject")}>Reject Student Proposal</button>}
@@ -122,5 +127,8 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     <ConfirmDialog open={cancelling} title="Cancel consultation" message="Cancel this consultation?" inputLabel="Cancellation reason (required, up to 500 characters)" inputRequired inputError={reasonError} inputMaxLength={500} inputValue={reason} onInputChange={value => { setReason(value); setReasonError(""); }} confirmLabel="Cancel consultation" loadingLabel="Cancelling..." loading={busy} onCancel={() => !busyRef.current && setCancelling(false)} onConfirm={cancel} />
     <FacultyConsultationRequestModal open={requesting} onClose={() => setRequesting(false)} onSuccess={async () => { setRevision(v => v + 1); setSection("Sent Requests"); }} />
     <ConfirmDialog open={Boolean(proposalDecision)} title={`${proposalDecision === "accept" ? "Accept" : "Reject"} Student proposal`} message={`${proposalDecision === "accept" ? "Accept" : "Reject"} the Student's proposed schedule?`} confirmLabel={`${proposalDecision === "accept" ? "Accept" : "Reject"} Proposal`} loading={busy} loadingLabel="Saving..." onCancel={() => !busyRef.current && setProposalDecision("")} onConfirm={respondToStudentProposal} />
+    {directReviewId && <AppointmentRequests embedded directOnly initialAppointmentId={directReviewId}
+      onDirectClose={() => { const id = directReviewId; setDirectReviewId(""); setRevision(value => value + 1); void open(id); }}
+      onDirectDecision={() => { setRevision(value => value + 1); onChanged?.(); }} />}
   </div>;
 }

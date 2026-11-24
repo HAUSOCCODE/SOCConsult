@@ -73,12 +73,17 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
   const date = scheduled ? manila(appointment.startAt, { month: "long", day: "numeric", year: "numeric" }) : appointment.requestedConsultationDate;
   const start = scheduled ? manila(appointment.startAt, { hour: "numeric", minute: "2-digit" }) : undefined;
   const end = scheduled ? manila(appointment.endAt, { hour: "numeric", minute: "2-digit" }) : undefined;
+  const availableTimes = appointment.availableTimeSlots?.map(slot => {
+    const clock = value => manila(`2000-01-01T${value}:00+08:00`, { hour: "numeric", minute: "2-digit" });
+    return `${clock(slot.startTime)} – ${clock(slot.endTime)}`;
+  }).join("; ");
   const details = [
     ["Requested by", requestedBy], ["Faculty member", faculty], ["Student", student],
     ["Consultation subject", appointment.subject], ["Reason for consultation", appointment.reason],
     [scheduled ? "Date" : "Requested consultation date", date],
     [scheduled ? "Start time" : "Preferred consultation time", scheduled ? start : appointment.requestedConsultationTime],
     ["End time", end],
+    ["Availability preferences (Philippine Time)", availableTimes],
     ["Consultation mode", appointment.consultationMode],
     [appointment.consultationMode === "Online" ? "Meeting information" : "Location",
       appointment.consultationMode === "Online" ? appointment.meetingPlatform : appointment.location],
@@ -97,7 +102,7 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
 
 async function appointmentEmail(appointmentId, appointment) {
   if (appointment) return appointment;
-  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason requestedConsultationDate requestedConsultationTime startAt endAt consultationMode location meetingPlatform +meetingLink status")
+  return Appointment.findById(appointmentId).select("student faculty initiatedByRole subject reason requestedConsultationDate requestedConsultationTime availableTimeSlots startAt endAt consultationMode location meetingPlatform +meetingLink status")
     .populate("student", "name").populate("faculty", "name").lean();
 }
 

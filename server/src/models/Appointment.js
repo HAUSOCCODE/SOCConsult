@@ -183,6 +183,15 @@ const appointmentSchema = new mongoose.Schema(
     requestedConsultationDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
     // Informational preference only; it is not a confirmed schedule or reservation.
     requestedConsultationTime: { type: String, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
+    availableTimeSlots: {
+      type: [{
+        _id: false,
+        startTime: { type: String, required: true, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
+        endTime: { type: String, required: true, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
+      }],
+      default: undefined,
+      validate: { validator: value => value == null || value.length <= 8, message: "No more than 8 available time slots are allowed." },
+    },
     subject: { type: String, required: true, trim: true, maxlength: 150 },
     yearLevel: {
       type: String,

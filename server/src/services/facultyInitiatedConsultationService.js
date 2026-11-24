@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import { createAppointmentRequest } from "./appointmentTransitionService.js";
+import { scheduleFitsAvailableTimeSlot, validateAvailableTimeSlots } from "./availableTimeSlotService.js";
 
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
 const clean = (value, max) => typeof value === "string" ? value.trim().slice(0, max + 1) : "";
@@ -32,7 +33,7 @@ export async function searchEligibleStudents({ faculty, input = {} }) {
 
 export async function createFacultyInitiatedConsultation({ actor, input, now = new Date() }) {
   if (!["faculty", "dean"].includes(actor.role) || !actor.id || actor.management) fail("Unauthorized.", 403);
-  const allowed = ["studentId", "subject", "reason", "startAt", "endAt", "mode", "location", "meetingPlatform", "meetingLink"];
+  const allowed = ["studentId", "subject", "reason", "startAt", "endAt", "availableTimeSlots", "mode", "location", "meetingPlatform", "meetingLink"];
   if (!input || Array.isArray(input) || Object.keys(input).some(key => !allowed.includes(key))) fail("Invalid consultation request.");
   if (!mongoose.isValidObjectId(input.studentId)) fail("Select an eligible Student.");
   const student = await User.findOne({ _id: input.studentId, role: "student", accountStatus: "Active", registrationStatus: "Approved" })
@@ -43,11 +44,19 @@ export async function createFacultyInitiatedConsultation({ actor, input, now = n
   if (!reason || reason.length > 1000) fail("Enter a valid consultation reason.");
   const startAt = new Date(input.startAt), endAt = new Date(input.endAt);
   if (!Number.isFinite(+startAt) || !Number.isFinite(+endAt)) fail("Choose a valid consultation schedule.");
+  const requestedConsultationDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(startAt);
+  if (input.availableTimeSlots != null) {
+    const slotError = validateAvailableTimeSlots({ date: requestedConsultationDate, slots: input.availableTimeSlots, now });
+    if (slotError) fail(slotError.message);
+    if (!scheduleFitsAvailableTimeSlot({ date: requestedConsultationDate, slots: input.availableTimeSlots, startAt, endAt }))
+      fail("The proposed appointment must fit within one of the available time slots.");
+  }
   const mode = input.mode;
   const location = clean(input.location, 150), meetingPlatform = clean(input.meetingPlatform, 100);
   const meetingLink = clean(input.meetingLink, 500);
   return createAppointmentRequest({ actor, now, data: {
     student: student._id, faculty: actor.id, bookingMethod: "schedule_request", startAt, endAt,
+    ...(input.availableTimeSlots != null && { requestedConsultationDate, availableTimeSlots: input.availableTimeSlots }),
     subject, reason, yearLevel: student.yearLevel, consultationMode: mode,
     location: mode === "Face-to-Face" ? location : "",
     meetingPlatform: mode === "Online" ? meetingPlatform : "",
