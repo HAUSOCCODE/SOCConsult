@@ -25,3 +25,4 @@ server/temp/
 # Private key material
 *.pem
 *.key
+/artifacts/
