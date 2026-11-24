@@ -32,7 +32,8 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   const notificationCalls = [];
   let appointmentCount = 0;
 
-  patch(Appointment, "aggregate", pipeline => pipeline[0].$match.status ? { option: async () => [{ count: 3 }] } : Promise.resolve([]));
+  patch(Appointment, "aggregate", pipeline => pipeline[0].$match.status
+    ? { option: async () => Array.from({ length: 3 }, () => ({ responses: [] })) } : Promise.resolve([]));
   patch(Appointment, "countDocuments", async (filter) => {
     appointmentFilters.push(filter);
     appointmentCount += 1;

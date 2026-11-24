@@ -90,15 +90,16 @@ test("Student dashboard evaluates CORE-03 boundaries and authoritative responses
       assert.equal(String(pipeline[0].$match.student), student);
       assert.equal(+pipeline[0].$match.endAt.$lte, +now);
       const lookup = pipeline[1].$lookup;
-      assert.deepEqual(lookup.pipeline[1], { $project: { _id: 1 } });
-      assert.equal(String(lookup.pipeline[0].$match.participant), student);
+      assert.deepEqual(lookup.pipeline[1], { $project: { _id: 0, participantRole: 1 } });
+      assert.deepEqual(lookup.pipeline[0].$match, { $expr: { $eq: ["$appointment", "$$appointmentId"] } });
       let result = rows.filter(row => matches(row, pipeline[0].$match)).map(row => ({ ...row,
-        [lookup.as]: responses.filter(response => response.appointment === row._id &&
-          matches(response, { participant: lookup.pipeline[0].$match.participant, participantRole: lookup.pipeline[0].$match.participantRole })),
+        [lookup.as]: responses.filter(response => response.appointment === row._id),
       }));
       for (const stage of pipeline.slice(2)) {
         if (stage.$match) result = result.filter(row => matches(row, stage.$match));
         else if (stage.$count) result = [{ [stage.$count]: result.length }];
+        else if (stage.$project) result = result.map(row => Object.fromEntries(
+          Object.entries(stage.$project).filter(([, include]) => include).map(([key]) => [key, row[key]])));
         else assert.fail("Unsupported dashboard aggregation stage");
       }
       return result;

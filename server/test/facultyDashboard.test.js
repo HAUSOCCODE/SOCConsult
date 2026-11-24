@@ -53,7 +53,13 @@ function harness(owner) {
   };
   patch(Appointment,"find",filter=>{assert.equal(filter.faculty,owner); calls.push(["find",filter]);return query(rows.filter(r=>matches(r,filter)),"appointment");});
   patch(Appointment,"countDocuments",filter=>{assert.equal(filter.faculty,owner);return {maxTimeMS:()=>Promise.resolve(rows.filter(r=>matches(r,filter)).length)};});
-  patch(Appointment,"aggregate",pipeline=>({option(options){assert.equal(options.maxTimeMS,10000);assert.equal(String(pipeline[0].$match.faculty),owner);assert.deepEqual(pipeline[1].$lookup.pipeline.at(-2),{$project:{_id:1}});const eligible=rows.filter(r=>matches(r,pipeline[0].$match)&&!responses.includes(r._id));return Promise.resolve([{count:eligible.length}]);}}));
+  patch(Appointment,"aggregate",pipeline=>({option(options){
+    assert.equal(options.maxTimeMS,10000);
+    assert.equal(String(pipeline[0].$match.faculty),owner);
+    assert.deepEqual(pipeline[1].$lookup.pipeline.at(-1),{$project:{_id:0,participantRole:1}});
+    return Promise.resolve(rows.filter(r=>matches(r,pipeline[0].$match)).map(row=>({...row,
+      responses:responses.includes(row._id)?[{participantRole:"faculty"}]:[]})));
+  }}));
   patch(Notification,"find",filter=>{assert.equal(filter.recipient,owner);return query(notices.filter(r=>matches(r,filter)),"notification");});
   for(const model of [Appointment,Notification]) for(const method of ["create","updateOne","updateMany","findOneAndUpdate","deleteMany"]) patch(model,method,()=>{throw Error("GET mutation");});
   patch(User,"findById",async id=>({id,_id:id,role:Object.keys(ids).find(k=>ids[k]===id),accountStatus:"Active",registrationStatus:"Approved"}));
