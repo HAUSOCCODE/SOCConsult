@@ -1,3 +1,4 @@
+import { eligibleRegistrationState } from "./accountEligibility.js";
 import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -315,7 +316,7 @@ export async function resetManagedUserPassword(id, body, actor, expectedVersion)
       if (publicManagedUser(current).version !== (version === "null" ? null : version))
         throw new ManagementError(conflict());
       if (!["Active", "Inactive"].includes(current.accountStatus) ||
-          (current.registrationStatus !== undefined && current.registrationStatus !== "Approved"))
+          !eligibleRegistrationState(current))
         throw new ManagementError(fail(409, "This account is not eligible for password reset.", "PASSWORD_RESET_INELIGIBLE"));
       const institutionalId = resolveResetInstitutionalId(current);
       if (!institutionalId) throw new ManagementError(fail(422, "This account does not have a valid institutional ID.", "INVALID_INSTITUTIONAL_ID"));
@@ -324,7 +325,7 @@ export async function resetManagedUserPassword(id, body, actor, expectedVersion)
       const exact = (value) => value === undefined ? { $exists: false } : value;
       updated = await User.findOneAndUpdate({
         _id: id, role: current.role, accountStatus: current.accountStatus,
-        registrationStatus: exact(current.registrationStatus), updatedAt: exact(current.updatedAt),
+        registrationStatus: current.registrationStatus === null ? { $eq: null, $exists: true } : exact(current.registrationStatus), updatedAt: exact(current.updatedAt),
         institutionalId: exact(current.institutionalId), studentId: exact(current.studentId), employeeId: exact(current.employeeId),
       }, { $set: { password, passwordResetAt: timestamp, passwordChangedAt: timestamp, updatedAt: timestamp } },
       { new: true, runValidators: true, timestamps: false, session }).select("name firstName middleName lastName email role").lean();

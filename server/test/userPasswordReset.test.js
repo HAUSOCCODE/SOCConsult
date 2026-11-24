@@ -44,7 +44,7 @@ function matches(user, filter) {
     if (key === "$or") return value.some((part) => matches(user, part));
     if (value && typeof value === "object" && !(value instanceof Date)) {
       if ("$in" in value) return value.$in.includes(user[key]);
-      if ("$exists" in value) return Object.hasOwn(user, key) === value.$exists;
+      if ("$exists" in value) return Object.hasOwn(user, key) === value.$exists && (!("$eq" in value) || user[key] === value.$eq);
       if ("$regex" in value)
         return new RegExp(value.$regex, value.$options).test(user[key] || "");
     }
@@ -222,12 +222,14 @@ const reset = (user, body = {}, expected = version(user)) => resetManagedUserPas
 const safeReset = (value) => assert.doesNotMatch(JSON.stringify(value), /000123|institutionalId|studentId|employeeId|SECRET|PRIVATE|\$2[aby]\$|token/i);
 
 test("reset eligibility, legacy fallbacks, exact credentials, timestamps and metadata preservation", async () => {
-  for (const role of ["student", "faculty"]) for (const status of ["Active", "Inactive"]) for (const legacy of [false, true]) {
+  for (const role of ["student", "faculty"]) for (const status of ["Active", "Inactive"]) for (const legacy of [false, true, "null"]) {
     const original = account({ role, accountStatus: status, approvedBy: actor, approvalMethod: "dean" });
-    if (legacy) { delete original.institutionalId; delete original.registrationStatus; original[role === "student" ? "studentId" : "employeeId"] = "000123"; }
+    if (legacy === "null") original.registrationStatus = null;
+    if (legacy === true) { delete original.institutionalId; delete original.registrationStatus; original[role === "student" ? "studentId" : "employeeId"] = "000123"; }
     const other = account(); const h = harness([original, other]);
     try {
       const result = await reset(original); assert.equal(result.statusCode, 200); safeReset(result.body); safeReset(h.audits);
+      assert.deepEqual(h.writes[0].filter.registrationStatus, legacy === "null" ? { $eq: null, $exists: true } : legacy === true ? { $exists: false } : "Approved");
       const updated = h.users[0]; assert.notEqual(updated.password, "000123");
       assert.equal(await bcrypt.compare("000123", updated.password), true); assert.equal(await bcrypt.compare("123", updated.password), false);
       assert.equal(bcrypt.getRounds(updated.password), 12); assert.ok(updated.passwordResetAt instanceof Date);
@@ -251,7 +253,7 @@ test("canonical validation and role-specific fallback preserve exact characters 
 });
 test("ineligible accounts, malformed requests, missing versions and invalid canonical IDs cannot write", async () => {
   for (const extra of [{role:"dean"},{role:"admin"},{role:"program_chair"},{role:"custom"},
-    {registrationStatus:"Pending"},{registrationStatus:"Rejected"},{registrationStatus:"unknown"},{registrationStatus:null},
+    {registrationStatus:"Pending"},{registrationStatus:"Rejected"},{registrationStatus:"unknown"},
     {accountStatus:"unknown"},{institutionalId:"",studentId:"000123"},{institutionalId:"x".repeat(73)}]) {
     const original=account(extra), h=harness([original]);
     try { assert.notEqual((await reset(original)).statusCode,200); assert.equal(h.writes.length,0); assert.equal(h.audits.length,0); } finally { h.restore(); }
@@ -311,7 +313,7 @@ test("new login uses reset credential, old password fails, other users and issue
     assert.equal(await bcrypt.compare("OtherPassword1",h.users[1].password),true);
     const token=issuedToken;let called=false;
     await authenticate({headers:{authorization:`Bearer ${token}`}}, {status(){return this;},json(){}},()=>{called=true;});assert.equal(called,true);
-    h.users[0].accountStatus="Inactive";assert.equal((await attempt("000123")).statusCode,403);called=false;
+    h.users[0].accountStatus="Inactive";assert.equal((await attempt("000123")).statusCode,401);called=false;
     await authenticate({headers:{authorization:`Bearer ${token}`}}, {status(){return this;},json(){}},()=>{called=true;});assert.equal(called,false);
   }finally{h.restore();}
 });

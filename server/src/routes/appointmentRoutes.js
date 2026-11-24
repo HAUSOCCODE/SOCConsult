@@ -1,3 +1,4 @@
+import { eligibleProviderFilter } from "../services/accountEligibility.js";
 import { listFacultyConsultations, facultyConsultationDetails } from "../services/facultyConsultationService.js";
 import { listFacultyConsultationHistory } from "../services/facultyConsultationHistoryService.js";
 import { canReadAppointmentDocument } from "../services/appointmentDocumentAuthorizationService.js";
@@ -317,12 +318,7 @@ router.post(
       return res.status(409).json({ message: "This time is outside your current availability." });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
-      role: { $in: ["faculty", "dean"] },
-      accountStatus: "Active",
-      $or: [
-        { registrationStatus: "Approved" },
-        { role: "dean" },
-      ],
+      ...eligibleProviderFilter(),
     });
     if (!facultyIsAvailable)
       return res.status(400).json({

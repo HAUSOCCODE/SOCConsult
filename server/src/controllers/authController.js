@@ -6,7 +6,8 @@ import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
 import { migrateDeanAccount } from "../services/deanAccountMigrationService.js";
 import { env } from "../config/env.js";
-import { eligibleRegistrationState } from "../services/accountEligibility.js";
+import { eligibleAccount, eligibleRegistrationState } from "../services/accountEligibility.js";
+import { passwordValidationError } from "../services/passwordPolicy.js";
 import {
   formatFullName,
   validatePersonName,
@@ -20,13 +21,9 @@ import {
 import { logActivity, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
 
 const normalize = (value = "") => value.trim().toLowerCase();
-const validPassword = (password) =>
-  password.length >= 8 &&
-  !/\s/.test(password) &&
-  /[A-Z]/.test(password) &&
-  /[0-9]/.test(password);
-const passwordValidationMessage =
-  "Password must be at least 8 characters and include one uppercase letter and one number. Spaces are not allowed.";
+// Valid cost-12 dummy hash: missing Student accounts perform the same bcrypt work.
+// This is not an account credential and never produces a successful login.
+const missingStudentHash = bcrypt.hashSync("Non-account comparison value", 12);
 const publicUser = (user) => ({
   id: user.id,
   firstName: user.firstName || "",
@@ -71,7 +68,7 @@ export async function login(req, res) {
         metadata: { role: requestedRole },
       });
     }
-    return res.status(401).json({ ...(requestedRole === "faculty" && { code: "INVALID_CREDENTIALS" }), message: "Invalid credentials." });
+    return res.status(401).json({ ...(requestedRole === "faculty" && { code: "INVALID_CREDENTIALS" }), message: requestedRole === "student" ? "Invalid email or password." : "Invalid credentials." });
   };
   const password = req.body?.password;
   const rawIdentifier = req.body?.identifier ?? req.body?.email ?? req.body?.username;
@@ -86,20 +83,17 @@ export async function login(req, res) {
   ).select("+password +profilePicture");
   if (!user) {
     if (requestedRole === "student")
-      return res.status(404).json({
-        message: "No Student account was found for this email.",
-      });
+      await bcrypt.compare(password, missingStudentHash);
     return fail();
   }
   if (!(await bcrypt.compare(password, user.password))) {
-    if (requestedRole === "student")
-      return res.status(401).json({ message: "Incorrect email or password." });
     return fail(user);
   }
+  if (requestedRole === "student" && !eligibleAccount(user, "student")) return fail();
   if (requestedRole === "dean" &&
       (user.role !== "dean" || user.accountStatus !== "Active"))
     return fail(user);
-  if (requestedRole === "faculty" && (user.role !== "faculty" || user.accountStatus !== "Active" || !eligibleRegistrationState(user))) return fail(user);
+  if (requestedRole === "faculty" && !eligibleAccount(user, "faculty")) return fail(user);
   // The stored database role—not the selected frontend role—is authoritative.
   if (user.role !== requestedRole)
     return res
@@ -278,8 +272,9 @@ export async function changePassword(req, res) {
   const { currentPassword, newPassword, confirmNewPassword } = req.body;
   if (newPassword !== confirmNewPassword)
     return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: "New password and confirmation do not match." });
-  if (!validPassword(newPassword))
-    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: passwordValidationMessage });
+  const validationError = passwordValidationError(newPassword);
+  if (validationError)
+    return res.status(400).json({ code: "PASSWORD_INPUT_INVALID", message: validationError });
   let session;
   try {
     session = await mongoose.startSession();

@@ -333,6 +333,10 @@ export function SecuritySettings({ onPasswordChanged, compact = false } = {}) {
       setValidationError("New passwords do not match.");
       return;
     }
+    if (new TextEncoder().encode(passwords.newPassword).length > 72) {
+      setValidationError("New password must be at most 72 UTF-8 bytes.");
+      return;
+    }
     if (/\s/.test(passwords.newPassword)) {
       setValidationError("Password cannot contain spaces.");
       return;
@@ -392,7 +396,7 @@ export function SecuritySettings({ onPasswordChanged, compact = false } = {}) {
         {compact ? <h2 id="change-password-title" className="text-lg font-bold text-maroon-900">Change Password</h2> : <h3 className="text-lg font-bold text-maroon-900">Change Password</h3>}
         <p id={compact ? "password-requirements" : undefined} className="mt-1 text-sm text-slate-500">
           Use at least 8 characters, one uppercase letter, and one number.
-          Spaces are not allowed.
+          Spaces are not allowed. Maximum 72 UTF-8 bytes.
         </p>
         {submitting && <p role="status">Changing password...</p>}
         {validationError && (

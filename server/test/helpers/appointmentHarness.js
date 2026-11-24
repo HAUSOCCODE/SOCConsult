@@ -22,7 +22,7 @@ const matches = (record, query) => Object.entries(query).every(([key, value]) =>
       if (op === "$exists") return (actual !== undefined) === expected;
       if (op === "$type") return actual instanceof Date;
       if (op === "$ne") return !same(actual, expected);
-      if (op === "$in") return expected.some((item) => same(actual, item));
+      if (op === "$in") return expected.some((item) => item === null ? actual == null : same(actual, item));
       if (op === "$lt") return actual < expected;
       if (op === "$lte") return actual <= expected;
       if (op === "$gt") return actual > expected;

@@ -1,3 +1,4 @@
+import { eligibleAccountFilter } from "./accountEligibility.js";
 import { attendanceCounts } from "./attendanceReportingService.js";
 import User from "../models/User.js";
 import Appointment from "../models/Appointment.js";
@@ -53,14 +54,10 @@ export function parseDashboardRange(query = {}, now = new Date()) {
 export async function readDeanDashboard(parsed, now = new Date()) {
   // This deployment's database contains only authorized School of Computing records.
   // Optional program fields cannot reliably identify school membership.
-  const active = {
-    accountStatus: "Active",
-    registrationStatus: { $in: ["Approved", null] },
-  };
   const [activeStudents, activeFaculty, counts, imports, appointments] =
     await Promise.all([
-      User.countDocuments({ ...active, role: "student" }).maxTimeMS(10000),
-      User.countDocuments({ ...active, role: "faculty" }).maxTimeMS(10000),
+      User.countDocuments(eligibleAccountFilter("student")).maxTimeMS(10000),
+      User.countDocuments(eligibleAccountFilter("faculty")).maxTimeMS(10000),
       Appointment.aggregate([
         { $match: parsed.filter },
         {

@@ -1,3 +1,4 @@
+import { eligibleAccountFilter } from "./accountEligibility.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import { createAppointmentRequest } from "./appointmentTransitionService.js";
@@ -14,7 +15,7 @@ export async function searchEligibleStudents({ faculty, input = {} }) {
   const pageValue = input.page ?? "1";
   if (typeof pageValue !== "string" || !/^[1-9]\d*$/.test(pageValue) || +pageValue > 10000) fail("Invalid Student search.");
   const page = +pageValue, limit = 12;
-  const filter = { role: "student", accountStatus: "Active", registrationStatus: "Approved" };
+  const filter = eligibleAccountFilter("student");
   if (q) {
     const pattern = new RegExp(escapeRegex(q), "i");
     filter.$or = [{ name: pattern }, { firstName: pattern }, { middleName: pattern }, { lastName: pattern },
@@ -36,7 +37,7 @@ export async function createFacultyInitiatedConsultation({ actor, input, now = n
   const allowed = ["studentId", "subject", "reason", "startAt", "endAt", "availableTimeSlots", "mode", "location", "meetingPlatform", "meetingLink"];
   if (!input || Array.isArray(input) || Object.keys(input).some(key => !allowed.includes(key))) fail("Invalid consultation request.");
   if (!mongoose.isValidObjectId(input.studentId)) fail("Select an eligible Student.");
-  const student = await User.findOne({ _id: input.studentId, role: "student", accountStatus: "Active", registrationStatus: "Approved" })
+  const student = await User.findOne({ _id: input.studentId, ...eligibleAccountFilter("student") })
     .select("_id yearLevel").lean();
   if (!student) fail("Selected Student is unavailable.", 404);
   const subject = clean(input.subject, 150), reason = clean(input.reason, 1000);

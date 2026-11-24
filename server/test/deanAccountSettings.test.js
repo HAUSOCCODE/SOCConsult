@@ -46,6 +46,34 @@ async function harness(role = "dean") {
 }
 const passwordBody = (extra = {}) => ({ currentPassword: "OldPassword1", newPassword: "NewPassword2", confirmNewPassword: "NewPassword2", ...extra });
 
+test("new passwords enforce UTF-8 bytes for every role while historical long passwords still verify", async () => {
+  for (const role of ["student", "faculty", "dean"]) {
+    for (const newPassword of ["A1" + "a".repeat(70), "A1" + "é".repeat(35), "A1" + "😀".repeat(17) + "aa"]) {
+      assert.equal(Buffer.byteLength(newPassword, "utf8"), 72);
+      const h = await harness(role);
+      const historical = "OldPassword1" + "é".repeat(40);
+      h.user.password = await bcrypt.hash(historical, 4);
+      try {
+        const res = response(); await changePassword({ user: h.user, body: { currentPassword: historical, newPassword, confirmNewPassword: newPassword } }, res);
+        assert.equal(res.statusCode, 200); assert.equal(h.audits.length, 1);
+        assert.equal(await bcrypt.compare(newPassword, h.user.password), true);
+        assert.equal(bcrypt.getRounds(h.user.password), 12);
+      } finally { h.restore(); }
+    }
+    const h = await harness(role);
+    try {
+      const before = h.user.password;
+      for (const newPassword of ["A1" + "a".repeat(71), "A1" + "é".repeat(36), "A1" + "😀".repeat(18), "A1short", "lowercase1", "UppercaseOnly", "Has Space1"]) {
+        const res = response(); await changePassword({ user: h.user, body: passwordBody({ newPassword, confirmNewPassword: newPassword }) }, res);
+        assert.equal(res.statusCode, 400); assert.equal(res.body.code, "PASSWORD_INPUT_INVALID");
+        if (Buffer.byteLength(newPassword, "utf8") > 72) assert.match(res.body.message, /at most 72 UTF-8 bytes/);
+        assert.equal(h.user.password, before); assert.equal(h.writes, 0); assert.equal(h.audits.length, 0);
+        assert.equal(h.user.passwordChangedAt, undefined);
+      }
+    } finally { h.restore(); }
+  }
+});
+
 test("transactional password changes hash at cost 12, timestamp, sanitized audit, and preserve other roles", async () => {
   for (const role of ["dean", "student", "faculty"]) {
     const h = await harness(role);

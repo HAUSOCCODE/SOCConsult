@@ -1,3 +1,4 @@
+import { eligibleAccountFilter, eligibleProviderFilter } from "../services/accountEligibility.js";
 import { Router } from "express";
 import mongoose from "mongoose";
 import Appointment from "../models/Appointment.js";
@@ -76,9 +77,7 @@ router.post(
       !validId(facultyId) ||
       !(await User.exists({
         _id: facultyId,
-        role: { $in: ["faculty", "dean"] },
-        registrationStatus: "Approved",
-        accountStatus: "Active",
+        ...eligibleProviderFilter(),
       }))
     )
       return invalid(res, "Select an active Faculty Member.", "INVALID_FACULTY");
@@ -245,9 +244,7 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
   });
   const studentIsActive = await User.exists({
     _id: appointment.student,
-    role: "student",
-    registrationStatus: "Approved",
-    accountStatus: "Active",
+    ...eligibleAccountFilter("student"),
   });
   if (!studentIsActive)
     return res
