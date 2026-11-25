@@ -81,7 +81,14 @@ export default function FacultyConsultationsView({ detailOnly = false, selection
     try {
       await api(`/appointments/${selected}/proposal-response`, { method: "PUT", body: JSON.stringify({ decision: proposalDecision, proposedAt: a.proposedAt, expectedVersion: a.__v }) });
       setProposalDecision(""); setRevision(v => v + 1); onChanged?.(); await open(selected);
-    } catch (error) { setActionError(safeUiError(error, "Unable to respond to the Student proposal. Refresh and try again.")); }
+    } catch (error) {
+      setProposalDecision("");
+      if ([404, 409].includes(error.status)) {
+        setRevision(v => v + 1); onChanged?.(); await open(selected);
+      }
+      setActionError(safeUiError(error, "Unable to respond to the Student proposal. Refresh and try again.",
+        { conflict: "The proposed time may have been booked or the consultation changed. Review the latest details." }));
+    }
     finally { busyRef.current = false; setBusy(false); }
   };
   useEffect(() => {

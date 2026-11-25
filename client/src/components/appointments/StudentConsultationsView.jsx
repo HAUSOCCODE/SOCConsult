@@ -1,5 +1,5 @@
 import { CalendarDays, Clock3, Eye, MapPin, Monitor, UserRound } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
@@ -25,6 +25,7 @@ const TABS = [
   { id: "reschedule", label: "Reschedule Proposals", empty: "No reschedule proposals require your attention." },
 ];
 const validDate = (value) => {
+  if (value == null) return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
 };
@@ -52,6 +53,9 @@ export default function StudentConsultationsView() {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const studentId = String(user?.id || user?._id || "");
+  const canRespondToProposal = useCallback(appointment => appointment?.status === "Reschedule Proposed" &&
+    Boolean(appointment.proposedAt && appointment.proposedBy && studentId) && String(appointment.proposedBy) !== studentId, [studentId]);
   const load = () => {
     setError("");
     return api("/appointments/mine")
@@ -86,7 +90,7 @@ export default function StudentConsultationsView() {
       incoming: current.filter(item => item.status === "Pending" && item.initiatedByRole === "faculty"),
       sent: current.filter(item => item.status === "Pending" && item.initiatedByRole !== "faculty"),
       upcoming: current.filter(item => item.status === "Confirmed"),
-      reschedule: current.filter(item => item.status === "Reschedule Proposed" && String(item.proposedBy || "") !== String(user?.id || user?._id || "")),
+      reschedule: current.filter(canRespondToProposal),
     };
     return Object.fromEntries(TABS.map((entry) => [entry.id, membership[entry.id]
       .sort((left, right) => {
@@ -94,7 +98,7 @@ export default function StudentConsultationsView() {
         const rightTime = validDate(right.startAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return leftTime - rightTime || String(left._id).localeCompare(String(right._id));
       })]));
-  }, [items, user]);
+  }, [items, canRespondToProposal]);
   const selectedTab = TABS.find((entry) => entry.id === tab) || TABS[0];
   const shown = groups[tab] || [];
   const cancel = async () => {
@@ -162,7 +166,7 @@ export default function StudentConsultationsView() {
                 </div>
                 <p className="mt-3 line-clamp-2 break-words text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-700">Consultation Concern:</span> {appointment.reason || "Not provided"}</p>
                 <div className="mt-4 grid min-w-0 gap-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2">
-                  <p className="flex min-w-0 items-start gap-2"><CalendarDays size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{appointment.requestedConsultationDate || dateLabel(appointment.startAt)}</span></p>
+                  <p className="flex min-w-0 items-start gap-2"><CalendarDays size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{appointment.startAt ? dateLabel(appointment.startAt) : appointment.requestedConsultationDate || dateLabel()}</span></p>
                   {(appointment.startAt || appointment.requestedConsultationTime) && <p className="flex min-w-0 items-start gap-2"><Clock3 size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{appointment.startAt ? `${timeLabel(appointment.startAt)} – ${timeLabel(appointment.endAt)}` : `${appointment.requestedConsultationTime} preferred`}</span></p>}
                   <p className="flex min-w-0 items-start gap-2 sm:col-span-2"><ModeIcon size={15} className="mt-0.5 shrink-0 text-maroon-700" /><span className="break-words">{mode}</span></p>
                 </div>
@@ -171,7 +175,7 @@ export default function StudentConsultationsView() {
                   {canReportOutcome && <button type="button" onClick={() => { setOutcomeMode(true); setDetails(appointment); }} className="btn-secondary min-h-10 px-4">Report Outcome</button>}
                   {awaitingOtherReporter && <p className="self-center text-sm font-semibold text-slate-600">Awaiting Faculty Outcome Report</p>}
                   {appointment.status === "Pending" && appointment.initiatedByRole === "faculty" && <button type="button" onClick={() => setFacultyRequestTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Faculty Request</button>}
-                  {appointment.status === "Reschedule Proposed" && String(appointment.proposedBy || "") !== String(appointment.student?._id || "") && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
+                  {canRespondToProposal(appointment) && <button type="button" onClick={() => setProposalTarget(appointment)} className="btn-secondary min-h-10 px-4">Respond to Proposal</button>}
                   {canStudentCancelAppointment(appointment) && <button type="button" onClick={() => setCancelTarget(appointment)} className="btn-secondary min-h-10 px-4">Cancel Consultation</button>}
                 </div>
               </article>
@@ -179,9 +183,9 @@ export default function StudentConsultationsView() {
           })}
         </div>
       )}
-      {details && <StudentAppointmentDetailsModal appointment={details} outcomeMode={outcomeMode} onClose={closeDetails} onRespondToFacultyRequest={() => { setFacultyRequestTarget(details); setDetails(null); }} onRespondToProposal={() => { setProposalTarget(details); setDetails(null); }} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
-      {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={() => { setCancelTarget(proposalTarget); setProposalTarget(null); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
-      {facultyRequestTarget && <FacultyRequestResponseModal appointment={facultyRequestTarget} onClose={() => setFacultyRequestTarget(null)} onSuccess={async () => { setFacultyRequestTarget(null); setDetails(null); await load(); }} />}
+      {details && <StudentAppointmentDetailsModal appointment={details} outcomeMode={outcomeMode} onClose={closeDetails} onRespondToFacultyRequest={() => { setFacultyRequestTarget(details); setDetails(null); }} onRespondToProposal={canRespondToProposal(details) ? () => { setProposalTarget(details); setDetails(null); } : undefined} onCancelConsultation={() => { setCancelTarget(details); setDetails(null); }} onAttendanceUpdated={load} />}
+      {proposalTarget && <StudentRescheduleResponseModal appointment={proposalTarget} onClose={() => setProposalTarget(null)} onCancelConsultation={canStudentCancelAppointment(proposalTarget) ? () => { setCancelTarget(proposalTarget); setProposalTarget(null); } : undefined} onConflict={async () => { setProposalTarget(null); await load(); }} onSuccess={async () => { setProposalTarget(null); setDetails(null); await load(); }} />}
+      {facultyRequestTarget && <FacultyRequestResponseModal appointment={facultyRequestTarget} onClose={() => setFacultyRequestTarget(null)} onConflict={async () => { setFacultyRequestTarget(null); await load(); }} onSuccess={async () => { setFacultyRequestTarget(null); setDetails(null); await load(); }} />}
     </div>
   );
 }

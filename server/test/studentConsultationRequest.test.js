@@ -1,5 +1,5 @@
 import { appointmentHttp } from "./helpers/appointmentHttp.js";
-import { fixture, addSlot } from "./helpers/appointmentHarness.js";
+import { fixture, addSlot, deferred } from "./helpers/appointmentHarness.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import jwt from "jsonwebtoken";
@@ -11,6 +11,7 @@ import AuditLog from "../src/models/AuditLog.js";
 import Availability from "../src/models/Availability.js";
 import Notification from "../src/models/Notification.js";
 import User from "../src/models/User.js";
+import StudentAvailability from "../src/models/StudentAvailability.js";
 
 const patch = (object, key, replacement, restores) => {
   restores.push(() => {
@@ -82,6 +83,47 @@ test("partial-overlap booking persists only the shared interval", async () => {
       startAt: "2099-01-02T12:40:00+08:00", endAt: "2099-01-02T13:40:00+08:00",
     })).status, 409);
   } finally { await h.close(); }
+});
+
+test("booking rechecks Student availability after a concurrent preference change", async () => {
+  const h = await appointmentHttp(), create = StudentAvailability.create, startSession = mongoose.startSession;
+  const entered = deferred(), queued = deferred(), release = deferred();
+  try {
+    const record = fixture({ student: h.users.student.id, faculty: h.users.faculty.id, reservationToken: undefined });
+    addSlot(h, record);
+    StudentAvailability.create = async (...args) => {
+      entered.resolve();
+      await release.promise;
+      return create(...args);
+    };
+    const preferring = h.request("/student-availability", "student", "POST", {
+      startAt: "2099-01-02T10:00:00+08:00", endAt: "2099-01-02T11:00:00+08:00",
+    });
+    await entered.promise;
+    mongoose.startSession = async () => {
+      const session = await startSession();
+      const withTransaction = session.withTransaction.bind(session);
+      session.withTransaction = (...args) => { queued.resolve(); return withTransaction(...args); };
+      return session;
+    };
+    const booking = h.request("/appointments", "student", "POST", {
+      availabilityId: record.availability, subject: "Consultation", reason: "Discuss scope",
+    });
+    await queued.promise;
+    release.resolve();
+    assert.equal((await preferring).status, 201);
+    const response = await booking;
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).message, /outside your current availability/);
+    assert.equal(h.state.appointments.length, 0);
+    assert.equal(h.state.holds.length, 0);
+    assert.equal(h.state.slots[0].reservationToken, undefined);
+  } finally {
+    release.resolve();
+    StudentAvailability.create = create;
+    mongoose.startSession = startSession;
+    await h.close();
+  }
 });
 
 test("supporting-document middleware enforces count, file, total, and type limits", async () => {

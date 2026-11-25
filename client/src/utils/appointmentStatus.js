@@ -51,7 +51,8 @@ export const isAwaitingFacultyUpdate = (appointment) =>
 
 export const canStudentCancelAppointment = (appointment, now = new Date()) => {
   if (!STUDENT_CANCELLABLE_STATUSES.includes(appointment?.status)) return false;
-  if (appointment?.status === "Pending" && appointment?.bookingMethod === "schedule_request" && !appointment?.startAt) return true;
+  if (appointment.bookingMethod === "schedule_request" && appointment.startAt == null &&
+      appointment.status !== "Confirmed" && !appointment.statusHistory?.some(entry => entry.newStatus === "Confirmed")) return true;
   const startAt = new Date(appointment?.startAt);
   if (!Number.isFinite(startAt.getTime()) || startAt <= now) return false;
   return true;

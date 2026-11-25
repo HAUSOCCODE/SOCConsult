@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { api } from "../../api/apiClient";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { useToast } from "../../context/ToastContext";
 
 const TIMEZONE = "Asia/Manila";
 const parts = (value) => {
@@ -50,6 +51,7 @@ export default function FacultyRescheduleModal({
   const dialogRef = useRef(null);
   const firstFieldRef = useRef(null);
   const submittingRef = useRef(false);
+  const toast = useToast();
   const current = parts(appointment.startAt);
   const [form, setForm] = useState({
     consultationDate: current.date,
@@ -123,10 +125,13 @@ export default function FacultyRescheduleModal({
       );
       onSuccess(data);
     } catch (requestError) {
-      setError(
-        safeStudentError(requestError, "Unable to propose this schedule. Check the fields and try again."),
-      );
-      if (requestError.status === 409 || requestError.status === 404) await onConflict?.();
+      const message = requestError.status === 409
+        ? "The selected time may have been booked or the consultation changed. Review the latest details and choose a time."
+        : safeStudentError(requestError, "Unable to propose this schedule. Check the fields and try again.");
+      if ([404, 409].includes(requestError.status) && onConflict) {
+        toast.error(message);
+        await onConflict();
+      } else setError(message);
     } finally {
       setSubmitting(false);
       submittingRef.current = false;

@@ -8,7 +8,8 @@ import Availability from "../src/models/Availability.js";
 import OneTimeScheduleHold from "../src/models/OneTimeScheduleHold.js";
 import { processExpiredAvailability, runAppointmentExpiration, emptyExpirationCounts } from "../src/services/availabilityExpirationService.js";
 import { runExpirationCommand } from "../scripts/process-appointment-expiration.mjs";
-import { appointmentHarness, fixture, addSlot, clone, newId } from "./helpers/appointmentHarness.js";
+import { appointmentHarness, fixture, addSlot, clone, newId, deferred } from "./helpers/appointmentHarness.js";
+import { transitionAppointment } from "../src/services/appointmentTransitionService.js";
 
 const deadline = new Date("2026-10-16T08:00:00+08:00");
 const due = (overrides = {}) => fixture({ startAt: deadline, endAt: new Date(deadline.getTime() + 1800000), ...overrides });
@@ -163,6 +164,38 @@ test("bounded sweeps and cursor validation terminate safely; query failures sign
   assert.equal(bounded.attempted, 2); assert.equal(bounded.incomplete, 1);
   const failed = await run({ processBatch: async () => { throw new Error("private-record-content"); } });
   assert.equal(failed.errors, 1); assert.equal(failed.incomplete, 1);
+});
+
+test("expiration candidates selected before confirmation or cancellation cannot overwrite either decision", async () => {
+  for (const [action, status] of [["confirm", "Confirmed"], ["cancel", "Cancelled"]]) {
+    const h = appointmentHarness(), originalFind = Appointment.find;
+    const read = deferred(), resume = deferred();
+    try {
+      const record = due(); seed(h, record);
+      Appointment.find = () => {
+        const query = { select: () => query, sort: () => query, limit: () => query,
+          lean: async () => {
+            const candidate = clone(record);
+            read.resolve();
+            await resume.promise;
+            return [candidate];
+          } };
+        return query;
+      };
+      const expiration = processExpiredAvailability({ now: deadline });
+      await read.promise;
+      const actor = action === "confirm" ? { role: "faculty", id: record.faculty } : { role: "student", id: record.student };
+      await transitionAppointment({ id: record._id, action, actor, expectedVersion: 0, now: new Date(+deadline - 1) });
+      resume.resolve();
+      const result = await expiration;
+      assert.deepEqual(result, { attempted: 1, changed: 0, skipped: 1, failed: 0, nextCursor: record._id });
+      assert.equal(h.state.appointments[0].status, status);
+      assert.deepEqual(h.state.audits.map(row => row.action), [`appointment_${action}`]);
+      assert.ok(h.state.notifications.every(row => !row.type.includes("expired")));
+      assert.equal(h.state.holds.length, action === "confirm" ? 30 : 0);
+      assert.equal(h.state.slots[0].reservationToken, action === "confirm" ? record.reservationToken : undefined);
+    } finally { resume.resolve(); Appointment.find = originalFind; h.restore(); }
+  }
 });
 
 test("command emits only aggregate numbers and returns nonzero for blocked, incomplete or operational failures", async () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { appointmentHttp } from "./helpers/appointmentHttp.js";
+import { addSlot, fixture } from "./helpers/appointmentHarness.js";
 
 for (const role of ["faculty", "dean"]) test(role+" unscheduled requests remain single records and decisions are owned and atomic", async () => {
   const h = await appointmentHttp();
@@ -248,4 +249,73 @@ test("alternative request form maps safe API validation codes and never renders 
   assert.doesNotMatch(source, /Meeting platform|Meeting link|>Location</);
   assert.match(source, /requestErrorMessage/);
   assert.doesNotMatch(source, /requestError\.message|response\.data/);
+});
+
+test("malformed ranges cannot fall back to a legacy time or be silently discarded", async () => {
+  const h = await appointmentHttp();
+  const body = { facultyId: h.users.faculty.id, subject: "Project", reason: "Review",
+    requestedConsultationDate: "2099-06-01", requestedConsultationTime: "10:00", mode: "Face-to-Face" };
+  try {
+    for (const availableTimeSlots of ["[invalid", "null", null, {}, []]) {
+      const response = await h.request("/schedule-requests", "student", "POST", { ...body, availableTimeSlots });
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).code, "INVALID_AVAILABLE_TIME_SLOTS");
+    }
+    const availableTimeSlots = [{ startTime: "10:00", endTime: "11:00" }];
+    const mixed = await h.request("/schedule-requests", "student", "POST", { ...body, availableTimeSlots,
+      startAt: "2099-06-01T10:00:00+08:00", endAt: "2099-06-01T10:30:00+08:00", estimatedDurationMinutes: 30 });
+    assert.equal(mixed.status, 400);
+    assert.equal(h.state.appointments.length, 0);
+    const accepted = await h.request("/schedule-requests", "student", "POST", {
+      ...body, availableTimeSlots: JSON.stringify(availableTimeSlots),
+    });
+    assert.equal(accepted.status, 201);
+    assert.deepEqual((await accepted.json()).appointment.availableTimeSlots, availableTimeSlots);
+  } finally { await h.close(); }
+});
+
+test("generic confirmation enforces ranges and a date-only proposal stays cancellable", async () => {
+  const h = await appointmentHttp();
+  try {
+    const body = { facultyId: h.users.faculty.id, subject: "Project", reason: "Review",
+      requestedConsultationDate: "2099-06-01", mode: "Face-to-Face",
+      availableTimeSlots: [{ startTime: "10:00", endTime: "11:00" }, { startTime: "13:00", endTime: "14:00" }] };
+    const response = await h.request("/schedule-requests", "student", "POST", body);
+    assert.equal(response.status, 201);
+    const { appointment } = await response.json();
+    const gap = fixture({ faculty: h.users.faculty.id, consultationMode: "Face-to-Face", location: "Room",
+      startAt: new Date("2099-06-01T10:45:00+08:00"), endAt: new Date("2099-06-01T13:15:00+08:00"),
+      reservationToken: undefined });
+    addSlot(h, gap);
+    const statusUrl = `/appointments/${appointment._id}/status`;
+    const malformed = await h.request(statusUrl, "faculty", "PUT", { status: "Confirmed", availabilityId: "invalid", expectedVersion: 0 });
+    assert.equal(malformed.status, 400);
+    const outside = await h.request(statusUrl, "faculty", "PUT", { status: "Confirmed", availabilityId: gap.availability, expectedVersion: 0 });
+    assert.equal(outside.status, 400);
+    assert.match((await outside.json()).message, /fits within one/);
+    assert.equal(h.state.holds.length, 0);
+    const proposed = await h.request(statusUrl, "faculty", "PUT", {
+      status: "Reschedule Proposed", note: "Alternate consultation time", availabilityId: gap.availability, expectedVersion: 0,
+    });
+    assert.equal(proposed.status, 200);
+    const duplicate = await h.request("/schedule-requests", "student", "POST", body);
+    assert.equal(duplicate.status, 409);
+    assert.equal((await duplicate.json()).code, "DUPLICATE_SCHEDULE_REQUEST");
+    const pending = await h.request(`/appointments/${appointment._id}/reschedule-response`, "student", "PUT", {
+      decision: "reject", proposedAt: (await proposed.json()).appointment.proposedAt, expectedVersion: 1,
+    });
+    assert.equal(pending.status, 200);
+    assert.equal((await pending.json()).appointment.status, "Pending");
+    assert.equal((await h.request(statusUrl, "faculty", "PUT", {
+      status: "Reschedule Proposed", note: "Another proposal", availabilityId: gap.availability, expectedVersion: 2,
+    })).status, 200);
+    const cancel = await h.request(`/appointments/${appointment._id}/cancel`, "student", "PUT", { expectedVersion: 3 });
+    assert.equal(cancel.status, 200);
+    const cancelled = (await cancel.json()).appointment;
+    assert.equal(cancelled.startAt, undefined);
+    assert.equal(cancelled.proposedAt, undefined);
+    assert.deepEqual(cancelled.scheduleHistory.map(entry => entry.response), ["Rejected", "Cancelled"]);
+    assert.deepEqual(cancelled.availableTimeSlots, body.availableTimeSlots);
+    assert.equal(h.state.holds.length, 0);
+  } finally { await h.close(); }
 });

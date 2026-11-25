@@ -4,14 +4,13 @@ import Availability from "../src/models/Availability.js";
 import User from "../src/models/User.js";
 import StudentAvailability from "../src/models/StudentAvailability.js";
 import { appointmentHttp } from "./helpers/appointmentHttp.js";
-import { fixture, addSlot, newId } from "./helpers/appointmentHarness.js";
+import { fixture, addSlot, newId, deferred } from "./helpers/appointmentHarness.js";
 import { mutateAvailability, validateAvailability } from "../src/services/availabilityManagementService.js";
 import { createAppointmentRequest, transitionAppointment } from "../src/services/appointmentTransitionService.js";
 import { lockProviderSchedules } from "../src/services/providerSchedulingLock.js";
 
 const input = (extra = {}) => ({ startAt: "2099-01-01T10:00:00+08:00", endAt: "2099-01-01T10:30:00+08:00",
   mode: "Online", meetingPlatform: "Teams", ...extra });
-const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 
 for (const role of ["faculty", "dean"]) test(`${role} availability CRUD derives ownership, protects versions, and retains history`, async () => {
   const h = await appointmentHttp();
@@ -128,7 +127,7 @@ test("forced booking-first interleaving blocks edit, deactivation and deletion; 
       const edit = mutateAvailability({ actor, id: record.availability, action: action === "delete" ? "delete" : "update",
         input: action === "edit" ? { meetingPlatform: "Zoom" } : { isActive: false } });
       release.resolve(); await booking; await assert.rejects(edit, /reserved consultation/);
-      assert.equal(h.state.appointments.length, 1); assert.equal(h.lockCalls.length, 2);
+      assert.equal(h.state.appointments.length, 1); assert.equal(h.lockCalls.length, 3);
     } finally { release.resolve(); User.updateOne = original; await h.close(); }
   }
   const h = await appointmentHttp(), actor = h.users.faculty;
@@ -147,13 +146,17 @@ test("forced booking-first interleaving blocks edit, deactivation and deletion; 
   } finally { await h.close(); }
 });
 
-test("all appointment transition paths share the provider lock; retries preserve single committed reservations", async () => {
+test("all appointment transition paths lock both participants; retries preserve single committed reservations", async () => {
   const h = await appointmentHttp(), faculty = h.users.faculty, student = h.users.student;
   try {
     const record = fixture({ faculty: faculty.id, student: student.id, reservationToken: undefined }); addSlot(h, record);
     h.retry(); const booked = await createAppointmentRequest({ data: record, actor: student });
     let expected = h.lockCalls.length;
-    const command = async args => { await transitionAppointment({ id: booked._id, ...args }); assert.equal(h.lockCalls.length, ++expected); };
+    const assertLocks = () => {
+      assert.deepEqual(h.lockCalls.slice(expected), [faculty.id, student.id].sort());
+      expected += 2;
+    };
+    const command = async args => { await transitionAppointment({ id: booked._id, ...args }); assertLocks(); };
     const schedule = { startAt: new Date("2099-02-01T02:00:00Z"), endAt: new Date("2099-02-01T02:30:00Z"), mode: "Online", meetingPlatform: "Teams" };
     await command({ actor: faculty, action: "propose", reason: "Change schedule", schedule });
     await command({ actor: student, action: "reject_proposal", expectedProposalAt: h.state.appointments[0].proposedAt });
@@ -165,12 +168,12 @@ test("all appointment transition paths share the provider lock; retries preserve
       const pending = fixture({ faculty: faculty.id, student: student.id }); h.state.appointments.push(pending); addSlot(h, pending);
       await transitionAppointment({ id: pending._id, actor: action === "expire" ? { role: "system" } : faculty, action, reason: "Unavailable",
         ...(action === "expire" && { now: pending.startAt }) });
-      assert.equal(h.lockCalls.length, ++expected);
+      assertLocks();
     }
     const request = fixture({ faculty: faculty.id, student: student.id, availability: undefined, startAt: undefined, endAt: undefined,
       reservationToken: undefined, bookingMethod: "schedule_request" });
-    const created = await createAppointmentRequest({ data: request, actor: student }); assert.equal(h.lockCalls.length, ++expected);
-    await transitionAppointment({ id: created._id, actor: faculty, action: "confirm", schedule }); assert.equal(h.lockCalls.length, ++expected);
+    const created = await createAppointmentRequest({ data: request, actor: student }); assertLocks();
+    await transitionAppointment({ id: created._id, actor: faculty, action: "confirm", schedule }); assertLocks();
     assert.equal(h.state.holds.length, 30);
   } finally { await h.close(); }
 });
@@ -195,7 +198,7 @@ test("forced mutation-first interleavings reject stale booking and concurrent ac
         : createAppointmentRequest({ data: record, actor: h.users.student });
       release.resolve(); await mutation;
       await assert.rejects(competing, action === "create" ? /overlaps/ : /schedule changed|no longer available/);
-      assert.equal(h.state.appointments.length, 0); assert.equal(h.lockCalls.length, 2);
+      assert.equal(h.state.appointments.length, 0); assert.equal(h.lockCalls.length, action === "create" ? 2 : 3);
     } finally { release.resolve(); User.updateOne = original; await h.close(); }
   }
 });

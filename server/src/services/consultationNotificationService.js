@@ -200,10 +200,10 @@ export function appointmentEvent(action, appointment, actorRole) {
 
 export function facultyAppointmentEvent(action, actorRole, appointment) {
   if (action === "request") return appointment?.initiatedByRole === "faculty" ? undefined : "faculty_request_submitted";
-  if (appointment?.initiatedByRole === "faculty" && actorRole === "student")
-    return ({ confirm: "faculty_request_accepted", reject: "faculty_request_declined", propose: "faculty_student_reschedule_proposed", cancel: "faculty_cancelled" })[action];
   if (action === "accept_proposal" && actorRole === "student") return "faculty_proposal_accepted";
   if (action === "reject_proposal" && actorRole === "student") return "faculty_proposal_declined";
+  if (appointment?.initiatedByRole === "faculty" && actorRole === "student")
+    return ({ confirm: "faculty_request_accepted", reject: "faculty_request_declined", propose: "faculty_student_reschedule_proposed", cancel: "faculty_cancelled" })[action];
   if (action === "cancel" && actorRole === "student") return "faculty_cancelled";
   if (action === "expire") return "faculty_expired";
   return undefined;

@@ -7,7 +7,7 @@ import { authenticate, authorize } from "../middleware/auth.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
 import { transitionAppointment, createAppointmentRequest } from "../services/appointmentTransitionService.js";
 import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
-import { parseAvailableTimeSlots, scheduleFitsAvailableTimeSlot, validateAvailableTimeSlots } from "../services/availableTimeSlotService.js";
+import { isCalendarDate, parseAvailableTimeSlots, parseScheduleInstant, validateAvailableTimeSlots } from "../services/availableTimeSlotService.js";
 
 const router = Router();
 router.use(authenticate);
@@ -23,20 +23,6 @@ const validMeetingLink = (value) => {
     return false;
   }
 };
-const requestedDateIsValid = (value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const instant = new Date(`${value}T00:00:00+08:00`);
-  if (!Number.isFinite(instant.getTime())) return false;
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(instant) === value;
-};
-const manilaDate = (now = new Date()) => new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
-}).format(now);
-const manilaTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-}).format(now);
 router.get("/mine", authorize("faculty", "dean"), async (req, res) => {
   const requests = await Appointment.find({
     faculty: req.user.id,
@@ -64,11 +50,12 @@ router.post(
     const requestedConsultationDate = String(req.body.requestedConsultationDate || "").trim();
     const requestedConsultationTime = String(req.body.requestedConsultationTime || "").trim();
     const availableTimeSlots = parseAvailableTimeSlots(req.body.availableTimeSlots);
+    const hasAvailableTimeSlots = req.body.availableTimeSlots !== undefined;
     const duration = Number(req.body.estimatedDurationMinutes);
     const hasPreferredSchedule = Boolean(req.body.startAt || req.body.endAt);
     const isDateOnlyRequest = Boolean(requestedConsultationDate) && !hasPreferredSchedule;
-    const startAt = hasPreferredSchedule ? new Date(req.body.startAt) : undefined;
-    const endAt = hasPreferredSchedule ? new Date(req.body.endAt) : undefined;
+    const startAt = hasPreferredSchedule ? parseScheduleInstant(req.body.startAt) : undefined;
+    const endAt = hasPreferredSchedule ? parseScheduleInstant(req.body.endAt) : undefined;
     const mode = String(req.body.mode || "").trim();
     const location = String(req.body.location || "").trim();
     const meetingPlatform = String(req.body.meetingPlatform || "").trim();
@@ -87,13 +74,15 @@ router.post(
       return invalid(res, "Please enter a consultation reason of 1,000 characters or fewer.", "INVALID_REASON");
     if (yearLevel && !years.includes(yearLevel))
       return invalid(res, "Your Student profile contains an invalid year level. Please update your profile or contact the Dean.", "INVALID_YEAR_LEVEL");
-    if (isDateOnlyRequest && !requestedDateIsValid(requestedConsultationDate))
+    if (hasAvailableTimeSlots && hasPreferredSchedule)
+      return invalid(res, "Submit available time slots with a preferred date only.", "INVALID_AVAILABLE_TIME_SLOTS");
+    if ((isDateOnlyRequest || hasAvailableTimeSlots) && !isCalendarDate(requestedConsultationDate))
       return invalid(res, "Please choose a valid preferred consultation date.", "INVALID_REQUESTED_DATE");
-    if (isDateOnlyRequest && availableTimeSlots == null && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(requestedConsultationTime))
+    if (isDateOnlyRequest && !hasAvailableTimeSlots && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(requestedConsultationTime))
       return invalid(res, "Please choose a valid preferred consultation time.", "INVALID_REQUESTED_TIME");
-    if (isDateOnlyRequest && availableTimeSlots == null && new Date(`${requestedConsultationDate}T${requestedConsultationTime}:00+08:00`) <= new Date())
+    if (isDateOnlyRequest && !hasAvailableTimeSlots && new Date(`${requestedConsultationDate}T${requestedConsultationTime}:00+08:00`) <= new Date())
       return invalid(res, "Please choose a future preferred consultation date and time.", "PAST_REQUESTED_SCHEDULE");
-    if (isDateOnlyRequest && availableTimeSlots != null) {
+    if (hasAvailableTimeSlots) {
       const slotError = validateAvailableTimeSlots({ date: requestedConsultationDate, slots: availableTimeSlots });
       if (slotError) return invalid(res, slotError.message, slotError.code);
     }
@@ -131,11 +120,6 @@ router.post(
           "You already have a schedule request awaiting this Faculty Member.",
         code: "DUPLICATE_SCHEDULE_REQUEST",
       });
-    if (hasPreferredSchedule && await Appointment.exists({
-      status: { $in: ["Pending", "Reschedule Proposed", "Confirmed"] },
-      startAt: { $lt: endAt }, endAt: { $gt: startAt },
-      $or: [{ student: req.user.id }, { faculty: facultyId }],
-    })) return res.status(409).json({ message: "This request conflicts with an existing consultation.", code: "SCHEDULE_CONFLICT" });
     const appointmentId = new mongoose.Types.ObjectId();
     const documents = await uploadAppointmentDocuments(req.files || [], appointmentId);
     let appointment;
@@ -156,7 +140,12 @@ router.post(
           currentScheduleSource: "participant_proposed",
         }),
       } });
-    } catch (error) { await documents.cleanup(); throw error; }
+    } catch (error) {
+      await documents.cleanup();
+      if (["SCHEDULE_CONFLICT", "DUPLICATE_SCHEDULE_REQUEST"].includes(error.code))
+        return res.status(409).json({ message: error.message, code: error.code });
+      throw error;
+    }
     res.status(201).json({ message: "Your alternative consultation schedule request has been sent to the Faculty.", appointment });
 
   },
@@ -178,7 +167,7 @@ router.put("/:id/reject", authorize("faculty", "dean"), async (req, res) => {
 router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
   if (!validId(req.params.id))
     return res.status(404).json({ message: "Request not found." });
-  const startAt = new Date(req.body.startAt);
+  const startAt = parseScheduleInstant(req.body.startAt);
   const duration = Number(req.body.durationMinutes);
   const mode = req.body.mode;
   const location = String(req.body.location || "").trim();
@@ -226,22 +215,6 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
     return res.status(409).json({
       message: "This request is no longer pending or does not belong to you.",
     });
-  if (appointment.requestedConsultationDate && manilaDate(startAt) !== appointment.requestedConsultationDate)
-    return res.status(400).json({
-      message: "Use Reschedule Request to propose a different consultation date.",
-      code: "REQUESTED_DATE_MISMATCH",
-    });
-  if (appointment.requestedConsultationTime && manilaTime(startAt) !== appointment.requestedConsultationTime)
-    return res.status(400).json({
-      message: "Use Reschedule Request to propose a different consultation time.",
-      code: "REQUESTED_TIME_MISMATCH",
-    });
-  if (appointment.availableTimeSlots?.length && !scheduleFitsAvailableTimeSlot({
-    date: appointment.requestedConsultationDate, slots: appointment.availableTimeSlots, startAt, endAt,
-  })) return res.status(400).json({
-    message: "Choose a consultation time that fits within one of the Student's available time slots, or use Reschedule Request.",
-    code: "SCHEDULE_OUTSIDE_AVAILABLE_TIME",
-  });
   const studentIsActive = await User.exists({
     _id: appointment.student,
     ...eligibleAccountFilter("student"),
@@ -250,9 +223,15 @@ router.put("/:id/approve", authorize("faculty", "dean"), async (req, res) => {
     return res
       .status(409)
       .json({ message: "The Student account is no longer active." });
-  const approved = await transitionAppointment({ id: req.params.id, actor: req.user, action: "confirm",
-    bookingMethod: "schedule_request", expectedVersion: req.body.expectedVersion,
-    schedule: { startAt, endAt, mode, location, meetingPlatform, meetingLink } });
-  return res.json({ message: "Schedule confirmed and sent to the Student.", appointment: approved });
+  try {
+    const approved = await transitionAppointment({ id: req.params.id, actor: req.user, action: "confirm",
+      bookingMethod: "schedule_request", expectedVersion: req.body.expectedVersion,
+      schedule: { startAt, endAt, mode, location, meetingPlatform, meetingLink } });
+    return res.json({ message: "Schedule confirmed and sent to the Student.", appointment: approved });
+  } catch (error) {
+    if (["REQUESTED_DATE_MISMATCH", "REQUESTED_TIME_MISMATCH", "SCHEDULE_OUTSIDE_AVAILABLE_TIME"].includes(error.code))
+      return invalid(res, error.message, error.code);
+    throw error;
+  }
 });
 export default router;

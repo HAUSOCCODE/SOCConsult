@@ -1,12 +1,17 @@
 import mongoose from "mongoose";
 import StudentAvailability from "../models/StudentAvailability.js";
 import { availabilityStatus, availabilityWithStatus } from "../services/availabilityExpirationService.js";
+import { lockProviderSchedules } from "../services/providerSchedulingLock.js";
+import { parseScheduleInstant } from "../services/availableTimeSlotService.js";
 
 const endedMessage = "This availability period has already ended. Please create a new schedule.";
+const overlapMessage = "This availability overlaps another active preferred period.";
+const notFoundMessage = "Availability not found.";
+const fail = (statusCode, message) => { throw Object.assign(new Error(message), { statusCode }); };
 
 const parsePeriod = (startValue, endValue) => ({
-  startAt: new Date(startValue),
-  endAt: new Date(endValue),
+  startAt: startValue instanceof Date ? startValue : parseScheduleInstant(startValue),
+  endAt: endValue instanceof Date ? endValue : parseScheduleInstant(endValue),
 });
 
 const validatePeriod = ({ startAt, endAt }) => {
@@ -17,14 +22,30 @@ const validatePeriod = ({ startAt, endAt }) => {
   return "";
 };
 
-const overlapsActivePeriod = ({ student, startAt, endAt, excludeId }) =>
+const overlapsActivePeriod = ({ student, startAt, endAt, excludeId }, session) =>
   StudentAvailability.exists({
     ...(excludeId && { _id: { $ne: excludeId } }),
     student,
     isActive: true,
     startAt: { $lt: endAt },
     endAt: { $gt: startAt },
-  });
+  }).session(session);
+
+async function mutatePeriod(student, work) {
+  const session = await mongoose.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      await lockProviderSchedules([student], session);
+      return work(session);
+    });
+  } catch (error) {
+    if (error.code === 112 || error.hasErrorLabel?.("TransientTransactionError"))
+      fail(409, "Availability changed. Refresh and try again.");
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+}
 
 export const getStudentAvailability = async (req, res) => {
   const now = new Date();
@@ -36,22 +57,16 @@ export const getStudentAvailability = async (req, res) => {
 
 export const createStudentAvailability = async (req, res) => {
   const period = parsePeriod(req.body.startAt, req.body.endAt);
-  const validationError = validatePeriod(period);
-  if (validationError)
-    return res.status(400).json({ message: validationError });
+  const student = req.user.id;
   const isActive =
     typeof req.body.isActive === "boolean" ? req.body.isActive : true;
-  if (
-    isActive &&
-    (await overlapsActivePeriod({ student: req.user.id, ...period }))
-  )
-    return res.status(409).json({
-      message: "This availability overlaps another active preferred period.",
-    });
-  const availability = await StudentAvailability.create({
-    student: req.user.id,
-    ...period,
-    isActive,
+  const availability = await mutatePeriod(student, async (session) => {
+    const validationError = validatePeriod(period);
+    if (validationError) fail(400, validationError);
+    if (isActive && await overlapsActivePeriod({ student, ...period }, session))
+      fail(409, overlapMessage);
+    const [created] = await StudentAvailability.create([{ student, ...period, isActive }], { session });
+    return created;
   });
   res.status(201).json({
     message: "Availability added.",
@@ -61,65 +76,45 @@ export const createStudentAvailability = async (req, res) => {
 
 export const updateStudentAvailability = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id))
-    return res.status(404).json({ message: "Availability not found." });
-  const availability = await StudentAvailability.findOne({
-    _id: req.params.id,
-    student: req.user.id,
-  });
-  if (!availability)
-    return res.status(404).json({ message: "Availability not found." });
-  if (availabilityStatus(availability) === "expired")
-    return res.status(409).json({ message: endedMessage });
+    return res.status(404).json({ message: notFoundMessage });
+  const student = req.user.id;
+  const filter = { _id: req.params.id, student };
+  const result = await mutatePeriod(student, async (session) => {
+    const current = await StudentAvailability.findOne(filter).session(session);
+    if (!current) fail(404, notFoundMessage);
+    if (availabilityStatus(current) === "expired") fail(409, endedMessage);
 
-  const changesPeriod =
-    req.body.startAt !== undefined || req.body.endAt !== undefined;
-  const nextActive =
-    typeof req.body.isActive === "boolean"
-      ? req.body.isActive
-      : availability.isActive;
-  const period = parsePeriod(
-    req.body.startAt ?? availability.startAt,
-    req.body.endAt ?? availability.endAt,
-  );
-  if (changesPeriod || nextActive) {
-    const validationError = validatePeriod(period);
-    if (validationError)
-      return res.status(400).json({ message: validationError });
-  }
-  if (
-    nextActive &&
-    (await overlapsActivePeriod({
-      student: req.user.id,
-      ...period,
-      excludeId: availability.id,
-    }))
-  )
-    return res.status(409).json({
-      message: "This availability overlaps another active preferred period.",
-    });
+    const changesPeriod = req.body.startAt !== undefined || req.body.endAt !== undefined;
+    const nextActive = typeof req.body.isActive === "boolean" ? req.body.isActive : current.isActive;
+    const period = parsePeriod(
+      req.body.startAt === undefined ? current.startAt : req.body.startAt,
+      req.body.endAt === undefined ? current.endAt : req.body.endAt,
+    );
+    if (changesPeriod || nextActive) {
+      const validationError = validatePeriod(period);
+      if (validationError) fail(400, validationError);
+    }
+    if (nextActive && await overlapsActivePeriod({ student, ...period, excludeId: current._id }, session))
+      fail(409, overlapMessage);
 
-  if (changesPeriod) {
-    availability.startAt = period.startAt;
-    availability.endAt = period.endAt;
-  }
-  availability.isActive = nextActive;
-  await availability.save();
-  res.json({
-    message: changesPeriod
-      ? "Availability updated."
-      : `Availability ${nextActive ? "activated" : "deactivated"}.`,
-    availability,
+    const availability = await StudentAvailability.findOneAndUpdate(filter,
+      { $set: { ...(changesPeriod && period), isActive: nextActive } }, { new: true, runValidators: true, session });
+    if (!availability) fail(404, notFoundMessage);
+    return {
+      message: changesPeriod ? "Availability updated." : `Availability ${nextActive ? "activated" : "deactivated"}.`,
+      availability,
+    };
   });
+  res.json(result);
 };
 
 export const deleteStudentAvailability = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id))
-    return res.status(404).json({ message: "Availability not found." });
-  const availability = await StudentAvailability.findOneAndDelete({
-    _id: req.params.id,
-    student: req.user.id,
+    return res.status(404).json({ message: notFoundMessage });
+  const student = req.user.id;
+  await mutatePeriod(student, async (session) => {
+    const availability = await StudentAvailability.findOneAndDelete({ _id: req.params.id, student }, { session });
+    if (!availability) fail(404, notFoundMessage);
   });
-  if (!availability)
-    return res.status(404).json({ message: "Availability not found." });
   res.json({ message: "Availability deleted." });
 };

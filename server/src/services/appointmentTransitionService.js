@@ -3,12 +3,14 @@ import crypto from "node:crypto";
 import Appointment from "../models/Appointment.js";
 import AttendanceResponse from "../models/AttendanceResponse.js";
 import Availability from "../models/Availability.js";
+import StudentAvailability from "../models/StudentAvailability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
 import { lockProviderSchedules } from "./providerSchedulingLock.js";
 import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
 import { safeReason, scheduleSnapshot, statusHistoryEntry } from "./appointmentHistoryService.js";
+import { scheduleFitsAvailableTimeSlot } from "./availableTimeSlotService.js";
 import { appointmentEvent, bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
   createFacultyConsultationNotification, createStudentConsultationNotification, facultyAppointmentEvent } from "./consultationNotificationService.js";
 
@@ -18,20 +20,29 @@ const fail = (message, statusCode = 409, code = "APPOINTMENT_TRANSITION_BLOCKED"
 const idOf = (value) => String(value?._id || value?.id || value || "");
 const date = (value) => value == null ? NaN : new Date(value).getTime();
 const proposalFields = ["proposedAvailability", "proposedStartAt", "proposedEndAt", "proposedConsultationMode", "proposedLocation", "proposedMeetingPlatform", "proposedMeetingLink", "proposalNote", "proposedAt", "proposedBy"];
+const hasConfirmedSchedule = appointment => appointment.status === "Confirmed" || Boolean(appointment.attendance) ||
+  appointment.statusHistory?.some(entry => entry.newStatus === "Confirmed");
+const unresolvedRequest = ({ student, faculty, _id }) => ({
+  ...(_id && { _id: { $ne: _id } }),
+  student, faculty, bookingMethod: "schedule_request", status: { $in: ["Pending", "Reschedule Proposed"] },
+});
 
 export function assertTransition({ appointment, action, actor, now = new Date(), reason = "", expectedProposalAt, hasAttendanceResponse = false }) {
   const rule = TRANSITION_RULES[action];
   if (!rule || !rule.from.includes(appointment.status)) fail("This status transition is not allowed.");
   if (actor.management) fail("Dean management access is read-only.", 403);
-  if (["propose", "accept_proposal"].includes(action) && appointment.attendance &&
-    (appointment.attendance.studentResponded || appointment.attendance.facultyResponded ||
-      date(now) >= date(appointment.attendance.attendanceOpensAt)))
-    fail("Attendance has opened; this consultation cannot be rescheduled.");
   const student = actor.role === "student" && idOf(appointment.student) === idOf(actor.id);
   const faculty = ["faculty", "dean"].includes(actor.role) && idOf(appointment.faculty) === idOf(actor.id);
   if (!(rule.actor === "system" ? actor.role === "system" && !actor.id
     : rule.actor === "student" ? student : rule.actor === "faculty" ? faculty : student || faculty))
     fail("Unauthorized for this appointment action.", 403);
+  const attendanceStarted = hasAttendanceResponse || appointment.attendance?.studentResponded ||
+    appointment.attendance?.facultyResponded || date(now) >= date(appointment.attendance?.attendanceOpensAt);
+  if (["propose", "accept_proposal"].includes(action)) {
+    if (attendanceStarted) fail("Attendance has opened; this consultation cannot be rescheduled.");
+    if (hasConfirmedSchedule(appointment) && !(date(appointment.startAt) > date(now)))
+      fail("An appointment that has started or passed cannot be rescheduled.");
+  }
   const initiatorRole = appointment.initiatedByRole === "faculty" ? "faculty" : "student";
   const actorParticipantRole = student ? "student" : faculty ? "faculty" : "";
   if (["confirm", "reject"].includes(action) && actorParticipantRole === initiatorRole)
@@ -40,24 +51,28 @@ export function assertTransition({ appointment, action, actor, now = new Date(),
     fail("The request initiator cannot respond to their own request.", 403);
   if (action === "propose" && appointment.status === "Confirmed" && !faculty)
     fail("Only the assigned Faculty consultant can propose a confirmed-consultation change.", 403);
-  if (action.endsWith("_proposal") && idOf(appointment.proposedBy) === idOf(actor.id))
-    fail("The proposal initiator cannot respond to their own proposal.", 403);
+  if (action.endsWith("_proposal")) {
+    const proposer = idOf(appointment.proposedBy);
+    if (!proposer || ![idOf(appointment.student), idOf(appointment.faculty)].includes(proposer))
+      fail("This proposal has no valid initiator.");
+    if (proposer === idOf(actor.id)) fail("The proposal initiator cannot respond to their own proposal.", 403);
+  }
   if (["reject", "propose"].includes(action) && !safeReason(reason)) fail("A decision reason is required.", 400);
   if (action === "cancel") {
-    if (hasAttendanceResponse || appointment.attendance?.studentResponded || appointment.attendance?.facultyResponded ||
-      date(now) >= date(appointment.attendance?.attendanceOpensAt))
+    if (attendanceStarted)
       fail("Attendance has opened or a response exists; this consultation cannot be cancelled.");
     if (faculty && !safeReason(reason)) fail("A cancellation reason is required.", 400);
-    const unscheduled = appointment.bookingMethod === "schedule_request" && appointment.status === "Pending" && appointment.startAt == null;
+    const unscheduled = appointment.bookingMethod === "schedule_request" && appointment.startAt == null &&
+      !hasConfirmedSchedule(appointment);
     if (!unscheduled && !(date(appointment.startAt) > date(now))) fail("This consultation has already started or has no valid schedule.");
   }
   if (action === "confirm" && appointment.startAt != null && !(date(appointment.startAt) > date(now)))
     fail("This consultation has already started.");
-  if (action === "propose" && appointment.status === "Confirmed" && !(date(appointment.startAt) > date(now)))
-    fail("An appointment that has started or passed cannot be rescheduled.");
   if (action.endsWith("_proposal")) {
     if (!expectedProposalAt || date(expectedProposalAt) !== date(appointment.proposedAt)) fail("This proposal changed. Refresh and try again.");
   }
+  if (action === "accept_proposal" && !(date(appointment.proposedStartAt) > date(now)))
+    fail("The proposed time has already passed or is unavailable.", 400);
   if (action === "expire" && !(Number.isFinite(date(appointment.startAt)) && date(appointment.startAt) <= date(now)))
     fail("Only a scheduled Pending request at its start deadline can expire.");
   return rule.to;
@@ -68,22 +83,47 @@ function validSchedule(schedule, now) {
   const duration = (date(schedule.endAt) - date(schedule.startAt)) / 60000;
   if (duration < 5 || duration > 1440 || !Number.isInteger(duration)) fail("Invalid consultation duration.", 400);
   if (!["Online", "Face-to-Face"].includes(schedule.mode)) fail("Choose a valid consultation mode.", 400);
-  if (schedule.mode === "Face-to-Face" && (!schedule.location?.trim() || schedule.location.length > 150)) fail("Enter a valid location.", 400);
+  if (schedule.mode === "Face-to-Face" && (typeof schedule.location !== "string" || !schedule.location.trim() || schedule.location.length > 150))
+    fail("Enter a valid location.", 400);
   if (schedule.mode === "Online") {
-    if (!schedule.meetingPlatform?.trim() || schedule.meetingPlatform.length > 100) fail("Enter a valid meeting platform.", 400);
+    if (typeof schedule.meetingPlatform !== "string" || !schedule.meetingPlatform.trim() || schedule.meetingPlatform.length > 100)
+      fail("Enter a valid meeting platform.", 400);
     if (schedule.meetingLink) {
       let url;
+      if (typeof schedule.meetingLink !== "string") fail("Invalid meeting link.", 400);
       try { url = new URL(schedule.meetingLink); } catch { fail("Invalid meeting link.", 400); }
       if (!["http:", "https:"].includes(url.protocol) || schedule.meetingLink.length > 500) fail("Invalid meeting link.", 400);
     }
   }
 }
 
-async function conflicts(appointment, schedule, session) {
+function checkRequestedSchedule(appointment, schedule) {
+  if (appointment.bookingMethod !== "schedule_request" || hasConfirmedSchedule(appointment)) return;
+  const { requestedConsultationDate, requestedConsultationTime, availableTimeSlots } = appointment;
+  const manila = { timeZone: "Asia/Manila" };
+  if (requestedConsultationDate && new Intl.DateTimeFormat("en-CA", {
+    ...manila, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(schedule.startAt) !== requestedConsultationDate)
+    fail("Use Reschedule Request to propose a different consultation date.", 400, "REQUESTED_DATE_MISMATCH");
+  if (requestedConsultationTime && new Intl.DateTimeFormat("en-GB", {
+    ...manila, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(schedule.startAt) !== requestedConsultationTime)
+    fail("Use Reschedule Request to propose a different consultation time.", 400, "REQUESTED_TIME_MISMATCH");
+  if (availableTimeSlots?.length && !scheduleFitsAvailableTimeSlot({
+    date: requestedConsultationDate, slots: availableTimeSlots, startAt: schedule.startAt, endAt: schedule.endAt,
+  })) fail("Choose a consultation time that fits within one of the Student's available time slots, or use Reschedule Request.",
+    400, "SCHEDULE_OUTSIDE_AVAILABLE_TIME");
+}
+
+async function conflicts(appointment, schedule, session, requestPreference = false) {
   const overlap = { _id: { $ne: appointment._id }, status: { $in: BLOCKING_STATUSES },
     startAt: { $lt: schedule.endAt }, endAt: { $gt: schedule.startAt },
     $or: [{ faculty: appointment.faculty }, { student: appointment.student }] };
-  if (await Appointment.exists(overlap).session(session)) fail("The schedule conflicts with an active consultation.");
+  if (await Appointment.exists(overlap).session(session)) {
+    if (requestPreference) fail("This request conflicts with an existing consultation.", 409, "SCHEDULE_CONFLICT");
+    fail("The schedule conflicts with an active consultation.");
+  }
+  if (requestPreference) return;
   if (await OneTimeScheduleHold.exists({ appointment: { $ne: appointment._id },
     minute: { $gte: Math.floor(date(schedule.startAt) / 60000), $lt: Math.ceil(date(schedule.endAt) / 60000) },
     $or: [{ faculty: appointment.faculty }, { student: appointment.student }] }).session(session))
@@ -154,6 +194,7 @@ async function events({ appointment, from, to, actor, action, reason, now, sessi
 export async function transitionAppointment({ id, actor, action, reason = "", schedule: inputSchedule, availabilityId,
   expectedProposalAt, expectedVersion, expectedUpdatedAt, now = new Date(), bookingMethod }) {
   if (!mongoose.isValidObjectId(id)) fail("Invalid appointment ID.", 400);
+  if (availabilityId && !mongoose.isValidObjectId(availabilityId)) fail("Invalid availability ID.", 400);
   reason = safeReason(reason);
   const session = await mongoose.startSession();
   let result;
@@ -166,14 +207,15 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
         .select("+reservationToken +meetingLink +proposedMeetingLink +attendance").session(session);
       if (!appointment) fail("Appointment not found.", 404, "APPOINTMENT_NOT_FOUND");
       // Includes proposals, confirmations, acceptance and reservation releases.
-      // A stale transaction snapshot retries when this provider write conflicts.
-      await lockProviderSchedules([appointment.faculty], session);
+      // Both participants must serialize interval checks, including across Faculty.
+      await lockProviderSchedules([appointment.faculty, appointment.student], session);
       if (action === "expire" && appointment.status !== "Pending")
         fail("This appointment changed.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
       if (bookingMethod && appointment.bookingMethod !== bookingMethod) fail("Appointment not found.", 404);
       if (expectedVersion != null && expectedVersion !== appointment.__v) fail("This appointment changed. Refresh and try again.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
       if (expectedUpdatedAt != null && date(expectedUpdatedAt) !== date(appointment.updatedAt)) fail("This appointment changed. Refresh and try again.", 409, "APPOINTMENT_CONCURRENT_CHANGE");
-      const hasAttendanceResponse = action === "cancel" && Boolean(await AttendanceResponse.exists({ appointment: appointment._id }).session(session));
+      const hasAttendanceResponse = ["cancel", "propose", "accept_proposal"].includes(action) &&
+        Boolean(await AttendanceResponse.exists({ appointment: appointment._id }).session(session));
       const to = assertTransition({ appointment, actor, action, reason, expectedProposalAt, now, hasAttendanceResponse });
       const last = appointment.statusHistory?.at(-1);
       if (last && !Number.isFinite(date(last.changedAt))) fail("Appointment history requires manual review.");
@@ -182,8 +224,12 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
       if (action === "propose" || action === "confirm") {
         if (action === "confirm" && appointment.availability && availabilityId && idOf(availabilityId) !== idOf(appointment.availability))
           fail("A changed schedule requires a Student proposal response.");
-        if (action === "confirm" && appointment.bookingMethod !== "schedule_request" && schedule)
+        if (action === "confirm" && schedule && (appointment.availability || appointment.bookingMethod !== "schedule_request"))
           fail("A changed schedule requires a Student proposal response.");
+        if (action === "confirm" && !appointment.availability && hasConfirmedSchedule(appointment) &&
+            (availabilityId || (schedule && (date(schedule.startAt) !== date(appointment.startAt) ||
+              date(schedule.endAt) !== date(appointment.endAt)))))
+          fail("A changed schedule requires a proposal response.");
         if (availabilityId || (!schedule && appointment.availability)) {
           const slot = await Availability.findOne({ _id: availabilityId || appointment.availability,
             faculty: appointment.faculty, isActive: true }).select("+meetingLink +reservationToken").session(session);
@@ -200,9 +246,13 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
             location: appointment.location, meetingPlatform: appointment.meetingPlatform, meetingLink: appointment.meetingLink };
         if (!schedule) fail("Assign a consultation schedule.", 400);
         validSchedule(schedule, now);
+        if (action === "confirm") checkRequestedSchedule(appointment, schedule);
         await conflicts(appointment, schedule, session);
       }
       if (action === "propose") {
+        if (appointment.bookingMethod === "schedule_request" &&
+            await Appointment.exists(unresolvedRequest(appointment)).session(session))
+          fail("Resolve the other active schedule request before proposing a change.");
         if (!reason) fail("A proposal reason is required.", 400);
         if (date(schedule.startAt) === date(appointment.startAt) && date(schedule.endAt) === date(appointment.endAt)) fail("The proposed schedule must differ from the current schedule.");
         Object.assign(set, { proposedStartAt: schedule.startAt, proposedEndAt: schedule.endAt,
@@ -291,6 +341,8 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
     });
   } catch (error) {
     if (error.code === 11000) fail("The schedule conflicts with another active request.");
+    if (error.code === 112 || error.hasErrorLabel?.("TransientTransactionError"))
+      fail("The appointment could not be updated. Refresh and try again.", 409, "APPOINTMENT_WRITE_CONFLICT");
     throw error;
   } finally { await session.endSession(); }
   const event = appointmentEvent(action, result, actor.role);
@@ -303,16 +355,19 @@ export async function transitionAppointment({ id, actor, action, reason = "", sc
 export async function createAppointmentRequest({ data, actor, now = new Date() }) {
   const studentInitiated = actor.role === "student" && idOf(data.student) === idOf(actor.id);
   const facultyInitiated = ["faculty", "dean"].includes(actor.role) && idOf(data.faculty) === idOf(actor.id);
-  if (!studentInitiated && !facultyInitiated) fail("Only an appointment participant can create this request.", 403);
+  if (actor.management || (!studentInitiated && !facultyInitiated)) fail("Only an appointment participant can create this request.", 403);
   const session = await mongoose.startSession();
   const requestId = data._id || new mongoose.Types.ObjectId();
   let appointment;
   try {
     await session.withTransaction(async () => {
-      await lockProviderSchedules([data.faculty], session);
+      await lockProviderSchedules([data.faculty, data.student], session);
       const record = { ...data, _id: requestId, status: "Pending", __v: 0,
         initiatedByRole: facultyInitiated ? "faculty" : "student" };
       delete record.reservationToken;
+      if ((facultyInitiated || record.bookingMethod === "schedule_request") &&
+          await Appointment.exists(unresolvedRequest(record)).session(session))
+        fail("An active consultation request already exists.", 409, "DUPLICATE_SCHEDULE_REQUEST");
       if (facultyInitiated) {
         record.bookingMethod = "schedule_request";
         record.currentScheduleSource = "faculty_assigned";
@@ -330,6 +385,10 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
         // The selected overlap must still be contained by the published window.
         if (date(record.startAt) < date(slot.startAt) || date(record.endAt) > date(slot.endAt))
           fail("This schedule changed. Refresh and choose a schedule again.");
+        const periods = await StudentAvailability.find({ student: record.student, isActive: true, endAt: { $gt: now } })
+          .select("startAt endAt").session(session).lean();
+        if (periods.length && !periods.some(period => period.startAt <= record.startAt && period.endAt >= record.endAt))
+          fail("This time is outside your current availability.");
         Object.assign(record, { consultationMode: slot.mode,
           location: slot.mode === "Face-to-Face" ? slot.location : "",
           meetingPlatform: slot.mode === "Online" ? slot.meetingPlatform : "",
@@ -340,6 +399,12 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
         validSchedule(schedule, now);
         await conflicts(record, schedule, session);
         record.reservationToken = await reserve(record, schedule, session);
+      } else if (record.startAt != null && record.endAt != null) {
+        // A timed Student preference has no holds, but follows the existing
+        // overlap policy. Check it under the same locks as other schedule writes.
+        if (!(date(record.startAt) > date(now)) || !(date(record.endAt) > date(record.startAt)))
+          fail("Choose a valid future schedule.", 400);
+        await conflicts(record, record, session, true);
       }
       record.statusHistory = [statusHistoryEntry({ from: "Created", to: "Pending", actor, action: "request", now })];
       [appointment] = await Appointment.create([record], { session });
@@ -347,6 +412,8 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
     });
   } catch (error) {
     if (error.code === 11000) fail("An active consultation request already exists.");
+    if (error.code === 112 || error.hasErrorLabel?.("TransientTransactionError"))
+      fail("The schedule changed. Refresh and try again.");
     throw error;
   } finally { await session.endSession(); }
   if (facultyInitiated)
