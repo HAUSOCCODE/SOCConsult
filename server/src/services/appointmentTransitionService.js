@@ -11,6 +11,7 @@ import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
 import { safeReason, scheduleSnapshot, statusHistoryEntry } from "./appointmentHistoryService.js";
 import { scheduleFitsAvailableTimeSlot } from "./availableTimeSlotService.js";
+import { sanitizeAppointmentDocuments } from "./appointmentDocumentService.js";
 import { appointmentEvent, bestEffortFacultyConsultationEmail, bestEffortStudentConsultationEmail,
   createFacultyConsultationNotification, createStudentConsultationNotification, facultyAppointmentEvent } from "./consultationNotificationService.js";
 
@@ -171,7 +172,7 @@ export const safeAppointment = (record, role) => {
   delete result.decisionLock; delete result.decisionLockAt;
   delete result.attendance;
   if (role === "student" && !["Confirmed", "Completed"].includes(result.status)) delete result.meetingLink;
-  return result;
+  return sanitizeAppointmentDocuments(result);
 };
 
 async function events({ appointment, from, to, actor, action, reason, now, session, transitionVersion }) {

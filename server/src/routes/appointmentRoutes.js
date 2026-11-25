@@ -18,14 +18,14 @@ import {
   transitionAppointment,
   createAppointmentRequest,
 } from "../services/appointmentTransitionService.js";
-import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
+import { sanitizeAppointmentDocuments, uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
 import { destroyAsset } from "../services/cloudinaryStorage.js";
 import {
   canExportCalendar,
   consultationIcsFilename,
   generateConsultationIcs,
 } from "../services/icsService.js";
-import { listStudentConsultationHistory } from "../services/studentConsultationHistoryService.js";
+import { listStudentConsultationHistory, safeDocuments } from "../services/studentConsultationHistoryService.js";
 import { studentAppointmentDetails } from "../services/studentAppointmentDetailsService.js";
 import { listFacultyRequests, facultyRequestDetails } from "../services/facultyRequestService.js";
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
@@ -149,37 +149,6 @@ const normalizeProfilePicture = (person) => {
   if (person.profilePicture && typeof person.profilePicture !== "string")
     person.profilePicture = person.profilePicture.url;
 };
-const publicDocumentMetadata = (document) => ({
-  _id: document._id,
-  originalName: document.originalName,
-  mimeType: document.mimeType,
-  size: document.size,
-  uploadedAt: document.uploadedAt || document.createdAt,
-});
-const hydrateLegacyDocuments = async (appointments) => {
-  const legacyIds = appointments.flatMap((appointment) =>
-    (appointment.supportingDocuments || []).filter(
-      (entry) => mongoose.isValidObjectId(entry) && !entry?.originalName,
-    ),
-  );
-  if (!legacyIds.length) return appointments;
-  const legacy = await SupportingDocument.find({ _id: { $in: legacyIds } })
-    .select("originalName mimeType size createdAt")
-    .lean();
-  const byId = new Map(
-    legacy.map((document) => [String(document._id), document]),
-  );
-  appointments.forEach((appointment) => {
-    appointment.supportingDocuments = (appointment.supportingDocuments || [])
-      .map((entry) =>
-        typeof entry === "object" && entry.originalName
-          ? publicDocumentMetadata(entry)
-          : byId.get(String(entry)),
-      )
-      .filter(Boolean);
-  });
-  return appointments;
-};
 const platformFor = (availability) =>
   availability?.meetingPlatform || "Meeting platform not provided";
 
@@ -205,8 +174,8 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     )
     .sort({ createdAt: -1 })
     .lean();
-  await hydrateLegacyDocuments(appointments);
-  const safeAppointments = appointments.map((appointment) => {
+  const documentsSafe = await safeDocuments(appointments);
+  const safeAppointments = documentsSafe.map((appointment) => {
     appointment.attendanceSummary = monitoringAttendance(appointment);
     delete appointment.attendance;
     normalizeProfilePicture(appointment.student);
@@ -232,7 +201,7 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     }
     if (!canAccessLink) delete appointment.meetingLink;
     if (availability) delete availability.meetingLink;
-    return appointment;
+    return sanitizeAppointmentDocuments(appointment);
   });
   const studentViews =
     req.user.role === "student"
