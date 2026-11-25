@@ -36,7 +36,10 @@ export async function processConsultationReminders({ now = new Date(), limit = 1
         }
         created = true;
         // External delivery follows persistence, never a duplicate or failed write.
-        try { await delivery.email(); }
+        try {
+          const result = await delivery.email();
+          if (result && !result.delivered && result.reason !== "unavailable") failed = true;
+        }
         catch { failed = true; }
       }
       if (created) counts.created++;

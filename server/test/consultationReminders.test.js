@@ -10,7 +10,7 @@ import { runReminderCommand } from "../scripts/process-consultation-reminders.mj
 
 const now = new Date("2026-11-01T00:00:00Z");
 const student = "507f1f77bcf86cd799439013", faculty = "507f1f77bcf86cd799439014";
-function harness(t, size) {
+function harness(t, size, rejectedRecipient) {
   const rows = Array.from({ length: size }, (_, i) => ({ _id: (i + 1).toString(16).padStart(24, "0"),
     student, faculty, initiatedByRole: "student", status: "Confirmed", subject: "Consultation reminder",
     reason: "Review the scheduled consultation.", consultationMode: "Online", meetingPlatform: "SOCConsult",
@@ -42,6 +42,8 @@ function harness(t, size) {
   setEmailTransportFactoryForTests(() => ({ async sendMail(message) {
     const id = /appointment=([a-f\d]{24})/.exec(message.text)?.[1];
     assert.ok(stored.some(row => String(row.relatedEntityId) === id && `${row.recipient}@example.test` === message.to), "email must follow successful persistence");
+    if (message.to === rejectedRecipient && id === rows[0]._id)
+      throw Object.assign(new Error("PRIVATE SMTP error"), { responseCode: 550 });
     email.push(message);
   } }));
   return { rows, keys, blocked, email, queries, stored };
@@ -81,6 +83,36 @@ test("failed Student delivery does not block Faculty or later appointments", asy
     { scanned: 2, created: 2, skipped: 0, errors: 1, incomplete: 0 });
   assert.equal(h.stored.length, 3);
   assert.equal(h.email.length, 3);
+});
+
+test("SMTP rejection is counted once and never blocks the other recipient or later reminders", async t => {
+  const h = harness(t, 2, `${student}@example.test`);
+  const result = await processConsultationReminders({ now, limit: 1 });
+  assert.deepEqual(result, { scanned: 2, created: 2, skipped: 0, errors: 1, incomplete: 0 });
+  assert.equal(h.stored.length, 4);
+  assert.deepEqual(h.email.map(message => message.to), [faculty, student, faculty].map(id => `${id}@example.test`));
+  assert.deepEqual(await processConsultationReminders({ now }),
+    { scanned: 2, created: 0, skipped: 2, errors: 0, incomplete: 0 });
+  assert.equal(h.email.length, 3);
+});
+
+test("reminder uses the 24-hour instant boundary and gives both dates when Manila midnight falls during a consultation", async t => {
+  const h = harness(t, 5);
+  const runAt = new Date("2026-10-31T15:45:00Z");
+  const startsAt = new Date("2026-11-01T15:45:00Z");
+  h.rows[0].startAt = startsAt;
+  h.rows[0].endAt = new Date("2026-11-01T16:15:00Z");
+  h.rows[1].startAt = new Date(+startsAt + 1);
+  h.rows[2].startAt = runAt;
+  h.rows[3].startAt = new Date(+runAt - 1);
+  h.rows[4].status = "Cancelled";
+  assert.deepEqual(await processConsultationReminders({ now: runAt }),
+    { scanned: 1, created: 1, skipped: 0, errors: 0, incomplete: 0 });
+  assert.deepEqual(h.email.map(message => message.to), [student, faculty].map(id => `${id}@example.test`));
+  for (const { text, html } of h.email) {
+    assert.match(text, /Date: November 1, 2026\nStart time: 11:45 PM\nEnd date: November 2, 2026\nEnd time: 12:15 AM/);
+    assert.match(html, /End date<\/th><td[^>]*>November 2, 2026/);
+  }
 });
 
 test("bounded sweeps distinguish incomplete, exact completion, invalid bounds and read failure", async t => {

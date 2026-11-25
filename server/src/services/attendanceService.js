@@ -38,7 +38,7 @@ async function audit(row, actor, action, session, now, before, after) {
     changes: before ? { before: { status: before }, after: { status: after } } : undefined,
     metadata: { source: action }, createdAt: now }], { session });
 }
-async function transition(row, to, session, now) {
+async function transition(row, to, session, now, openingRecipients = []) {
   if (!ATTENDANCE_TRANSITIONS[row.status]?.includes(to)) fail("Attendance transition is unavailable.");
   const from = row.status, action = to === "Awaiting Attendance Update" ? "attendance_open" : to === "Completed" ? "attendance_finalize" : "attendance_review";
   const last = row.statusHistory?.at(-1)?.changedAt;
@@ -52,12 +52,13 @@ async function transition(row, to, session, now) {
     for (const dean of deans) await createEventNotification({ recipient: dean._id, event: "attendance_review_created", relatedEntityId: row._id,
       actionUrl: `/dean/attendance-review/${row._id}`, key: String(row._id), session });
   }
-  const event = to === "Awaiting Attendance Update" ? "attendance_update_required"
+  const opening = to === "Awaiting Attendance Update";
+  const event = opening ? openingRecipients.includes("student") && "attendance_update_required"
     : to === "Completed" ? "finalized" : "attendance_review";
-  const facultyEvent = to === "Awaiting Attendance Update" ? "faculty_attendance_update_required"
+  const facultyEvent = opening ? openingRecipients.includes("faculty") && "faculty_attendance_update_required"
     : to === "Completed" ? "faculty_finalized" : "faculty_attendance_review";
-  await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event, session });
-  await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id, event: facultyEvent, session });
+  if (event) await createStudentConsultationNotification({ student: row.student, appointmentId: row._id, event, session });
+  if (facultyEvent) await createFacultyConsultationNotification({ faculty: row.faculty, appointmentId: row._id, event: facultyEvent, session });
   return { studentEvent: event, facultyEvent };
 }
 export async function readAttendance({ id, actor, now = new Date() }) {
@@ -192,6 +193,8 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
   try {
     await session.withTransaction(async () => {
       changed = false;
+      studentEmailEvents.clear();
+      facultyEmailEvents.clear();
       const row = await Appointment.findById(id).select("+attendance").session(session).lean();
       if (row) { studentId = row.student; facultyId = row.faculty; }
       const role = submitting && row ? participation(row, actor) : null;
@@ -207,7 +210,10 @@ export async function processAttendance({ id, actor, input, now = new Date() }) 
       if (submitting && responses.some(r => r.participantRole === role)) fail("Your attendance response has already been submitted.");
       const originalStatus = row.status;
       if (row.status === "Confirmed") {
-        const events = await transition(row, "Awaiting Attendance Update", session, now);
+        const reporter = initiatorReportingRole(row, { hasResponses: responses.length > 0 });
+        const eligibleRoles = reporter ? [reporter] : ["student", "faculty"];
+        const recipients = deadlinePassed ? [] : eligibleRoles.filter(role => !responses.some(response => response.participantRole === role));
+        const events = await transition(row, "Awaiting Attendance Update", session, now, recipients);
         studentEmailEvents.add(events.studentEvent); facultyEmailEvents.add(events.facultyEvent);
       }
       if (submitting) {

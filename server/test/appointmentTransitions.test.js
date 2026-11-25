@@ -379,3 +379,22 @@ test("Faculty receives one response event for a later proposal on a Faculty-init
     } finally { h.restore(); }
   }
 });
+
+test("a rejected Student proposal tells the Student that Faculty declined their schedule", async () => {
+  const h = appointmentHarness();
+  try {
+    const record = proposal(fixture({ initiatedByRole: "faculty", status: "Reschedule Proposed" }));
+    record.proposedBy = record.student;
+    h.state.appointments.push(record);
+    const command = { id: record._id, actor: actor(record), action: "reject_proposal", now,
+      expectedVersion: record.__v, expectedProposalAt: record.proposedAt };
+    await transitionAppointment(command);
+    await assert.rejects(transitionAppointment(command), error => error.statusCode === 409);
+    const [notice] = h.state.notifications;
+    assert.equal(h.state.notifications.length, 1);
+    assert.equal(notice.recipient, record.student);
+    assert.match(notice.title, /declined/i);
+    assert.match(notice.message, /Faculty member declined your proposed consultation schedule/);
+    assert.equal(notice.actionUrl, `/student/consultations?appointment=${record._id}`);
+  } finally { h.restore(); }
+});
