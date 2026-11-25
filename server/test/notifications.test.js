@@ -82,7 +82,21 @@ test("authenticated API isolates owners, paginates, filters, projects, and mutat
   patch(Notification, "findOneAndUpdate", async (filter, update, options) => {
     assert.ok(options.projection); const row = rows.find(row => matches(row, filter)); if (row) Object.assign(row, update); return row;
   });
-  patch(Notification, "updateMany", async (filter, update) => { rows.filter(row => matches(row, filter)).forEach(row => Object.assign(row, update)); });
+  patch(Notification, "updateMany", async (filter, update) => {
+    for (const row of rows.filter(item => matches(item, filter))) {
+      Object.assign(row, update.$set || update);
+      for (const key of Object.keys(update.$unset || {})) delete row[key];
+    }
+  });
+  patch(Notification, "findOneAndDelete", async filter => {
+    const index = rows.findIndex(row => matches(row, filter));
+    return index === -1 ? null : rows.splice(index, 1)[0];
+  });
+  patch(Notification, "deleteMany", async filter => {
+    const removed = rows.filter(row => matches(row, filter));
+    for (const row of removed) rows.splice(rows.indexOf(row), 1);
+    return { deletedCount: removed.length };
+  });
   const server = await new Promise(resolve => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
   const request = (path = "", role = "dean", method = "GET") => fetch(`http://127.0.0.1:${server.address().port}/api/notifications${path}`, { method, headers: { Connection: "close", ...(role && { Authorization: `Bearer ${jwt.sign({ sub: ids[role] }, env.jwtSecret)}` }) } });
   try {
@@ -106,6 +120,14 @@ test("authenticated API isolates owners, paginates, filters, projects, and mutat
     assert.equal((await request("/read-all", "dean", "PUT")).status, 200);
     assert.ok(rows.filter(row => row.recipient === ids.dean).every(row => row.isRead));
     assert.ok(rows.filter(row => row.recipient !== ids.dean).every(row => !row.isRead));
+    const facultyNotice = rows.find(row => row.recipient === ids.faculty);
+    assert.equal((await request(`/${facultyNotice._id}`, "dean", "DELETE")).status, 404);
+    assert.equal((await (await request("/unread-all", "dean", "PUT")).json()).unreadCount, 9);
+    assert.ok(rows.filter(row => row.recipient === ids.dean).every(row => !row.isRead && row.readAt === undefined));
+    assert.equal((await request(`/${rows[0]._id}/read`, "dean", "PUT")).status, 200);
+    assert.equal((await (await request("/read", "dean", "DELETE")).json()).deletedCount, 1);
+    assert.equal((await (await request("", "dean", "DELETE")).json()).deletedCount, 8);
+    assert.deepEqual(rows.map(row => row.recipient), [ids.faculty, ids.student]);
     assert.ok(calls.every(filter => Object.values(ids).includes(filter.recipient)));
   } finally { restores.reverse().forEach(fn => fn()); await new Promise(resolve => server.close(resolve)); }
 });

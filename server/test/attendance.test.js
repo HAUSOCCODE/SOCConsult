@@ -13,6 +13,8 @@ import { runAttendanceCommand } from "../scripts/process-appointment-attendance.
 import { processAttendanceBatch } from "../src/services/attendanceProcessingService.js";
 import Appointment from "../src/models/Appointment.js";
 import { attendanceCounts, verifiedCompletedFilter } from "../src/services/attendanceReportingService.js";
+import { env } from "../src/config/env.js";
+import { resetEmailTransportFactoryForTests, setEmailTransportFactoryForTests } from "../src/services/emailService.js";
 
 const setup = () => {
   const h = appointmentHarness(), row = fixture({ status: "Confirmed" });
@@ -189,6 +191,47 @@ test("processor excludes historical states, opens once, and handles deadlines in
     await processAttendance({ id: row._id, now: row.attendance.responseDeadlineAt });
     assert.equal(h.state.appointments[0].status, "Attendance Review");
   } finally { h.restore(); }
+});
+test("opening notices go only to eligible reporters for current and untouched legacy enrollment", async () => {
+  for (const role of ["faculty", "student"]) for (const legacy of [true, false]) {
+    const { h, row, now } = setup();
+    try {
+      row.initiatedByRole = role;
+      if (!legacy) row.attendance = attendanceEnrollment(row.endAt, { initiatedByRole: role });
+      assert.equal(await processAttendance({ id: row._id, now }), true);
+      const event = role === "faculty" ? "faculty_attendance_update_required" : "attendance_update_required";
+      assert.deepEqual(h.state.notifications.map(n => [n.type, n.recipient]), [[event, row[role]]]);
+      assert.equal(await processAttendance({ id: row._id, now }), false);
+      assert.equal(h.state.notifications.length, 1);
+    } finally { h.restore(); }
+  }
+});
+test("an overdue confirmed consultation sends review notices without asking for an expired response", async () => {
+  const { h, row } = setup();
+  try {
+    assert.equal(await processAttendance({ id: row._id, now: row.attendance.responseDeadlineAt }), true);
+    assert.equal(h.state.appointments[0].status, "Attendance Review");
+    assert.deepEqual(h.state.notifications.map(n => n.type), ["attendance_review", "faculty_attendance_review"]);
+  } finally { h.restore(); }
+});
+test("a retried worker sends only email events from its committed attempt", async t => {
+  const { h, row, now } = setup();
+  const previousEnv = { ...env }, sent = [];
+  Object.assign(env, { smtpHost: "smtp.example.test", smtpUser: "mock", smtpPass: "mock", emailFrom: "sender@example.test" });
+  setEmailTransportFactoryForTests(() => ({ async sendMail(message) { sent.push(message); } }));
+  t.after(() => { h.restore(); Object.assign(env, previousEnv); resetEmailTransportFactoryForTests(); });
+  h.state.users.push({ _id: row.student, role: "student", email: "student@example.test" },
+    { _id: row.faculty, role: "faculty", email: "faculty@example.test" });
+  h.retry();
+  const find = Appointment.findById;
+  let reads = 0;
+  Appointment.findById = id => {
+    if (++reads === 2) h.state.appointments[0].status = "Awaiting Attendance Update";
+    return find(id);
+  };
+  assert.equal(await processAttendance({ id: row._id, now }), false);
+  assert.equal(h.state.notifications.length, 0);
+  assert.equal(sent.length, 0);
 });
 test("one-shot command only emits numeric aggregates and reports failures", async () => {
   const lines = []; let disconnected = 0;

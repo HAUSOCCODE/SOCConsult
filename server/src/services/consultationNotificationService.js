@@ -7,10 +7,10 @@ import { sendEmail } from "./emailService.js";
 export const STUDENT_CONSULTATION_EVENTS = Object.freeze({
   faculty_request_received: ["New Consultation Request from Your Faculty Member", "Your Faculty member requested a consultation. Please review the proposed schedule.", false],
   request_submitted: ["Consultation Request Submitted", "We received your consultation request.", false],
-  confirmed: ["SOCConsult — Your Consultation Has Been Confirmed", "Your consultation request has been confirmed by your Faculty member.", false],
+  confirmed: ["SOCConsult — Your Consultation Has Been Confirmed", "Your consultation is confirmed. Review the confirmed schedule in SOCConsult.", false],
   rejected: ["Consultation Rejected", "Your consultation request was rejected.", true],
   reschedule_proposed: ["Reschedule Proposed", "A new consultation schedule has been proposed. Review it in SOCConsult.", false],
-  reschedule_response_recorded: ["Reschedule Response Recorded", "Your reschedule response has been recorded.", false],
+  reschedule_response_recorded: ["Proposed Schedule Declined", "Your Faculty member declined your proposed consultation schedule.", false],
   cancelled: ["Consultation Cancelled", "Your consultation was cancelled.", true],
   upcoming_reminder: ["Upcoming Consultation Reminder", "You have an upcoming confirmed consultation.", false],
   expired: ["Consultation Expired", "Your consultation request has expired.", true],
@@ -39,8 +39,7 @@ export const FACULTY_CONSULTATION_EVENTS = Object.freeze({
 const STUDENT_EMAIL_EVENTS = Object.freeze({
   faculty_request_received: ["[SOCConsult] New Consultation Request from Faculty",
     "A Faculty member has requested a consultation with you. Please review the proposed schedule."],
-  confirmed: ["[SOCConsult] Your Consultation Has Been Confirmed",
-    "Your consultation request has been confirmed by your Faculty member."],
+  confirmed: ["[SOCConsult] Your Consultation Has Been Confirmed", STUDENT_CONSULTATION_EVENTS.confirmed[1]],
 });
 const FACULTY_EMAIL_EVENTS = Object.freeze({
   faculty_request_submitted: ["[SOCConsult] New Consultation Request",
@@ -65,12 +64,14 @@ const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character =>
 })[character]);
 const personName = value => String(value?.name || "Unavailable").trim() || "Unavailable";
 const manila = (value, options) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", ...options }).format(new Date(value));
+const manilaDate = value => manila(value, { month: "long", day: "numeric", year: "numeric" });
 
 export function buildConsultationEmail({ appointment, recipientRole, subject, message, url, request = false }) {
   const faculty = personName(appointment.faculty), student = personName(appointment.student);
   const requestedBy = appointment.initiatedByRole === "faculty" ? faculty : student;
   const scheduled = appointment.startAt && appointment.endAt;
-  const date = scheduled ? manila(appointment.startAt, { month: "long", day: "numeric", year: "numeric" }) : appointment.requestedConsultationDate;
+  const date = scheduled ? manilaDate(appointment.startAt) : appointment.requestedConsultationDate;
+  const endDate = scheduled ? manilaDate(appointment.endAt) : undefined;
   const start = scheduled ? manila(appointment.startAt, { hour: "numeric", minute: "2-digit" }) : undefined;
   const end = scheduled ? manila(appointment.endAt, { hour: "numeric", minute: "2-digit" }) : undefined;
   const availableTimes = appointment.availableTimeSlots?.map(slot => {
@@ -82,6 +83,7 @@ export function buildConsultationEmail({ appointment, recipientRole, subject, me
     ["Consultation subject", appointment.subject], ["Reason for consultation", appointment.reason],
     [scheduled ? "Date" : "Requested consultation date", date],
     [scheduled ? "Start time" : "Preferred consultation time", scheduled ? start : appointment.requestedConsultationTime],
+    ["End date", endDate === date ? undefined : endDate],
     ["End time", end],
     ["Availability preferences (Philippine Time)", availableTimes],
     ["Consultation mode", appointment.consultationMode],
@@ -141,46 +143,44 @@ export async function createStudentConsultationNotification({ student, appointme
 }
 export async function sendStudentConsultationEmail({ student, appointmentId, event, appointment: loadedAppointment }) {
   const definition = STUDENT_CONSULTATION_EVENTS[event];
-  if (!definition) return false;
+  if (!definition) return;
   const user = await User.findById(student).select("email").lean();
   const path = studentConsultationPath(appointmentId, definition[2]);
   const url = consultationEmailUrl(path);
-  if (!user?.email || !url) return false;
+  if (!user?.email || !url) return;
   let appointment;
-  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return false; }
-  if (!appointment) return false;
+  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return; }
+  if (!appointment) return;
   const [subject, message] = STUDENT_EMAIL_EVENTS[event] || definition;
   const content = buildConsultationEmail({ appointment, recipientRole: "student", subject, message, url,
     request: event === "faculty_request_received" });
-  const result = await sendEmail({ to: user.email, ...content });
-  return result.delivered;
+  return sendEmail({ to: user.email, ...content });
 }
 export async function bestEffortStudentConsultationEmail(input) {
-  try { return await sendStudentConsultationEmail(input); }
+  try { return (await sendStudentConsultationEmail(input))?.delivered ?? false; }
   catch { console.warn("[Email] Consultation delivery failed."); return false; }
 }
 
 export async function sendFacultyConsultationEmail({ faculty, appointmentId, event, appointment: loadedAppointment }) {
   const definition = FACULTY_CONSULTATION_EVENTS[event];
-  if (!definition) return false;
+  if (!definition) return;
   const user = await User.findById(faculty).select("email role").lean();
-  if (!user?.email || !["faculty", "dean"].includes(user.role)) return false;
+  if (!user?.email || !["faculty", "dean"].includes(user.role)) return;
   const [subject, message] = FACULTY_EMAIL_EVENTS[event] || definition;
   const destination = definition[2];
   const path = facultyConsultationPath(appointmentId, destination, user.role === "dean");
   const url = consultationEmailUrl(path);
   let appointment;
-  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return false; }
-  if (!url || !appointment) return false;
+  try { appointment = await appointmentEmail(appointmentId, loadedAppointment); } catch { return; }
+  if (!url || !appointment) return;
   const content = buildConsultationEmail({ appointment, recipientRole: "faculty", subject, message, url,
     request: event === "faculty_request_submitted" });
-  const result = await sendEmail({ to: user.email, ...content });
-  return result.delivered;
+  return sendEmail({ to: user.email, ...content });
 }
 
 export async function bestEffortFacultyConsultationEmail(input) {
   try {
-    const delivered = await sendFacultyConsultationEmail(input);
+    const delivered = (await sendFacultyConsultationEmail(input))?.delivered ?? false;
     if (!delivered) console.warn(`[Email] Faculty consultation delivery unavailable event=${input.event} recipient=${id(input.faculty)} appointment=${id(input.appointmentId)}`);
     return delivered;
   } catch {
