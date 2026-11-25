@@ -12,6 +12,9 @@ import Availability from "../src/models/Availability.js";
 import Notification from "../src/models/Notification.js";
 import User from "../src/models/User.js";
 import StudentAvailability from "../src/models/StudentAvailability.js";
+import express from "express";
+import { supportingDocumentUpload } from "../src/middleware/supportingDocumentUpload.js";
+import cloudinary from "../src/config/cloudinary.js";
 
 const patch = (object, key, replacement, restores) => {
   restores.push(() => {
@@ -163,5 +166,102 @@ test("supporting-document middleware enforces count, file, total, and type limit
   } finally {
     await new Promise((resolve) => server.close(resolve));
     restores.reverse().forEach((restore) => restore());
+  }
+});
+
+test("supporting-document validation preserves the supported formats and rejects obvious mismatches", async () => {
+  const app = express();
+  app.post("/", supportingDocumentUpload, (req, res) => res.json({ accepted: req.files.length }));
+  const server = await new Promise(resolve => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
+  const url = "http://127.0.0.1:" + server.address().port;
+  const submit = (name, type, contents) => {
+    const body = new FormData();
+    body.append("documents", new Blob([contents], { type }), name);
+    return fetch(url, { method: "POST", body, headers: { Connection: "close" } });
+  };
+  try {
+    const octet = "application/octet-stream";
+    const formats = [
+      ["jpg", "image/jpeg", Buffer.from("ffd8ff", "hex")],
+      ["jpeg", "image/jpg", Buffer.from("ffd8ff", "hex")],
+      ["png", "image/png", Buffer.from("89504e470d0a1a0a", "hex")],
+      ["webp", "image/webp", "RIFF0000WEBP"],
+      ["gif", "image/gif", "GIF89a"],
+      ["pdf", "application/pdf", "%PDF-1.4\n"],
+      ["pdf", octet, "%PDF-1.4\n"],
+      ["doc", "application/msword"], ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+      ["xls", "application/vnd.ms-excel"], ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+      ["ppt", "application/vnd.ms-powerpoint"], ["pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+      ["txt", "text/plain"], ["csv", "text/csv"], ["csv", "text/plain"], ["csv", "application/vnd.ms-excel"],
+      ["mp4", "video/mp4"], ["webm", "video/webm"],
+    ];
+    for (const [extension, mime, contents = "content fixture"] of formats) {
+      const accepted = await submit("fixture." + extension, mime, contents);
+      assert.equal(accepted.status, 200, extension + " " + mime);
+      assert.deepEqual(await accepted.json(), { accepted: 1 });
+    }
+    for (const [name, mime, contents, message] of [
+      ["bad.pdf", "image/png", "%PDF-1.4", /not supported/],
+      ["bad.pdf", octet, "wrong", /does not match/],
+      ["bad.png", "image/png", "%PDF-1.4", /does not match/],
+      ["empty.doc", "application/msword", "", /cannot be empty/],
+      ["../notes.txt", "text/plain", "data", /file names/],
+    ]) {
+      const rejected = await submit(name, mime, contents);
+      assert.equal(rejected.status, 400);
+      assert.match((await rejected.json()).message, message);
+    }
+    const malformed = await fetch(url, { method: "POST", headers: { "Content-Type": "multipart/form-data; boundary=invalid" }, body: "--invalid" });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { message: "Invalid supporting document upload." });
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test("published-slot booking still uploads supporting documents and returns the existing download JSON", async () => {
+  const h = await appointmentHttp();
+  const upload = cloudinary.uploader.upload_stream;
+  const request = globalThis.fetch;
+  const storedUrl = "https://fixture.invalid/notes.pdf";
+  let uploadCalls = 0, headCalls = 0;
+  cloudinary.uploader.upload_stream = (options, callback) => ({
+    end(bytes) {
+      uploadCalls++;
+      assert.equal(options.resource_type, "raw");
+      assert.equal(options.type, undefined);
+      assert.equal(bytes.toString(), "%PDF-1.4\nfixture");
+      callback(null, { secure_url: storedUrl, public_id: "fixture-pdf", resource_type: "raw" });
+    },
+  });
+  globalThis.fetch = (url, options) => {
+    if (url !== storedUrl) return request(url, options);
+    headCalls++;
+    assert.equal(options.method, "HEAD");
+    return Promise.resolve(new Response(null, { status: 200 }));
+  };
+  try {
+    const record = fixture({ student: h.users.student.id, faculty: h.users.faculty.id });
+    addSlot(h, { ...record, reservationToken: undefined });
+    const body = new FormData();
+    body.append("availabilityId", record.availability);
+    body.append("subject", "Supporting file");
+    body.append("reason", "Discuss attached notes");
+    body.append("documents", new Blob(["%PDF-1.4\nfixture"], { type: "application/pdf" }), "notes.pdf");
+    const response = await h.request("/appointments", "student", "POST", body);
+    assert.equal(response.status, 201);
+    const { appointment } = await response.json();
+    assert.equal(uploadCalls, 1);
+    const [document] = appointment.supportingDocuments;
+    assert.equal(document.originalName, "notes.pdf");
+    assert.doesNotMatch(JSON.stringify(appointment), /fixture-pdf|fixture\.invalid|cloudinaryUrl|resourceType/);
+    const path = "/appointments/" + appointment._id + "/documents/" + document._id;
+    assert.equal((await h.request(path, "otherStudent")).status, 403);
+    const download = await h.request(path, "student");
+    assert.equal(download.status, 200);
+    assert.equal((await download.json()).supportingDocument.data, storedUrl);
+    assert.equal(headCalls, 1);
+  } finally {
+    cloudinary.uploader.upload_stream = upload;
+    globalThis.fetch = request;
+    await h.close();
   }
 });

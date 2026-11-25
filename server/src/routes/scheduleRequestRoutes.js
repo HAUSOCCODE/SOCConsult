@@ -6,7 +6,7 @@ import User from "../models/User.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { supportingDocumentUpload } from "../middleware/supportingDocumentUpload.js";
 import { transitionAppointment, createAppointmentRequest } from "../services/appointmentTransitionService.js";
-import { uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
+import { sanitizeAppointmentDocuments, uploadAppointmentDocuments } from "../services/appointmentDocumentService.js";
 import { isCalendarDate, parseAvailableTimeSlots, parseScheduleInstant, validateAvailableTimeSlots } from "../services/availableTimeSlotService.js";
 
 const router = Router();
@@ -35,7 +35,7 @@ router.get("/mine", authorize("faculty", "dean"), async (req, res) => {
     )
     .sort({ createdAt: -1 })
     .lean();
-  res.json({ requests });
+  res.json({ requests: requests.map(sanitizeAppointmentDocuments) });
 });
 
 router.post(

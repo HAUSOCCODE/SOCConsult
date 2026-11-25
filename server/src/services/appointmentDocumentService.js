@@ -3,6 +3,32 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { uploadBuffer, destroyAsset } from "./cloudinaryStorage.js";
 
+const publicFileFields = document => ({
+  mimeType: typeof document.mimeType === "string" ? document.mimeType : undefined,
+  size: Number.isFinite(document.size) ? document.size : undefined,
+});
+
+// Used for ordinary appointment JSON. Dedicated document routes still deliver files.
+export function sanitizeAppointmentDocuments(appointment) {
+  if (Array.isArray(appointment.supportingDocuments)) {
+    appointment.supportingDocuments = appointment.supportingDocuments.map(document => {
+      if (mongoose.isObjectIdOrHexString(document)) return document;
+      if (!mongoose.isObjectIdOrHexString(document?._id) || typeof document.originalName !== "string") return null;
+      const uploadedAt = document.uploadedAt || document.createdAt;
+      return { _id: document._id, originalName: document.originalName, ...publicFileFields(document),
+        uploadedAt: typeof uploadedAt === "string" || uploadedAt instanceof Date ? uploadedAt : undefined };
+    }).filter(Boolean);
+  } else if (appointment.supportingDocuments != null) {
+    delete appointment.supportingDocuments;
+  }
+  if (appointment.supportingDocument) {
+    const document = appointment.supportingDocument;
+    appointment.supportingDocument = typeof document.name === "string"
+      ? { name: document.name, ...publicFileFields(document) } : undefined;
+  }
+  return appointment;
+}
+
 // Upload outside transaction retries; discard assets if the database transaction fails.
 export async function uploadAppointmentDocuments(files, appointmentId) {
   const entries = [];
