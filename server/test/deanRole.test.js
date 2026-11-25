@@ -11,7 +11,6 @@ import User from "../src/models/User.js";
 import AuditLog from "../src/models/AuditLog.js";
 import Appointment from "../src/models/Appointment.js";
 import Availability from "../src/models/Availability.js";
-import StudentAvailability from "../src/models/StudentAvailability.js";
 import Task from "../src/models/Task.js";
 import Notification from "../src/models/Notification.js";
 import { login, ensureDean } from "../src/controllers/authController.js";
@@ -84,7 +83,6 @@ test("HTTP Dean management is read-only while personal Faculty actions remain ow
 
 test("Dean publishes without an optional link, Student books, and management never broadens personal ownership", async () => {
   const h = await appointmentHttp(), restores = [];
-  patch(StudentAvailability, "find", () => chain([]), restores);
   patch(Availability, "findOneAndDelete", async filter => {
     assert.equal(filter.faculty, h.users.dean.id, "deletion must bind the authenticated Dean");
     const index = h.state.slots.findIndex(slot => String(slot._id) === String(filter._id) && String(slot.faculty) === filter.faculty);

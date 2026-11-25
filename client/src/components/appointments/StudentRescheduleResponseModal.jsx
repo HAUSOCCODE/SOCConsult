@@ -1,12 +1,15 @@
 import { CalendarDays, Clock3, MapPin, Monitor, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../ConfirmDialog";
 import { safeStudentError } from "../../utils/studentUiErrors";
+import useDialogFocus from "../../hooks/useDialogFocus";
+import { hasConfirmedSchedule } from "../../utils/appointmentSchedule";
 
 const validDate = (value) => {
+  if (value == null) return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
 };
@@ -44,25 +47,21 @@ const Schedule = ({ title, requestedDate, startAt, endAt, mode, location, platfo
   );
 };
 
-export default function StudentRescheduleResponseModal({ appointment, onClose, onSuccess, onCancelConsultation }) {
+export default function StudentRescheduleResponseModal({ appointment, onClose, onSuccess, onConflict, onCancelConsultation }) {
   const toast = useToast();
   const [submitting, setSubmitting] = useState("");
   const [confirmDecision, setConfirmDecision] = useState("");
-  const proposalPassed = !validDate(appointment.proposedStartAt) || validDate(appointment.proposedStartAt) <= new Date();
-
-  useEffect(() => {
-    const prior = document.body.style.overflow;
-    const onKey = (event) => event.key === "Escape" && !submitting && onClose();
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prior;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose, submitting]);
+  const dialog = useRef(null);
+  const inFlight = useRef(false);
+  const now = new Date();
+  const proposalPassed = !validDate(appointment.proposedStartAt) || validDate(appointment.proposedStartAt) <= now;
+  const currentStarted = hasConfirmedSchedule(appointment) && validDate(appointment.startAt) <= now;
+  const acceptUnavailable = proposalPassed || currentStarted;
+  useDialogFocus(dialog, { onClose, busy: Boolean(submitting) });
 
   const respond = async (decision) => {
-    if (submitting) return;
+    if (inFlight.current || (decision === "accept" && acceptUnavailable)) return;
+    inFlight.current = true;
     setSubmitting(decision);
     try {
       const data = await api(`/appointments/${appointment._id}/reschedule-response`, {
@@ -73,14 +72,17 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
       await onSuccess(data.appointment);
     } catch (error) {
       toast.error(safeStudentError(error, "Unable to respond to the proposal. Refresh the consultation before trying again."));
-      setSubmitting("");
       setConfirmDecision("");
+      if ([404, 409].includes(error.status)) await onConflict?.();
+    } finally {
+      inFlight.current = false;
+      setSubmitting("");
     }
   };
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex h-[100dvh] w-full items-center justify-center bg-black/55 p-3 sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && !submitting && onClose()}>
-      <section role="dialog" aria-modal="true" aria-labelledby="student-proposal-title" onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <section ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="student-proposal-title" onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold-700">Faculty Schedule Proposal</p>
@@ -90,20 +92,20 @@ export default function StudentRescheduleResponseModal({ appointment, onClose, o
         </header>
         <div className="space-y-5 p-4 sm:p-6">
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Schedule title={appointment.requestedConsultationDate ? "Original Requested Date" : "Original Schedule"} requestedDate={appointment.requestedConsultationDate} startAt={appointment.startAt} endAt={appointment.endAt} mode={appointment.consultationMode} location={appointment.location} platform={appointment.meetingPlatform} accent="border-slate-200 bg-slate-50" />
+            <Schedule title={!appointment.startAt && appointment.requestedConsultationDate ? "Original Requested Date" : "Original Schedule"} requestedDate={!appointment.startAt ? appointment.requestedConsultationDate : undefined} startAt={appointment.startAt} endAt={appointment.endAt} mode={appointment.consultationMode} location={appointment.location} platform={appointment.meetingPlatform} accent="border-slate-200 bg-slate-50" />
             <Schedule title="Proposed Schedule" startAt={appointment.proposedStartAt} endAt={appointment.proposedEndAt} mode={appointment.proposedConsultationMode} location={appointment.proposedLocation} platform={appointment.proposedMeetingPlatform} accent="border-gold-300 bg-gold-50/50" />
           </div>
           <section className="rounded-xl border border-slate-200 p-4">
             <h3 className="font-bold text-maroon-900">Faculty Note / Reason</h3>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{appointment.proposalNote || "No additional note was provided."}</p>
           </section>
-          {proposalPassed && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">This proposed schedule has already passed and can no longer be accepted. You may reject the proposal or cancel the consultation.</p>}
+          {acceptUnavailable && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{currentStarted ? "The original consultation has already started." : "The proposed time has passed or is unavailable."} You can still reject the proposal.</p>}
         </div>
         <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-end sm:px-6">
           <button type="button" disabled={Boolean(submitting)} onClick={onClose} className="btn-secondary min-h-10">Close</button>
-          <button type="button" disabled={Boolean(submitting)} onClick={onCancelConsultation} className="min-h-10 rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Cancel Consultation</button>
+          {onCancelConsultation && <button type="button" disabled={Boolean(submitting)} onClick={onCancelConsultation} className="min-h-10 rounded-lg bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Cancel Consultation</button>}
           <button type="button" disabled={Boolean(submitting)} onClick={() => setConfirmDecision("reject")} className="min-h-10 rounded-lg border border-amber-400 px-4 text-sm font-bold text-amber-900 disabled:opacity-50">Reject Proposal</button>
-          <button type="button" disabled={Boolean(submitting) || proposalPassed} onClick={() => respond("accept")} className="btn-primary min-h-10 disabled:cursor-not-allowed disabled:opacity-50">{submitting === "accept" ? "Accepting..." : "Accept Proposal"}</button>
+          <button type="button" disabled={Boolean(submitting) || acceptUnavailable} onClick={() => respond("accept")} className="btn-primary min-h-10 disabled:cursor-not-allowed disabled:opacity-50">{submitting === "accept" ? "Accepting..." : "Accept Proposal"}</button>
         </footer>
         <ConfirmDialog open={confirmDecision === "reject"} title="Reject Proposal" message="Reject this schedule proposal and return the consultation to Pending for Faculty action?" confirmLabel="Reject Proposal" loadingLabel="Saving..." loading={Boolean(submitting)} onCancel={() => !submitting && setConfirmDecision("")} onConfirm={() => respond("reject")} />
       </section>

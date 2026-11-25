@@ -31,8 +31,8 @@ import { listFacultyRequests, facultyRequestDetails } from "../services/facultyR
 import { readConsultationRecord, saveConsultationRecord } from "../services/consultationRecordService.js";
 import { authorizedDocument, documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 import { createFacultyInitiatedConsultation, searchEligibleStudents } from "../services/facultyInitiatedConsultationService.js";
-import StudentAvailability from "../models/StudentAvailability.js";
 import { MINIMUM_CONSULTATION_MINUTES } from "../services/availabilityMatchingService.js";
+import { parseScheduleInstant } from "../services/availableTimeSlotService.js";
 const router = Router();
 router.use("/:appointmentId/calendar.ics", (_req, res, next) => {
   res.set("Cache-Control", "no-store"); next();
@@ -44,7 +44,8 @@ const facultyRequestWrite = work => async (req, res) => {
   try { await work(req, res); }
   catch (error) {
     const status = [400, 403, 404, 409].includes(error.statusCode) ? error.statusCode : 503;
-    res.status(status).json({ code: error.code, message: status === 503 ? "Consultation requests are temporarily unavailable. Please try again." : error.message });
+    res.status(status).json(status === 503 ? { message: "Consultation requests are temporarily unavailable. Please try again." }
+      : { code: error.code, message: error.message });
   }
 };
 router.get("/faculty-request/students", authorize("faculty", "dean"), facultyRequestWrite(async (req, res) => {
@@ -60,8 +61,10 @@ router.put("/:id/respond", authorize("student"), facultyRequestWrite(async (req,
     ? ["decision", "reason", "startAt", "endAt", "mode", "location", "meetingPlatform", "meetingLink", "expectedVersion"]
     : ["decision", "reason", "expectedVersion"];
   if (Object.keys(req.body).some(key => !allowed.includes(key))) return res.status(400).json({ message: "Invalid consultation response." });
-  const schedule = req.body.decision === "propose" ? { startAt: new Date(req.body.startAt), endAt: new Date(req.body.endAt),
-    mode: req.body.mode, location: req.body.location, meetingPlatform: req.body.meetingPlatform, meetingLink: req.body.meetingLink } : undefined;
+  const schedule = req.body.decision === "propose" ? { startAt: parseScheduleInstant(req.body.startAt), endAt: parseScheduleInstant(req.body.endAt),
+    mode: req.body.mode, location: req.body.mode === "Face-to-Face" ? req.body.location : "",
+    meetingPlatform: req.body.mode === "Online" ? req.body.meetingPlatform : "",
+    meetingLink: req.body.mode === "Online" ? req.body.meetingLink : "" } : undefined;
   const appointment = await transitionAppointment({ id: req.params.id, actor: req.user,
     action: req.body.decision === "accept" ? "confirm" : req.body.decision === "decline" ? "reject" : "propose",
     reason: req.body.reason ?? "", schedule, expectedVersion: req.body.expectedVersion });
@@ -209,26 +212,26 @@ router.get("/mine", authorize("student", "faculty", "dean"), async (req, res) =>
     normalizeProfilePicture(appointment.student);
     normalizeProfilePicture(appointment.faculty);
     const availability = appointment.availability;
+    const canAccessLink =
+      req.user.role === "student" ? ["Confirmed", "Completed"].includes(appointment.status) :
+      ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(appointment.status) &&
+      appointment.consultationMode === "Online" && appointment.startAt != null && appointment.endAt > appointment.startAt;
     if (
       appointment.consultationMode === "Online" ||
       availability?.mode === "Online"
     ) {
       appointment.meetingPlatform =
         appointment.meetingPlatform || platformFor(availability);
-      const canAccessLink =
-        req.user.role === "student" ? ["Confirmed", "Completed"].includes(appointment.status) :
-        ["Confirmed", "Awaiting Attendance Update", "Attendance Review", "Completed"].includes(appointment.status) &&
-        appointment.consultationMode === "Online" && appointment.startAt != null && appointment.endAt > appointment.startAt;
       if (
         canAccessLink &&
         availability?.meetingLink &&
         !appointment.meetingLink
       )
         appointment.meetingLink = availability.meetingLink;
-      if (!canAccessLink) delete appointment.meetingLink;
-      if (availability) delete availability.meetingLink;
       if (looksLikeUrl(appointment.location)) appointment.location = "";
     }
+    if (!canAccessLink) delete appointment.meetingLink;
+    if (availability) delete availability.meetingLink;
     return appointment;
   });
   const studentViews =
@@ -303,19 +306,14 @@ router.post(
     const suppliedStart = req.body.startAt, suppliedEnd = req.body.endAt;
     if ((suppliedStart && !suppliedEnd) || (!suppliedStart && suppliedEnd))
       return res.status(400).json({ message: "Select a complete consultation time range." });
-    const requestedStart = suppliedStart ? new Date(suppliedStart) : slot.startAt;
-    const requestedEnd = suppliedEnd ? new Date(suppliedEnd) : slot.endAt;
+    const requestedStart = suppliedStart ? parseScheduleInstant(suppliedStart) : slot.startAt;
+    const requestedEnd = suppliedEnd ? parseScheduleInstant(suppliedEnd) : slot.endAt;
+    if (!Number.isFinite(+requestedStart) || !Number.isFinite(+requestedEnd))
+      return res.status(400).json({ message: "Select a valid consultation time range with a timezone." });
     const windowMinutes = Math.floor((requestedEnd - requestedStart) / 60000);
-    if (!Number.isFinite(requestedStart.getTime()) || !Number.isFinite(requestedEnd.getTime()) ||
-      requestedStart < slot.startAt || requestedEnd > slot.endAt || requestedStart <= new Date() ||
+    if (requestedStart < slot.startAt || requestedEnd > slot.endAt || requestedStart <= new Date() ||
       requestedEnd <= requestedStart || windowMinutes < MINIMUM_CONSULTATION_MINUTES)
       return res.status(409).json({ message: "This matching schedule is no longer available." });
-    const studentPeriods = await StudentAvailability.find({
-      student: req.user.id, isActive: true, endAt: { $gt: new Date() },
-    }).select("startAt endAt").lean();
-    if (studentPeriods.length && !studentPeriods.some(period =>
-      period.startAt <= requestedStart && period.endAt >= requestedEnd))
-      return res.status(409).json({ message: "This time is outside your current availability." });
     const facultyIsAvailable = await User.exists({
       _id: slot.faculty,
       ...eligibleProviderFilter(),

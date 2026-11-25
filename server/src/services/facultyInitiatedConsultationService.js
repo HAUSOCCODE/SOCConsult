@@ -2,7 +2,7 @@ import { eligibleAccountFilter } from "./accountEligibility.js";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import { createAppointmentRequest } from "./appointmentTransitionService.js";
-import { scheduleFitsAvailableTimeSlot, validateAvailableTimeSlots } from "./availableTimeSlotService.js";
+import { parseScheduleInstant, scheduleFitsAvailableTimeSlot, validateAvailableTimeSlots } from "./availableTimeSlotService.js";
 
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
 const clean = (value, max) => typeof value === "string" ? value.trim().slice(0, max + 1) : "";
@@ -43,10 +43,10 @@ export async function createFacultyInitiatedConsultation({ actor, input, now = n
   const subject = clean(input.subject, 150), reason = clean(input.reason, 1000);
   if (!subject || subject.length > 150) fail("Enter a valid consultation subject.");
   if (!reason || reason.length > 1000) fail("Enter a valid consultation reason.");
-  const startAt = new Date(input.startAt), endAt = new Date(input.endAt);
+  const startAt = parseScheduleInstant(input.startAt), endAt = parseScheduleInstant(input.endAt);
   if (!Number.isFinite(+startAt) || !Number.isFinite(+endAt)) fail("Choose a valid consultation schedule.");
   const requestedConsultationDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(startAt);
-  if (input.availableTimeSlots != null) {
+  if (input.availableTimeSlots !== undefined) {
     const slotError = validateAvailableTimeSlots({ date: requestedConsultationDate, slots: input.availableTimeSlots, now });
     if (slotError) fail(slotError.message);
     if (!scheduleFitsAvailableTimeSlot({ date: requestedConsultationDate, slots: input.availableTimeSlots, startAt, endAt }))
@@ -57,7 +57,7 @@ export async function createFacultyInitiatedConsultation({ actor, input, now = n
   const meetingLink = clean(input.meetingLink, 500);
   return createAppointmentRequest({ actor, now, data: {
     student: student._id, faculty: actor.id, bookingMethod: "schedule_request", startAt, endAt,
-    ...(input.availableTimeSlots != null && { requestedConsultationDate, availableTimeSlots: input.availableTimeSlots }),
+    ...(input.availableTimeSlots !== undefined && { requestedConsultationDate, availableTimeSlots: input.availableTimeSlots }),
     subject, reason, yearLevel: student.yearLevel, consultationMode: mode,
     location: mode === "Face-to-Face" ? location : "",
     meetingPlatform: mode === "Online" ? meetingPlatform : "",

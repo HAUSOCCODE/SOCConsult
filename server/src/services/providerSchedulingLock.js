@@ -1,13 +1,13 @@
 import User from "../models/User.js";
 
-// Every scheduling writer must acquire this inside its transaction before reading
-// schedules. $inc initializes missing legacy fields; no backfill is necessary.
-export async function lockProviderSchedules(providerIds, session) {
+// Scheduling writers share account revisions and acquire them in ID order.
+// $inc initializes missing legacy fields without a backfill.
+export async function lockProviderSchedules(participantIds, session) {
   if (!session) throw new Error("Scheduling requires a transaction.");
-  const ids = [...new Set(providerIds.map(id => String(id?._id || id)))].sort();
+  const ids = [...new Set(participantIds.map(id => String(id?._id || id)))].sort();
   for (const id of ids) {
     const result = await User.updateOne({ _id: id },
       { $inc: { schedulingRevision: 1 } }, { session, timestamps: false });
-    if (!result.matchedCount) throw Object.assign(new Error("Consultation provider not found."), { statusCode: 404 });
+    if (!result.matchedCount) throw Object.assign(new Error("Consultation participant not found."), { statusCode: 404 });
   }
 }

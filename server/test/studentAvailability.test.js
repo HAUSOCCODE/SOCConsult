@@ -6,6 +6,8 @@ import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import User from "../src/models/User.js";
 import StudentAvailability from "../src/models/StudentAvailability.js";
+import { appointmentHttp } from "./helpers/appointmentHttp.js";
+import { deferred } from "./helpers/appointmentHarness.js";
 
 test("Student availability is private, optional, validated, and owner-controlled", async () => {
   const ids = Object.fromEntries(
@@ -49,12 +51,32 @@ test("Student availability is private, optional, validated, and owner-controlled
   };
 
   patch(User, "findById", async (id) => people.get(String(id)) || null);
+  patch(User, "updateOne", async (query, changes, { session, timestamps }) => {
+    assert.ok(session);
+    assert.equal(timestamps, false);
+    assert.deepEqual(changes, { $inc: { schedulingRevision: 1 } });
+    return { matchedCount: Number(people.has(String(query._id))) };
+  });
+  patch(mongoose, "startSession", async () => ({
+    withTransaction(work) { return work(); },
+    async endSession() {},
+  }));
   patch(StudentAvailability, "find", (query) => ({
     sort: async () => records.filter((item) => matches(item, query)).sort((a, b) => a.startAt - b.startAt),
   }));
-  patch(StudentAvailability, "exists", async (query) => records.find((item) => matches(item, query)) || null);
-  patch(StudentAvailability, "create", async (values) => makeRecord(values));
-  patch(StudentAvailability, "findOne", async (query) => records.find((item) => matches(item, query)) || null);
+  const find = (query) => records.find((item) => matches(item, query)) || null;
+  const queryWithSession = (query) => ({ session: async (session) => { assert.ok(session); return find(query); } });
+  patch(StudentAvailability, "exists", queryWithSession);
+  patch(StudentAvailability, "findOne", queryWithSession);
+  patch(StudentAvailability, "create", async (values, { session }) => {
+    assert.ok(session);
+    return values.map(makeRecord);
+  });
+  patch(StudentAvailability, "findOneAndUpdate", async (query, changes, { session }) => {
+    assert.ok(session);
+    const record = find(query);
+    return record && Object.assign(record, changes.$set);
+  });
   patch(StudentAvailability, "findOneAndDelete", async (query) => {
     const index = records.findIndex((item) => matches(item, query));
     return index < 0 ? null : records.splice(index, 1)[0];
@@ -127,4 +149,63 @@ test("Student availability is private, optional, validated, and owner-controlled
     await new Promise((resolve) => server.close(resolve));
     originals.reverse().forEach(([object, key, value]) => { object[key] = value; });
   }
+});
+
+test("overlapping creates, updates and activations serialize per Student; delete wins before a queued update", async () => {
+  const h = await appointmentHttp();
+  const endpoint = "/student-availability";
+  const period = (start, end) => ({ startAt: `2099-03-01T${start}:00+08:00`, endAt: `2099-03-01T${end}:00+08:00` });
+  const post = (body, user = "student") => h.request(endpoint, user, "POST", body);
+  const put = (id, body) => h.request(`${endpoint}/${id}`, "student", "PUT", body);
+  const id = async (response) => (await response.json()).availability._id;
+  const statuses = async (requests) => (await Promise.all(requests)).map(response => response.status).sort();
+  try {
+    const a = period("10:00", "11:00"), b = period("10:30", "11:30");
+    assert.deepEqual(await statuses([post(a), post(b), post(b, "otherStudent")]), [201, 201, 409]);
+    const first = await id(await post(period("12:00", "13:00")));
+    const second = await id(await post(period("14:00", "15:00")));
+    assert.deepEqual(await statuses([put(first, period("16:00", "17:00")), put(second, period("16:30", "17:30"))]), [200, 409]);
+    const inactive = await Promise.all([post({ ...period("18:00", "19:00"), isActive: false }),
+      post({ ...period("18:30", "19:30"), isActive: false })]);
+    const inactiveIds = await Promise.all(inactive.map(id));
+    assert.deepEqual(await statuses(inactiveIds.map(recordId => put(recordId, { isActive: true }))), [200, 409]);
+
+    // Pause the delete after it acquires the Student revision. The update
+    // reaches the transaction runner while deletion is still in progress.
+    const remove = StudentAvailability.findOneAndDelete;
+    const startSession = mongoose.startSession;
+    const entered = deferred();
+    const release = deferred();
+    const queued = deferred();
+    try {
+      StudentAvailability.findOneAndDelete = async (...args) => {
+        entered.resolve();
+        await release.promise;
+        return remove(...args);
+      };
+      const deleting = h.request(`${endpoint}/${first}`, "student", "DELETE");
+      await entered.promise;
+      mongoose.startSession = async () => {
+        const session = await startSession();
+        const withTransaction = session.withTransaction.bind(session);
+        session.withTransaction = (...args) => {
+          queued.resolve();
+          return withTransaction(...args);
+        };
+        return session;
+      };
+      const updating = put(first, period("20:00", "21:00"));
+      await queued.promise;
+      release.resolve();
+      assert.equal((await deleting).status, 200);
+      assert.equal((await updating).status, 404);
+    } finally {
+      release.resolve();
+      StudentAvailability.findOneAndDelete = remove;
+      mongoose.startSession = startSession;
+    }
+    assert.equal(h.state.studentAvailability.some(row => row._id === first), false);
+    assert.ok(h.lockCalls.includes(h.users.otherStudent.id));
+    assert.ok(h.lockCalls.every(account => [h.users.student.id, h.users.otherStudent.id].includes(account)));
+  } finally { await h.close(); }
 });

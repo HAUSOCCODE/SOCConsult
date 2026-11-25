@@ -10,6 +10,12 @@ import User from "../../src/models/User.js";
 import StudentAvailability from "../../src/models/StudentAvailability.js";
 
 export const newId = () => String(new mongoose.Types.ObjectId());
+export function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
 export const clone = (value) => value instanceof Date ? new Date(value) : value?._bsontype === "ObjectId" ? String(value)
   : Array.isArray(value) ? value.map(clone) : value && typeof value === "object"
     ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)])) : value;
@@ -94,10 +100,12 @@ export function appointmentHarness() {
         lockCalls.push(String(filter._id));
       }
       failure(key);
-      // Transition-only fixtures imply an existing provider; HTTP fixtures seed actual users.
-      if (key === "users" && !state.users.some(row => matches(row, filter)) &&
-        [...state.appointments, ...state.slots].some(row => same(row.faculty, filter._id)))
-        state.users.push({ _id: String(filter._id), role: "faculty", accountStatus: "Active" });
+      // Transition-only fixtures imply existing participants; HTTP fixtures seed actual users.
+      if (key === "users" && !state.users.some(row => matches(row, filter))) {
+        const fixtures = [...state.appointments, ...state.slots];
+        const role = ["faculty", "student"].find(role => fixtures.some(row => same(row[role], filter._id)));
+        if (role) state.users.push({ _id: String(filter._id), role, accountStatus: "Active" });
+      }
       const record = state[key].find((item) => matches(item, filter));
       if (!record) return { matchedCount: 0, modifiedCount: 0 };
       update(record, changes); return { matchedCount: 1, modifiedCount: 1 };
@@ -113,6 +121,16 @@ export function appointmentHarness() {
     failure("slots");
     const model = new Availability(record); const error = model.validateSync(); if (error) throw error;
     const stored = clone({ ...model.toObject(), id: model.id, __v: 0 }); state.slots.push(stored); return clone(stored);
+  }));
+  patch(StudentAvailability, "create", async (records, { session }) => records.map(record => {
+    if (!session) throw new Error("Missing availability transaction");
+    failure("studentAvailability");
+    const model = new StudentAvailability(record);
+    const error = model.validateSync();
+    if (error) throw error;
+    const stored = clone(model.toObject());
+    state.studentAvailability.push(stored);
+    return clone(stored);
   }));
   patch(AttendanceResponse.collection, "indexes", async () => [{ key: { appointment: 1, participant: 1 }, unique: true }, { key: { appointment: 1, participantRole: 1 }, unique: true }]);
   patch(AttendanceReview.collection, "indexes", async () => [{ key: { appointment: 1 }, unique: true, partialFilterExpression: { isFinal: true } }]);
@@ -178,7 +196,7 @@ export function fixture(overrides = {}) {
     statusHistory: [], scheduleHistory: [], ...overrides };
 }
 export function addSlot(harness, record) {
-  harness.state.slots.push({ _id: record.availability, faculty: record.faculty, startAt: record.startAt,
+  harness.state.slots.push({ _id: record.availability, faculty: record.faculty, student: record.student, startAt: record.startAt,
     endAt: record.endAt, mode: record.consultationMode, location: record.location, meetingPlatform: record.meetingPlatform,
     meetingLink: "https://example.invalid/private", isActive: true, reservationToken: record.reservationToken });
 }
