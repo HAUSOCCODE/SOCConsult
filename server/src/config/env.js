@@ -24,7 +24,8 @@ export const env = {
   )
     .trim()
     .toLowerCase(),
-  deanUsername: (process.env.DEAN_USERNAME || process.env.ADMIN_USERNAME || "admin").trim().toLowerCase(),
+  deanBootstrapEnabled: process.env.DEAN_BOOTSTRAP_ENABLED === "true",
+  deanUsername: process.env.DEAN_USERNAME || process.env.ADMIN_USERNAME,
   deanPassword: process.env.DEAN_PASSWORD || process.env.ADMIN_PASSWORD,
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
@@ -41,7 +42,6 @@ export function validateEnv() {
   const missing = [
     "mongoUri",
     "jwtSecret",
-    "deanPassword",
     "clientUrl",
     "cloudinaryCloudName",
     "cloudinaryApiKey",

@@ -58,8 +58,9 @@ Temporary until a verified rollout/migration:
   migration mappings, and historical status tests remain. Live migration
   completion has not been verified. Generic badges also serve account/import
   statuses, whose Approved value is unrelated to appointment Confirmed.
-- `ADMIN_USERNAME`/`ADMIN_PASSWORD`, the default legacy username, and legacy
-  management display-name normalization remain deployment compatibility.
+- `ADMIN_USERNAME`/`ADMIN_PASSWORD` remain fallback variable names for
+  explicitly authorized first-time bootstrap. Legacy management display-name
+  normalization remains supported.
 
 Permanent historical/tooling support:
 

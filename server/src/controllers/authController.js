@@ -4,9 +4,9 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
-import { migrateDeanAccount } from "../services/deanAccountMigrationService.js";
 import { env } from "../config/env.js";
-import { eligibleAccount, eligibleRegistrationState } from "../services/accountEligibility.js";
+import { eligibleAccount, eligibleAccountFilter, eligibleRegistrationState } from "../services/accountEligibility.js";
+import { normalizeUsername, validDeanUsername } from "../services/deanUsername.js";
 import { passwordValidationError } from "../services/passwordPolicy.js";
 import {
   formatFullName,
@@ -20,7 +20,6 @@ import {
 
 import { logActivity, recordAuditEvent, recordAuthenticationAudit } from "../services/activityService.js";
 
-const normalize = (value = "") => value.trim().toLowerCase();
 // Valid cost-12 dummy hash: missing Student accounts perform the same bcrypt work.
 // This is not an account credential and never produces a successful login.
 const missingStudentHash = bcrypt.hashSync("Non-account comparison value", 12);
@@ -44,7 +43,16 @@ const publicUser = (user) => ({
   ...(user.role === "student"
     ? { institutionalId: user.institutionalId }
     : {}),
-  ...(user.role === "dean" ? { institutionalId: user.institutionalId, accountSource: user.accountSource, accountStatus: user.accountStatus, passwordChangedAt: user.passwordChangedAt } : {}),
+  ...(user.role === "dean" ? {
+    institutionalId: user.institutionalId,
+    accountSource: user.accountSource,
+    accountStatus: user.accountStatus,
+    passwordChangedAt: user.passwordChangedAt,
+    initialCredentials: user.bootstrapCredentialsIssuedAt && {
+      usernamePending: !user.usernameChangedAt,
+      passwordPending: !user.passwordChangedAt,
+    },
+  } : {}),
   profilePicture:
     typeof user.profilePicture === "string"
       ? user.profilePicture
@@ -74,7 +82,7 @@ export async function login(req, res) {
   const rawIdentifier = req.body?.identifier ?? req.body?.email ?? req.body?.username;
   if (typeof rawIdentifier !== "string" || typeof password !== "string")
     return fail();
-  const identifier = normalize(rawIdentifier);
+  const identifier = normalizeUsername(rawIdentifier);
   if (!identifier || !password) return fail();
   const user = await User.findOne(
     requestedRole === "dean"
@@ -309,15 +317,61 @@ export async function changePassword(req, res) {
   }
 }
 
-export async function ensureDean() {
-  const result = await migrateDeanAccount({ users: User.collection, auditLogs: AuditLog.collection, username: env.deanUsername });
-  if (result.status !== "missing") return;
-  await User.create({
-    name: "SOCConsult Dean",
-    username: env.deanUsername,
-    password: await bcrypt.hash(env.deanPassword, 12),
-    role: "dean",
-    registrationStatus: "Approved",
-    accountStatus: "Active",
-  });
+export async function changeDeanUsername(req, res) {
+  const reply = (status, code, message) => res.status(status).json({ code, message });
+  const { username: proposed, currentPassword } = req.body ?? {};
+  if (!req.body || Object.keys(req.body).length !== 2 ||
+      !Object.hasOwn(req.body, "username") || !Object.hasOwn(req.body, "currentPassword") ||
+      typeof proposed !== "string" ||
+      typeof currentPassword !== "string" || !currentPassword)
+    return reply(400, "USERNAME_INPUT_INVALID", "Enter a new username and your current password.");
+
+  const username = normalizeUsername(proposed);
+  if (!validDeanUsername(username))
+    return reply(400, "USERNAME_INVALID", "Use 3–100 characters and a valid username or email-style sign-in name.");
+  if (username === req.user.username)
+    return reply(400, "USERNAME_SAME", "Choose a username different from your current one.");
+
+  let session;
+  try {
+    session = await mongoose.startSession();
+    const result = await session.withTransaction(async () => {
+      // Keep the original username and revision across driver retries.
+      const account = {
+        _id: req.user.id,
+        ...eligibleAccountFilter("dean"),
+        username: req.user.username ?? null,
+        usernameChangedAt: req.user.usernameChangedAt ?? null,
+      };
+      const user = await User.findOne(account).select("+password").session(session);
+      if (!user) return { conflict: true };
+      if (!user.password || !(await bcrypt.compare(currentPassword, user.password)))
+        return { incorrectPassword: true };
+      const updated = await User.findOneAndUpdate(
+        { ...account, password: user.password },
+        { $set: { username, usernameChangedAt: new Date() } },
+        { new: true, session, runValidators: true },
+      ).select("+profilePicture");
+      if (!updated) return { conflict: true };
+      await AuditLog.create([{
+        subjectUser: user._id, subjectRole: "dean", actorUser: user._id, actorRole: "dean",
+        action: "username_changed", category: "Account",
+        relatedEntityType: "User", relatedEntityId: user._id,
+      }], { session });
+      return { user: publicUser(updated) };
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, maxCommitTimeMS: 30000 });
+    if (result.conflict)
+      return reply(409, "USERNAME_CONFLICT", "Your account changed. Refresh before trying again.");
+    if (result.incorrectPassword)
+      return reply(400, "USERNAME_PASSWORD_INVALID", "The current password is incorrect.");
+    return res.json({ message: "Sign-in username updated.", user: result.user });
+  } catch (error) {
+    if (error.code === 11000 && error.keyPattern?.username === 1)
+      return reply(409, "USERNAME_TAKEN", "That username is already in use.");
+    if (error.hasErrorLabel?.("UnknownTransactionCommitResult"))
+      return reply(503, "USERNAME_CHANGE_UNCERTAIN", "Refresh Account Settings to confirm your current username before retrying.");
+    return reply(503, "USERNAME_CHANGE_UNAVAILABLE", "Username change is temporarily unavailable.");
+  } finally {
+    if (session) await session.endSession().catch(() => {});
+  }
 }

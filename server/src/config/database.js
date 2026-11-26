@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { env, validateEnv } from "./env.js";
-import { ensureDean } from "../controllers/authController.js";
+import { ensureDean } from "../services/deanInitializationService.js";
 
 const cache = globalThis.__consultioDatabase || {
   connectionPromise: null,
@@ -10,7 +10,7 @@ const cache = globalThis.__consultioDatabase || {
 globalThis.__consultioDatabase = cache;
 
 async function initializeDatabase() {
-  await ensureDean();
+  await ensureDean(env);
   // Existing accounts are read as stored. No implicit eligibility normalization.
 }
 

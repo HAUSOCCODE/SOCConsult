@@ -10,9 +10,10 @@ import { createServer } from "../../client/node_modules/vite/dist/node/index.js"
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 process.chdir(resolve(root, "client"));
-const output = resolve(root, "artifacts/dean-account-settings");
+const output = resolve(process.env.DEAN_BROWSER_OUTPUT || resolve(root, "artifacts/dean-account-settings"));
 const profile = await mkdtemp(resolve(tmpdir(), "socconsult-dean-ui-"));
-const vite = await createServer({ root: resolve(root, "client"), server: { host: "127.0.0.1", port: 0 } });
+process.env.VITE_API_URL = "http://127.0.0.1:1/api";
+const vite = await createServer({ root: resolve(root, "client"), envFile: false, server: { host: "127.0.0.1", port: 0 } });
 let chrome, socket;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 try {
@@ -34,9 +35,12 @@ try {
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   let seq = 0;
   const pending = new Map(), exceptions = [];
+  const resourceErrors = [];
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.method === "Runtime.exceptionThrown") exceptions.push(message.params.exceptionDetails.text);
+    if (message.method === "Network.loadingFailed" && message.params.type === "Script")
+      resourceErrors.push(message.params.errorText);
     if (message.id) {
       const task = pending.get(message.id); pending.delete(message.id);
       if (message.error) task.reject(new Error(JSON.stringify(message.error))); else task.resolve(message.result);
@@ -51,21 +55,23 @@ try {
     return result.result.value;
   };
   const wait = async expression => {
-    for (let i = 0; i < 100; i++) { if (await evaluate(`Boolean(${expression})`)) return; await delay(50); }
-    throw new Error(`Timed out: ${expression}`);
+    for (let i = 0; i < 300; i++) { if (await evaluate(`Boolean(${expression})`)) return; await delay(50); }
+    throw new Error(`Timed out: ${expression} at ${await evaluate("location.pathname")}. Browser exceptions: ${exceptions.join(", ")}. Script errors: ${resourceErrors.join(", ")}`);
   };
-  await command("Page.enable"); await command("Runtime.enable");
+  await command("Page.enable"); await command("Runtime.enable"); await command("Network.enable");
   await command("Page.addScriptToEvaluateOnNewDocument", { source: `
     sessionStorage.setItem('consultio_token', 'test-only');
     window.fixture = {
-      user: { id: 'dean-fixture', role: 'dean', name: 'Ana Reyes', firstName: 'Ana', middleName: '', lastName: 'Reyes', username: 'dean', email: 'dean@example.edu', employeeId: 'EMP-1', office: 'SOC Office', contactNumber: '09123456789', accountStatus: 'Active', accountSource: 'manual' },
-      requests: [], failProfile: false, failPassword: false, failPhoto: false
+      user: { id: 'dean-fixture', role: 'dean', name: 'Ana Reyes', firstName: 'Ana', middleName: '', lastName: 'Reyes', username: 'dean', email: 'dean@example.edu', employeeId: 'EMP-1', office: 'SOC Office', contactNumber: '09123456789', accountStatus: 'Active', accountSource: 'manual', initialCredentials: { usernamePending: true, passwordPending: true } },
+      requests: [], failProfile: false, failPassword: false, failPhoto: false, usernameError: null
     };
     const realFetch = window.fetch;
     window.fetch = async (url, options = {}) => {
       if (!String(url).includes('/api/')) return realFetch(url, options);
-      const f = window.fixture, path = new URL(url).pathname, method = options.method || 'GET';
-      f.requests.push({ path, method, body: options.body instanceof FormData ? { photo: options.body.get('photo')?.name } : options.body && JSON.parse(options.body) });
+      const f = window.fixture, path = new URL(url, location.href).pathname, method = options.method || 'GET';
+      const body = !(options.body instanceof FormData) && options.body ? JSON.parse(options.body) : null;
+      const safeBody = body && Object.fromEntries(Object.entries(body).filter(([key]) => !/password/i.test(key)));
+      f.requests.push({ path, method, body: options.body instanceof FormData ? { photo: options.body.get('photo')?.name } : safeBody });
       const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
       if (path.endsWith('/profile-picture')) {
         if (f.failPhoto) return reply({}, 503);
@@ -75,7 +81,16 @@ try {
       }
       if (path.endsWith('/change-password')) {
         if (f.failPassword) return reply({ code: 'PASSWORD_INPUT_INVALID' }, 400);
-        f.user.passwordChangedAt = '2026-11-23T04:00:00Z'; return reply({});
+        f.user.passwordChangedAt = '2026-11-23T04:00:00Z';
+        f.user.initialCredentials.passwordPending = false;
+        return reply({});
+      }
+      if (path.endsWith('/auth/me/username')) {
+        if (f.usernameError) return reply({ code: f.usernameError, message: 'Internal fixture detail' }, f.usernameError === 'USERNAME_TAKEN' ? 409 : 400);
+        if (f.holdUsername) await new Promise(resolve => { f.releaseUsername = resolve; });
+        f.user.username = body.username.trim().toLowerCase();
+        f.user.initialCredentials.usernamePending = false;
+        return reply({ user: f.user });
       }
       if (path.endsWith('/auth/me')) {
         if (method === 'PUT') {
@@ -101,7 +116,8 @@ try {
   ` });
   await command("Page.navigate", { url: `http://127.0.0.1:${port}/dean/account` });
   await wait(`document.querySelector('#personal-information-title')`);
-  assert.equal(await evaluate(`document.querySelectorAll('main input:not([type=file])').length`), 8);
+  assert.equal(await evaluate(`document.querySelectorAll('main input:not([type=file])').length`), 10);
+  assert.equal(await evaluate(`document.querySelector('#dean-initial-setup-title')?.textContent`), "Set Up Your Dean Account");
   assert.equal(await evaluate(`/Student ID|Year level|Not recorded|ConsultIO/.test(document.querySelector('main').innerText)`), false);
   assert.equal(await evaluate(`document.querySelector('#dean-profile-title').textContent`), "Ana Reyes");
   for (const [name, width, height] of [["mobile", 375, 812], ["tablet", 768, 1024], ["desktop", 1440, 1000]]) {
@@ -142,10 +158,43 @@ try {
   await evaluate(`clickText('Remove')`);
   await wait(`!document.querySelector('[role=dialog]') && !fixture.user.profilePicture`);
 
+  const usernameField = '#sign-in-username-title ~ form input[name=username]';
+  const usernamePassword = '#sign-in-username-title ~ form input[type=password]';
+  const fillUsername = async (name, password) => {
+    await evaluate(`setField(${JSON.stringify(usernameField)}, ${JSON.stringify(name)}); setField(${JSON.stringify(usernamePassword)}, ${JSON.stringify(password)})`);
+  };
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(usernamePassword)}).autocomplete`), "current-password");
+  await evaluate(`document.querySelector(${JSON.stringify(usernameField)}).focus()`);
+  for (const type of ["keyDown", "keyUp"]) await command("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+  assert.equal(await evaluate(`document.activeElement === document.querySelector(${JSON.stringify(usernamePassword)})`), true);
+  for (const [code, message] of [
+    ["USERNAME_PASSWORD_INVALID", "The current password is incorrect."],
+    ["USERNAME_TAKEN", "That username is already in use."],
+  ]) {
+    await evaluate(`fixture.usernameError = ${JSON.stringify(code)}`);
+    await fillUsername("Reserved.Name", "FixturePassword1");
+    await evaluate(`clickText('Save Username')`);
+    await wait(`document.querySelector('#sign-in-username-title ~ form [role=alert]')?.textContent === ${JSON.stringify(message)}`);
+    assert.equal(await evaluate(`document.querySelector(${JSON.stringify(usernamePassword)}).value`), "");
+    assert.equal(await evaluate(`document.querySelector('main').textContent.includes('Internal fixture detail')`), false);
+  }
+  await evaluate(`fixture.usernameError = null; fixture.holdUsername = true`);
+  await fillUsername("Personal.Dean", "FixturePassword1");
+  await evaluate(`const usernameForm = document.querySelector('#sign-in-username-title ~ form'); usernameForm.requestSubmit(); usernameForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));`);
+  await wait(`fixture.releaseUsername && document.querySelector('#sign-in-username-title ~ form button').disabled`);
+  assert.equal(await evaluate(`fixture.requests.filter(r => r.path.endsWith('/auth/me/username')).length`), 3);
+  await evaluate(`fixture.releaseUsername()`);
+  await wait(`document.querySelector('#sign-in-username-title ~ form [role=status]')?.textContent.includes('Sign-in username updated')`);
+  assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('consultio_user')).username`), "personal.dean");
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(usernamePassword)}).value`), "");
+  assert.equal(await evaluate(`document.querySelector('#dean-initial-setup-title + ol').textContent.includes('Choose your sign-in username.')`), false);
+  assert.equal(await evaluate(`document.querySelector('#dean-initial-setup-title + ol').textContent.includes('Change your temporary password.')`), true);
+
+  const passwordCurrent = 'form:has(#change-password-title) input[autocomplete=current-password]';
   const fillPasswords = async (current, next, confirmation = next) => {
-    const selectors = ["input[autocomplete=current-password]", "input[autocomplete=new-password]", "label:last-child input[autocomplete=new-password]"];
+    const selectors = [passwordCurrent, "input[autocomplete=new-password]", "label:last-child input[autocomplete=new-password]"];
     for (const [i, value] of [current, next, confirmation].entries()) await evaluate(`setField(${JSON.stringify(selectors[i])}, ${JSON.stringify(value)})`);
-    await evaluate(`document.querySelector('form input[autocomplete=current-password]').closest('form').requestSubmit()`);
+    await evaluate(`document.querySelector(${JSON.stringify(passwordCurrent)}).closest('form').requestSubmit()`);
   };
   for (const [current, next, confirm, message] of [
     ["OldPassword1", "NewPassword2", "Mismatch2", "New passwords do not match."],
@@ -158,16 +207,17 @@ try {
   }
   assert.equal(await evaluate(`fixture.requests.filter(r => r.path.endsWith('/change-password')).length`), 0);
   await evaluate(`document.querySelector('[aria-label="Show current password"]').click()`);
-  assert.equal(await evaluate(`document.querySelector('input[autocomplete=current-password]').type`), "text");
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(passwordCurrent)}).type`), "text");
   await evaluate(`fixture.failPassword = true`);
   await fillPasswords("OldPassword1", "NewPassword2");
   await wait(`document.body.innerText.includes('Check your current password and the new password requirements.')`);
   await evaluate(`fixture.failPassword = false`);
   await fillPasswords("OldPassword1", "NewPassword2");
-  await wait(`document.querySelector('input[autocomplete=current-password]').value === ''`);
-  assert.equal(await evaluate(`document.querySelector('input[autocomplete=current-password]').type`), "password");
+  await wait(`document.querySelector(${JSON.stringify(passwordCurrent)}).value === ''`);
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(passwordCurrent)}).type`), "password");
   assert.equal(await evaluate(`sessionStorage.getItem('consultio_token')`), "test-only");
   await wait(`document.querySelector('main').innerText.includes('Nov 23') || document.querySelector('main').innerText.includes('2026')`);
+  await wait(`!document.querySelector('#dean-initial-setup-title')`);
 
   // An old stored display name remains an identity, rather than being replaced by branding.
   await evaluate(`fixture.user.firstName = ''; fixture.user.lastName = ''; fixture.user.name = 'ConsultIO Administrator'; fixture.user.accountStatus = 'Inactive'; sessionStorage.setItem('consultio_user', JSON.stringify(fixture.user))`);
@@ -176,8 +226,19 @@ try {
   await wait(`document.querySelector('#dean-profile-title').textContent === 'ConsultIO Administrator'`);
   assert.equal(await evaluate(`document.querySelector('#dean-profile-title').parentElement.innerText.includes('Inactive')`), true);
   assert.equal(await evaluate(`document.body.innerText.includes('SOCConsult Dean')`), false);
+
+  const switchWorkspace = workspace => evaluate(`(() => {
+    const workspaceSelect = document.querySelector('select:has(option[value=faculty])');
+    workspaceSelect.value = ${JSON.stringify(workspace)};
+    workspaceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await switchWorkspace("faculty");
+  await wait(`location.pathname === '/dean/faculty/dashboard'`);
+  await switchWorkspace("management");
+  await wait(`location.pathname === '/dean/dashboard'`);
+  assert.equal(await evaluate(`sessionStorage.getItem('consultio_token')`), "test-only");
   assert.deepEqual(exceptions, []);
-  console.log("PASS: Dean profile editing, field errors, photo validation/upload/removal/retry, password policy/errors/toggles/reset, identity/status, unchanged session, and responsive layouts (375/768/1440px). Screenshots: artifacts/dean-account-settings/");
+  console.log("PASS: Dean setup guidance, username save/error/duplicate prevention/keyboard access, profile and photo edits, password changes, workspace navigation, session and responsive layouts (375/768/1440px).");
 } finally {
   socket?.close();
   if (chrome) { chrome.kill(); await delay(500); }

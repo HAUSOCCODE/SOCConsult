@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 const source = path => readFile(new URL(`../../client/src/${path}`, import.meta.url), "utf8");
 
-test("Dean account UI has only approved edits, read-only identity and accurate session behavior", async () => {
+test("Dean account UI has only approved profile and credential edits and accurate session behavior", async () => {
   const [page, app, picture, password] = await Promise.all(["pages/Dean/DeanAccountSettings.jsx", "App.jsx", "components/profile/ProfilePictureEditor.jsx", "components/profile/ProfileForm.jsx"].map(source));
   assert.match(app, /path="account" element=\{<DeanAccountSettings/);
   assert.match(app, /DeanRouteRedirect to="\/dean\/account"/);
@@ -25,6 +25,22 @@ test("Dean account UI has only approved edits, read-only identity and accurate s
   assert.match(password, /confirmNewPassword: passwords.confirmPassword/);
   assert.match(password, /api\("\/auth\/change-password"/);
   assert.doesNotMatch(page, /sessionStorage|login\(|logout\(/);
+});
+
+test("Dean username settings use password verification, safe feedback and persisted setup state", async () => {
+  const [page, messages] = await Promise.all(["pages/Dean/DeanAccountSettings.jsx", "utils/deanUiErrors.js"].map(source));
+  assert.match(page, /aria-labelledby="sign-in-username-title"/);
+  assert.match(page, /name="currentPassword" type="password" autoComplete="current-password"/);
+  assert.match(page, /if \(pending.current\) return/);
+  assert.match(page, /api\("\/auth\/me\/username"/);
+  assert.match(page, /JSON.stringify\(\{ username, currentPassword \}\)/);
+  assert.match(page, /setCurrentPassword\(""\)/);
+  assert.match(page, /updateUser\(data.user\)/);
+  assert.match(page, /deanUiError\(error, "username"\)/);
+  assert.match(page, /user.initialCredentials \?\? \{\}/);
+  assert.match(page, /\(usernamePending \|\| passwordPending\) &&/);
+  assert.match(messages, /USERNAME_TAKEN: 'That username is already in use.'/);
+  assert.match(messages, /USERNAME_PASSWORD_INVALID: 'The current password is incorrect.'/);
 });
 
 test("password form's actual submission handler suppresses same-tick repeats and clears secrets", async () => {

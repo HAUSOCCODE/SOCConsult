@@ -8,7 +8,7 @@ import User from "../src/models/User.js";
 import AuditLog from "../src/models/AuditLog.js";
 import cloudinary from "../src/config/cloudinary.js";
 import { env } from "../src/config/env.js";
-import { changePassword, updateProfile, me } from "../src/controllers/authController.js";
+import { changeDeanUsername, changePassword, updateProfile, me } from "../src/controllers/authController.js";
 
 const chain = value => ({ select() { return this; }, session() { return this; }, then(resolve, reject) { return Promise.resolve(typeof value === "function" ? value() : value).then(resolve, reject); } });
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
@@ -20,19 +20,32 @@ async function harness(role = "dean") {
   h.restore = () => restores.reverse().forEach(fn => fn());
   h.session = { async withTransaction(work, options) {
     assert.equal(options.readConcern.level, "snapshot"); assert.equal(options.writeConcern.w, "majority");
-    const before = structuredClone(h.user), audits = h.audits.slice();
-    try { await work(); if (h.uncertain) throw { hasErrorLabel: label => label === "UnknownTransactionCommitResult" }; }
+    const before = { ...h.user }, audits = h.audits.slice();
+    try { const result = await work(); if (h.uncertain) throw { hasErrorLabel: label => label === "UnknownTransactionCommitResult" }; return result; }
     catch (error) { if (!h.uncertain) { h.user = before; h.audits = audits; } throw error; }
   }, async endSession() { h.ended++; } };
   h.patch(mongoose, "startSession", async () => h.session);
   h.patch(User, "findById", () => chain(() => ({ ...h.user })));
+  const matchesDean = filter => filter._id === h.user.id &&
+    filter.role === h.user.role && filter.accountStatus === h.user.accountStatus &&
+    filter.registrationStatus.$in.includes(h.user.registrationStatus ?? null) &&
+    filter.username === h.user.username &&
+    Number(filter.usernameChangedAt) === Number(h.user.usernameChangedAt ?? null);
+  h.patch(User, "findOne", filter => chain(() =>
+    (filter._id ? matchesDean(filter) : filter.username === h.user.username) ? { ...h.user } : null));
   h.patch(User, "updateOne", async (filter, update, options) => {
     assert.equal(options.session, h.session); assert.equal(filter.password, h.user.password);
     if (h.conflict) return { modifiedCount: 0 };
     Object.assign(h.user, update.$set); h.writes++; return { modifiedCount: 1 };
   });
   h.patch(User, "findByIdAndUpdate", (id, update) => chain(() => { h.writes++; Object.assign(h.user, update); return h.user; }));
-  h.patch(User, "findOneAndUpdate", (filter, update) => chain(() => {
+  h.patch(User, "findOneAndUpdate", (filter, update, options) => chain(() => {
+    if (update.$set?.username) {
+      assert.equal(options.session, h.session);
+      if (h.duplicateUsername === update.$set.username)
+        throw Object.assign(new Error("private index details"), { code: 11000, keyPattern: { username: 1 } });
+      if (h.conflict || !matchesDean(filter) || filter.password !== h.user.password) return null;
+    }
     if (h.avatarConflict) return null;
     h.writes++; Object.assign(h.user, update.$set || update);
     if (update.$unset) delete h.user.profilePicture;
@@ -189,6 +202,110 @@ test("parallel password submissions are blocked and issued JWT still authenticat
     release(); assert.equal((await first).status, 200); assert.equal(h.audits.length, 1);
     assert.equal((await request("/auth/me")).status, 200);
   }); } finally { release(); h.restore(); }
+});
+
+const usernameBody = (extra = {}) => ({ username: " dean.reyes@hau.edu.ph ", currentPassword: "OldPassword1", ...extra });
+
+test("Dean username endpoint updates one account, records a sanitized audit, and changes future sign-in", async () => {
+  const h = await harness();
+  h.user.bootstrapCredentialsIssuedAt = new Date();
+  const { id, password, email } = h.user;
+  const consultation = { faculty: id };
+  try { await http(h, async (request, token) => {
+    const res = await request("/auth/me/username", "PUT", usernameBody({ username: " Dean.Reyes@HAU.edu.ph " }));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Cache-Control"), "no-store");
+    const body = await res.json();
+    assert.equal(body.user.username, "dean.reyes@hau.edu.ph");
+    assert.equal(body.user.email, email);
+    assert.deepEqual(body.user.initialCredentials, { usernamePending: false, passwordPending: true });
+    assert.equal(body.user.id, consultation.faculty);
+    assert.equal(h.user.password, password);
+    assert.equal(h.user.role, "dean");
+    assert.equal(h.writes, 1);
+    assert.equal(h.audits.length, 1);
+    assert.equal(String(h.audits[0].actorUser), id);
+    assert.equal(String(h.audits[0].subjectUser), id);
+    assert.equal(h.audits[0].action, "username_changed");
+    assert.doesNotMatch(JSON.stringify(h.audits), /OldPassword1|dean\.reyes|configured|\$2[aby]\$/);
+    assert.doesNotMatch(JSON.stringify(body), /OldPassword1|\$2[aby]\$/);
+    const session = await request("/auth/me", "GET", undefined, token);
+    assert.equal((await session.json()).user.username, body.user.username);
+    const oldLogin = await request("/auth/login/dean", "POST", { username: "configured", password: "OldPassword1" }, null);
+    assert.equal(oldLogin.status, 401);
+    const newLogin = await request("/auth/login/dean", "POST", { username: " Dean.Reyes@HAU.edu.ph ", password: "OldPassword1" }, null);
+    assert.equal(newLogin.status, 200);
+    assert.equal(jwt.verify((await newLogin.json()).token, env.jwtSecret).sub, id);
+  }); } finally { h.restore(); }
+});
+
+test("username endpoint rejects other roles, unauthorized accounts, and attempts to write other fields", async () => {
+  const h = await harness();
+  try { await http(h, async request => {
+    const path = "/auth/me/username";
+    assert.equal((await request(path, "PUT", usernameBody(), null)).status, 401);
+    for (const role of ["student", "faculty"]) {
+      h.user.role = role;
+      assert.equal((await request(path, "PUT", usernameBody())).status, 403);
+    }
+    h.user.role = "dean";
+    h.user.accountStatus = "Inactive";
+    assert.equal((await request(path, "PUT", usernameBody())).status, 403);
+    h.user.accountStatus = "Active";
+    h.user.registrationStatus = "Pending";
+    assert.equal((await request(path, "PUT", usernameBody())).status, 403);
+    delete h.user.registrationStatus;
+    const injections = ["id", "_id", "userId", "role", "email", "password", "permissions", "accountStatus"];
+    for (const key of injections) {
+      const res = response();
+      await changeDeanUsername({ user: h.user, body: usernameBody({ [key]: "injected" }) }, res);
+      assert.equal(res.body.code, "USERNAME_INPUT_INVALID", key);
+    }
+    for (const [body, code] of [
+      [{ username: "another.name" }, "USERNAME_INPUT_INVALID"],
+      [usernameBody({ currentPassword: "incorrect" }), "USERNAME_PASSWORD_INVALID"],
+      [usernameBody({ username: "configured" }), "USERNAME_SAME"],
+      [usernameBody({ username: "bad name" }), "USERNAME_INVALID"],
+    ]) {
+      const res = await request(path, "PUT", body);
+      assert.equal(res.status, 400);
+      assert.equal((await res.json()).code, code);
+    }
+    assert.equal((await request(path, "PUT", usernameBody({ currentPassword: "wrong" }))).status, 400);
+    assert.equal((await request(path, "PUT", usernameBody())).status, 429);
+    assert.equal(h.writes, 0);
+  }); } finally { h.restore(); }
+});
+
+test("username database conflicts and failed audit writes leave credentials untouched", async () => {
+  const h = await harness();
+  try {
+    h.duplicateUsername = "reserved";
+    for (const [mode, username, status, code] of [
+      ["duplicate", "reserved", 409, "USERNAME_TAKEN"],
+      ["conflict", "new.name", 409, "USERNAME_CONFLICT"],
+      ["auditFailure", "new.name", 503, "USERNAME_CHANGE_UNAVAILABLE"],
+    ]) {
+      h[mode] = true;
+      const res = response();
+      await changeDeanUsername({ user: { ...h.user }, body: usernameBody({ username }) }, res);
+      h[mode] = false;
+      assert.equal(res.statusCode, status);
+      assert.equal(res.body.code, code);
+      assert.doesNotMatch(JSON.stringify(res.body), /private index|SECRET|provider/);
+      assert.equal(h.user.username, "configured");
+      assert.equal(h.user.usernameChangedAt, undefined);
+      assert.equal(h.audits.length, 0);
+    }
+    const original = { ...h.user };
+    const first = response(), stale = response();
+    await changeDeanUsername({ user: original, body: usernameBody({ username: "first.name" }) }, first);
+    await changeDeanUsername({ user: original, body: usernameBody({ username: "second.name" }) }, stale);
+    assert.equal(first.statusCode, 200);
+    assert.equal(stale.body.code, "USERNAME_CONFLICT");
+    assert.equal(h.user.username, "first.name");
+    assert.equal(h.audits.length, 1);
+  } finally { h.restore(); }
 });
 
 test("Student and Faculty profile payloads remain compatible and reject sensitive extras", async () => {

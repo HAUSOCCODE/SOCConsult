@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
+  changeDeanUsername,
   changePassword,
   login,
   logout,
@@ -18,6 +19,7 @@ const router = Router();
 const profileLimit = accountLimit(20);
 const avatarLimit = accountLimit(10);
 const passwordLimit = accountLimit(5);
+const usernameLimit = accountLimit(5);
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 50,
@@ -47,4 +49,5 @@ router.delete(
   removeProfilePicture,
 );
 router.put("/change-password", authenticate, authorize("student", "faculty", "dean"), passwordLimit, accountMutation("password"), changePassword);
+router.put("/me/username", authenticate, authorize("dean"), usernameLimit, accountMutation("password"), changeDeanUsername);
 export default router;
