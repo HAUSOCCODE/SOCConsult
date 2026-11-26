@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   GraduationCap,
-  ShieldCheck,
   UserRoundCheck,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -20,13 +19,6 @@ const roles = [
     text: "Manage consultation availability, review appointment requests, and handle consultation records.",
     base: "/faculty",
     button: "Continue as Faculty",
-  },
-  {
-    name: "Dean",
-    icon: ShieldCheck,
-    text: "Monitor consultation activities, manage accounts, review reports, and administer the SOCConsult system.",
-    base: "/dean",
-    button: "Continue as Dean",
   },
 ];
 export default function GetStartedPage() {
@@ -47,7 +39,7 @@ export default function GetStartedPage() {
               Computing.
             </p>
           </div>
-          <div className="mx-auto mt-8 grid max-w-6xl items-stretch gap-5 sm:mt-12 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mx-auto mt-8 grid max-w-4xl items-stretch gap-5 sm:mt-12 md:grid-cols-2">
             {roles.map(({ name, icon: Icon, text, base, button }) => (
               <article
                 key={name}

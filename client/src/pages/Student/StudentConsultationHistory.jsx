@@ -6,6 +6,7 @@ import StudentAppointmentDetailsModal from "../../components/appointments/Studen
 import Pagination from "../../components/Pagination";
 import { EmptyState, ErrorState, Loading, StatusBadge } from "../../components/UI";
 import { formatManilaHistorySchedule } from "../../utils/appointmentSchedule";
+import { getAppointmentStatusLabel } from "../../utils/appointmentStatus";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
@@ -92,7 +93,7 @@ export default function StudentConsultationHistory() {
           <Filter label="From (appointment date)"><input type="date" value={filters.from} onChange={event => updateFilter("from", event.target.value)} className="field" /></Filter>
           <Filter label="To (appointment date)"><input type="date" value={filters.to} onChange={event => updateFilter("to", event.target.value)} className="field" /></Filter>
           <Filter label="Faculty / Provider"><select value={filters.faculty} onChange={event => updateFilter("faculty", event.target.value)} className="field"><option value="">All providers</option>{providers.map(provider => <option key={provider._id} value={provider._id}>{formatPersonName(provider) || "Consultation Provider"}</option>)}</select></Filter>
-          <Filter label="Status"><select value={filters.status} onChange={event => updateFilter("status", event.target.value)} className="field"><option value="">All statuses</option>{HISTORY_STATUSES.map(status => <option key={status}>{status}</option>)}</select></Filter>
+          <Filter label="Status"><select value={filters.status} onChange={event => updateFilter("status", event.target.value)} className="field"><option value="">All statuses</option>{HISTORY_STATUSES.map(status => <option key={status} value={status}>{getAppointmentStatusLabel(status)}</option>)}</select></Filter>
           <Filter label="Consultation mode"><select value={filters.mode} onChange={event => updateFilter("mode", event.target.value)} className="field"><option value="">All modes</option>{MODES.map(mode => <option key={mode}>{mode}</option>)}</select></Filter>
         </div>
         <p className="mt-3 text-sm text-slate-600">Date filters use recorded appointment schedules. Requests without an assigned schedule appear when date filters are cleared.</p>

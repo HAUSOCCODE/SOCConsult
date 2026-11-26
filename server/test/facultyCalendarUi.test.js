@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { getAppointmentStatusLabel } from "../../client/src/utils/appointmentStatus.js";
 const require = createRequire(new URL("../../client/package.json", import.meta.url));
 const React = require("react"), { renderToStaticMarkup } = require("react-dom/server"), { transform } = require("esbuild");
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -21,7 +22,7 @@ async function harness(path, name, extra = {}) {
     FullCalendar: () => React.createElement("div", { "data-fullcalendar": true }),
     dayGridPlugin: {}, timeGridPlugin: {}, listPlugin: {}, themePlugin: {},
     fetchPhilippineHolidays: async () => [], yearsForCalendarRange: () => [2099],
-    isRecoverableStudentError: () => true, safeStudentError: () => "Unable to load calendar. Please try again.",
+    isRecoverableStudentError: () => true, safeStudentError: () => "Unable to load calendar. Please try again.", getAppointmentStatusLabel,
     DetailLoadingDialog: ({ children }) => React.createElement("section", null, children), consultationTime: value => value || "Not scheduled",
     ...Object.fromEntries(["CalendarDays", "ChevronLeft", "ChevronRight", "X"].map(name => [name, () => null])), ...extra,
   };
@@ -76,6 +77,27 @@ test("FullCalendar maps valid events once and preserves authorized event callbac
   assert.equal(calendar.props.eventOrderStrict, true);
   const opener = {}; calendar.props.eventClick({ event: { extendedProps: calendar.props.events[0].extendedProps }, el: opener });
   assert.equal(clicks[0][0], event); assert.equal(clicks[0][1], opener);
+});
+
+test("calendar labels timed-out requests and preserves availability wording", async () => {
+  const h = await harness("components/calendar/ConsultationCalendar.jsx", "ConsultationCalendar");
+  const props = { showUpcoming: false };
+  const getCalendar = tree => elements(tree).find(el => el.props?.initialView === "dayGridMonth");
+  getCalendar(h.render(props)).props.datesSet({ startStr: "2099-01-01", endStr: "2099-02-01" });
+  h.render(props);
+  const cleanup = h.effects[0]();
+  const event = { status: "Expired", displayStatus: "Expired", start: "2099-01-01T15:30:00Z", end: "2099-01-01T16:30:00Z" };
+  h.pending[0].resolve({ events: [{ ...event, id: "request", kind: "appointment" }, { ...event, id: "slot", kind: "availability" }] });
+  await settle();
+  const calendar = getCalendar(h.render(props)).props;
+  assert.match(calendar.events[0].title, /^Request Timed Out:/);
+  assert.equal(calendar.events[0].extendedProps.socconsultEvent.status, "Expired");
+  assert.equal(calendar.events[1].title, "Expired");
+  for (const [index, label] of ["Request Timed Out", "Expired"].entries()) {
+    const card = calendar.eventContent({ event: calendar.events[index], timeText: "", view: { type: "dayGridMonth" } });
+    assert.match(h.html(card), new RegExp(`>${label}<`));
+  }
+  cleanup();
 });
 
 test("availability selection fetches fresh narrow details, handles retry and ignores stale responses", async () => {

@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { formatPersonName } from "../../utils/formatPersonName";
+import { getAppointmentStatusLabel } from "../../utils/appointmentStatus";
 import { EmptyState, ErrorState, Loading } from "../UI";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
 
@@ -287,7 +288,7 @@ function RecentConsultations({ consultations }) {
                   </p>
                 </div>
                 <span className="max-w-36 shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-center text-[11px] font-semibold text-slate-700">
-                  {consultation.status}
+                  {getAppointmentStatusLabel(consultation.status)}
                 </span>
               </Link>
             );

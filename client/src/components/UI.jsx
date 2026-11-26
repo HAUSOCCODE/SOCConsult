@@ -1,7 +1,7 @@
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import useDialogFocus from "../hooks/useDialogFocus";
-import { isLegacyAppointmentStatus } from "../utils/appointmentStatus";
+import { getAppointmentStatusLabel } from "../utils/appointmentStatus";
 export const StatusBadge = ({ status, compact = false, allowWrap = false, appointment = false }) => {
   const colors = {
     Pending: "bg-amber-100 text-amber-800",
@@ -28,7 +28,7 @@ export const StatusBadge = ({ status, compact = false, allowWrap = false, appoin
     <span
       className={`inline-flex w-auto shrink-0 items-center justify-center rounded-full border border-slate-200 px-2.5 py-1 text-center font-semibold leading-none ${allowWrap ? "min-w-0 max-w-full whitespace-normal" : "min-w-max max-w-none whitespace-nowrap"} ${compact ? "text-[11px]" : "text-xs"} ${colors[status] || "bg-slate-100 text-slate-700"}`}
     >
-      {status}
+      {appointment ? getAppointmentStatusLabel(status) : status}
     </span>
   );
 };

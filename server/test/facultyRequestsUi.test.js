@@ -1,4 +1,5 @@
 import { safeStudentError } from "../../client/src/utils/studentUiErrors.js";
+import { getAppointmentStatusLabel, REQUEST_TIMEOUT_EXPLANATION } from "../../client/src/utils/appointmentStatus.js";
 import { isRecoverableUiError, safeUiError } from "../../client/src/utils/safeUiErrors.js";
 ﻿import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -15,7 +16,7 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
   const compiled = await transform(raw.replace(/^import.*$/gm, "").replace("export default function", "function"), { loader: "jsx" });
   const state = [], refs = [], effects = [], pending = [], listeners = {}; let slot = 0, refSlot = 0;
   const imports = {
-    safeStudentError, safeUiError, isRecoverableUiError, useMemo: fn => fn(),
+    safeStudentError, safeUiError, isRecoverableUiError, getAppointmentStatusLabel, REQUEST_TIMEOUT_EXPLANATION, useMemo: fn => fn(),
     useState: initial => { const i = slot++; if (!(i in state)) state[i] = initial; return [state[i], value => state[i] = typeof value === "function" ? value(state[i]) : value]; },
     useRef: initial => { const i = refSlot++; return refs[i] ||= { current: initial }; }, useEffect: fn => effects.push(fn), useDialogFocus() {},
     createPortal: tree => tree, document: { body: {} }, window: { document: { body: {} }, addEventListener: (key, fn) => listeners[key] = fn, removeEventListener: key => delete listeners[key] },
@@ -32,6 +33,19 @@ async function harness(file = "pages/Faculty/AppointmentRequests.jsx", overrides
   return { state, effects, pending, listeners, render: props => { slot = 0; refSlot = 0; effects.length = 0; return Component(props || {}); }, html: renderToStaticMarkup };
 }
 const button = (tree, text) => elements(tree).find(el => el.type === "button" && el.props.children === text);
+
+test("request filter labels Expired as Request Timed Out and submits the canonical status", async () => {
+  const h = await harness();
+  const tree = h.render();
+  const select = elements(tree).find(el => el.type === "select");
+  const timeout = elements(select).find(el => el.type === "option" && el.props.value === "Expired");
+  assert.equal(timeout.props.children, "Request Timed Out");
+  select.props.onChange({ target: { value: timeout.props.value } });
+  h.render();
+  const cleanup = h.effects[0]();
+  assert.equal(h.pending[0].path, "/appointments/requests?status=Expired&page=1");
+  cleanup();
+});
 
 test("request list renders escaped separate text, schedule fallback, server pages and no decisions before fresh detail", async () => {
   const h = await harness(); assert.match(h.html(h.render()), /Loading consultation requests/);

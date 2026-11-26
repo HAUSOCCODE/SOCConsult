@@ -9,6 +9,8 @@ import { formatManilaDisplay } from "../../utils/formatDateTime";
 import { useToast } from "../../context/ToastContext";
 import { isRecoverableUiError, safeUiError } from "../../utils/safeUiErrors";
 
+import { getAppointmentStatusLabel } from "../../utils/appointmentStatus";
+
 const filters = ["Pending", "Reschedule Proposed", "Confirmed", "Rejected", "Cancelled", "Expired", "All"];
 const timestamp = value => value && Number.isFinite(new Date(value).getTime()) ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
 
@@ -97,7 +99,7 @@ export default function AppointmentRequests({ embedded = false, directOnly = fal
     <p className="text-sm text-slate-600">Review your Student requests. Times are shown in Asia/Manila.</p></>}
     {!embedded && <label className="block text-sm font-semibold">Status
       <select className="field mt-1" value={status} onChange={event => { close(); setStatus(event.target.value); setPage(1); }}>
-        {filters.map(value => <option key={value}>{value}</option>)}
+        {filters.map(value => <option key={value} value={value}>{getAppointmentStatusLabel(value)}</option>)}
       </select>
     </label>}
     {status === "All" && <p className="text-sm text-slate-600">All includes attendance, finalized, and retained legacy records.</p>}
