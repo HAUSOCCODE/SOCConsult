@@ -12,6 +12,34 @@ import { lockProviderSchedules } from "../src/services/providerSchedulingLock.js
 const input = (extra = {}) => ({ startAt: "2099-01-01T10:00:00+08:00", endAt: "2099-01-01T10:30:00+08:00",
   mode: "Online", meetingPlatform: "Teams", ...extra });
 
+test("semester deactivation requests use the personal owner scope and reject Students and stale versions", async () => {
+  const h = await appointmentHttp();
+  try {
+    const own = {};
+    for (const role of ["faculty", "dean", "otherFaculty"]) {
+      const response = await h.request("/availability", role, "POST", input());
+      assert.equal(response.status, 201);
+      own[role] = (await response.json()).availability;
+    }
+    const deactivate = (role, slot, expectedVersion = slot.__v) =>
+      h.request(`/availability/${slot._id}`, role, "PUT", { isActive: false, expectedVersion });
+    assert.equal((await h.request("/availability/mine", "student")).status, 403);
+    assert.equal((await deactivate("student", own.faculty)).status, 403);
+    for (const role of ["faculty", "dean"]) {
+      const readMine = async () => (await (await h.request("/availability/mine", role)).json()).availability;
+      assert.deepEqual((await readMine()).map(slot => slot._id), [own[role]._id]);
+      assert.equal((await deactivate(role, own.otherFaculty)).status, 404);
+      assert.equal((await deactivate(role, own[role], own[role].__v + 1)).status, 409);
+      assert.equal((await readMine())[0].isActive, true);
+      const response = await deactivate(role, own[role]);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).availability.isActive, false);
+      assert.equal((await readMine())[0].isActive, false);
+    }
+    assert.equal(h.state.slots.find(slot => String(slot._id) === own.otherFaculty._id).isActive, true);
+  } finally { await h.close(); }
+});
+
 for (const role of ["faculty", "dean"]) test(`${role} availability CRUD derives ownership, protects versions, and retains history`, async () => {
   const h = await appointmentHttp();
   try {
