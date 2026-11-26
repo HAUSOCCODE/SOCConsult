@@ -24,19 +24,44 @@ export async function generateFacultyReportPdf(report, maxBytes = FACULTY_PDF_MA
     let y = doc.y + 12;
     const widths = [27, 90, 115, 104, 70, 100, 100, 171];
     const headers = ["#", "Date", "Student / ID", "Subject / Course", "Mode", "Appointment Status", "Attendance Outcome", "Concern"];
-    const cell = (value, x, top, width, height) => doc.fontSize(7.5).text(String(value), x + 3, top + 4, { width: width - 6, height: height - 8, ellipsis: true });
-    const heading = () => { let x = 32; doc.rect(32, y, 777, 28).fill("#eeeeee").fillColor("black"); headers.forEach((value, index) => { cell(value, x, y, widths[index], 28); x += widths[index]; }); y += 28; };
-    if (y > 475) { doc.addPage(); y = 32; }
-    heading();
+    const tableWidth = 777, headingHeight = 28, tableBottom = 540;
+    const measure = (value, width) => doc.fontSize(7.5).heightOfString(String(value), { width: width - 6 });
+    const cell = (value, x, top, width) => doc.fontSize(7.5).text(String(value), x + 3, top + 4, { width: width - 6 });
+    const heading = () => {
+      let x = 32;
+      doc.rect(32, y, tableWidth, headingHeight).fill("#eeeeee").fillColor("black");
+      headers.forEach((value, index) => { cell(value, x, y, widths[index]); x += widths[index]; });
+      y += headingHeight;
+    };
+    let needsHeading = true;
     report.records.forEach((row, index) => {
-      const values = [index + 1, display(row.startAt), `${row.student}\n${row.institutionalId}`, row.subject, row.mode, row.status, row.attendanceOutcome, row.concern];
-      const height = Math.min(76, Math.max(38, ...values.map((value, column) => doc.fontSize(7.5).heightOfString(String(value), { width: widths[column] - 6 }) + 10)));
-      if (y + height > 540) { doc.addPage(); y = 32; heading(); }
-      let x = 32; values.forEach((value, column) => { cell(value, x, y, widths[column], height); x += widths[column]; });
-      y += height; doc.moveTo(32, y).lineTo(809, y).strokeColor("#dddddd").stroke().strokeColor("black");
+      const values = [index + 1, display(row.startAt), `${row.student}\n${row.institutionalId.replace(/\s+/g, " ")}`, row.subject.replace(/\s+/g, " "), row.mode, row.status, row.attendanceOutcome, row.concern];
+      let detail, detailHeight = 0;
+      // Give very tall concerns the full table width so the record can stay together.
+      if (measure(row.concern, widths.at(-1)) > 240) {
+        values[values.length - 1] = "See below";
+        detail = `Concern: ${row.concern}`;
+        if (measure(detail, tableWidth) > 240) detail = detail.replace(/\s+/g, " ");
+        detailHeight = measure(detail, tableWidth) + 8;
+      }
+      const height = Math.max(38, ...values.map((value, column) => measure(value, widths[column]) + 10));
+      if (y + (needsHeading ? headingHeight : 0) + height + detailHeight > tableBottom) {
+        doc.addPage();
+        y = 32;
+        needsHeading = true;
+      }
+      if (needsHeading) {
+        heading();
+        needsHeading = false;
+      }
+      let x = 32;
+      values.forEach((value, column) => { cell(value, x, y, widths[column]); x += widths[column]; });
+      if (detail) cell(detail, 32, y + height, tableWidth);
+      y += height + detailHeight;
+      doc.moveTo(32, y).lineTo(32 + tableWidth, y).strokeColor("#dddddd").stroke().strokeColor("black");
     });
     const { count } = doc.bufferedPageRange();
-    for (let page = 0; page < count; page++) { doc.switchToPage(page); doc.fontSize(8).text(`SOCConsult | Personal Faculty consultation report | Asia/Manila | Page ${page + 1} of ${count}`, 32, 555, { width: 777, lineBreak: false }); }
+    for (let page = 0; page < count; page++) { doc.switchToPage(page); doc.fontSize(8).text(`SOCConsult | Personal Faculty consultation report | Asia/Manila | Page ${page + 1} of ${count}`, 32, 550, { width: tableWidth, lineBreak: false }); }
     doc.end();
   } catch (error) { doc.destroy(error); }
   return output;

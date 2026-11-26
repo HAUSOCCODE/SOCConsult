@@ -40,7 +40,7 @@ export function buildFacultyReport(rows, faculty, filters, generatedAt) {
     const attendanceOutcome = ATTENDANCE_OUTCOMES.includes(row.attendance?.finalOutcome) ? row.attendance.finalOutcome : "Not finalized";
     summary.status[status] = (summary.status[status] || 0) + 1;
     summary.attendance[attendanceOutcome]++;
-    return { startAt: row.startAt, student: text(formatFullName(row.student), "Student unavailable", 242), institutionalId: text(row.student?.studentId || row.student?.institutionalId, "—", 80), subject: text(row.subject, "Consultation", 180), concern: text(row.reason, "Not provided", 500), mode: FACULTY_HISTORY_MODES.includes(row.consultationMode) ? row.consultationMode : "Unavailable", status, attendanceOutcome };
+    return { startAt: row.startAt, student: text(formatFullName(row.student ?? undefined), "Student unavailable", 242), institutionalId: text(row.student?.studentId || row.student?.institutionalId, "—", 80), subject: text(row.subject, "Consultation", 180), concern: text(row.reason, "Not provided", 1000), mode: FACULTY_HISTORY_MODES.includes(row.consultationMode) ? row.consultationMode : "Unavailable", status, attendanceOutcome };
   });
   return { title: "Faculty Consultation Report", facultyName: text(formatFullName(faculty), "Faculty", 242), filters, generatedAt, summary, records };
 }
