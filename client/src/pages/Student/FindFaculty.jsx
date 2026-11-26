@@ -79,6 +79,8 @@ export default function FindFaculty() {
     const requestId = ++availabilityRequest.current;
     setSelected(member);
     setAvailabilityOpen(true);
+    setScheduleError("");
+    setScheduleRetryable(true);
     const cached = scheduleCache.current.get(String(member._id));
     if (cached) {
       setSchedules(cached.schedules);
@@ -87,8 +89,6 @@ export default function FindFaculty() {
       return;
     }
     setSchedules([]);
-    setScheduleError("");
-    setScheduleRetryable(true);
     setHasActiveStudentAvailability(null);
     setScheduleLoading(true);
     try {

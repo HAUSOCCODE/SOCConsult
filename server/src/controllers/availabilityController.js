@@ -50,14 +50,18 @@ export const getAvailableFaculty = async (req, res) => {
     Appointment.find({ student: req.user.id, status: { $in: BLOCKING_STATUSES },
       startAt: { $exists: true }, endAt: { $gt: now } }).select("startAt endAt"),
   ]);
+  const byProvider = new Map(ids.map((id) => [String(id), { schedules: [], appointments: [] }]));
+  for (const schedule of availability) byProvider.get(String(schedule.faculty))?.schedules.push(schedule);
+  for (const appointment of appointments) byProvider.get(String(appointment.faculty))?.appointments.push(appointment);
   const counts = Object.fromEntries(faculty.map((item) => [item.id, 0]));
   const modes = Object.fromEntries(faculty.map((item) => [item.id, new Set()]));
   for (const item of faculty) {
+    const provider = byProvider.get(String(item.id));
     const matches = matchingAvailability({
-      schedules: availability.filter((schedule) => String(schedule.faculty) === String(item.id)),
+      schedules: provider.schedules,
       studentAvailability,
       studentAppointments,
-      providerAppointments: appointments.filter((appointment) => String(appointment.faculty) === String(item.id)),
+      providerAppointments: provider.appointments,
     });
     counts[item.id] = matches.length;
     for (const match of matches) modes[item.id].add(match.schedule.mode || "Online");

@@ -54,7 +54,7 @@ test("Manila ranges default locally, reject invalid inputs, and cap inclusive da
   assert.ok(parseDashboardRange({ start: "2026-01-01", end: "2026-01-01" }));
 });
 
-test("dashboard uses exact counts, bounded safe lists, role authorization and sanitized errors without writes", async () => {
+test("dashboard starts attendance in parallel, uses exact counts and preserves bounded safe lists and authorization", async () => {
   const restores = [],
     logs = { imports: [], appointments: [] };
   const patch = (object, key, value) => {
@@ -102,22 +102,27 @@ test("dashboard uses exact counts, bounded safe lists, role authorization and sa
     { status: "Completed", createdAt: new Date("2026-10-31T16:00:00Z") },
     { status: "Pending", createdAt: new Date("2026-09-30T15:59:59Z") },
   ];
+  let accountCountGate;
+  let summaryStarted = false;
   patch(User, "countDocuments", (filter) => {
     assert.deepEqual(filter.registrationStatus, { $in: ["Approved", null] });
     return chain(
-      users.filter(
+      Promise.resolve(accountCountGate).then(() => users.filter(
         (user) =>
           user.role === filter.role &&
           user.accountStatus === "Active" &&
           (user.registrationStatus === "Approved" ||
             user.registrationStatus == null),
-      ).length,
+      ).length),
     );
   });
   let fail = false;
   patch(Appointment, "aggregate", (pipeline) => {
     if (fail) throw new Error("SECRET_DATABASE_ERROR");
-    if (pipeline[1].$group._id?.status) return chain([{ _id: { status: "Completed" }, count: 1 }]);
+    if (pipeline[1].$group._id?.status) {
+      summaryStarted = true;
+      return chain([{ _id: { status: "Completed" }, count: 1 }]);
+    }
     const range = pipeline[0].$match.createdAt;
     const selected = records.filter(
       (record) =>
@@ -212,6 +217,14 @@ test("dashboard uses exact counts, bounded safe lists, role authorization and sa
       },
     });
   try {
+    let finishAccountCount;
+    accountCountGate = new Promise(resolve => { finishAccountCount = resolve; });
+    const dashboard = readDeanDashboard(parseDashboardRange({ start: "2026-10-01", end: "2026-10-31" }));
+    await new Promise(resolve => setImmediate(resolve));
+    const startedWhileAccountsWerePending = summaryStarted;
+    finishAccountCount();
+    await dashboard;
+    assert.equal(startedWhileAccountsWerePending, true);
     assert.equal((await request()).status, 401);
     for (const role of ["student", "faculty"])
       assert.equal((await request(role)).status, 403);

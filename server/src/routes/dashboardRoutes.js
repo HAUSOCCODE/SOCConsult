@@ -25,6 +25,7 @@ export async function getStudentDashboard(req, res) {
     nextConsultation,
     recentConsultations,
     recentNotifications,
+    attendanceSummary,
   ] = await Promise.all([
     Appointment.countDocuments({
       student: req.user.id,
@@ -76,6 +77,7 @@ export async function getStudentDashboard(req, res) {
       .sort({ createdAt: -1, _id: -1 })
       .limit(5)
       .lean(),
+    attendanceCounts({ student: req.user.id }),
   ]);
   res.json({
     upcomingCount,
@@ -85,7 +87,7 @@ export async function getStudentDashboard(req, res) {
     nextConsultation: nextConsultation || null,
     recentConsultations,
     recentNotifications,
-    attendanceSummary: await attendanceCounts({ student: req.user.id }),
+    attendanceSummary,
   });
 }
 router.get("/student", authorize("student"), getStudentDashboard);
