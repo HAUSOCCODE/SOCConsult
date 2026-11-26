@@ -29,6 +29,14 @@ const messages = {
  PASSWORD_SAME: 'Choose a new password different from your current password.',
  PASSWORD_CHANGE_UNCERTAIN: 'Password change could not be confirmed. Check whether you can sign in before trying again.',
  PASSWORD_CHANGE_UNAVAILABLE: 'Password change is temporarily unavailable. Please try again later.',
+ USERNAME_INPUT_INVALID: 'Enter a new username and your current password.',
+ USERNAME_INVALID: 'Use 3–100 characters and a valid username or email-style sign-in name.',
+ USERNAME_SAME: 'Choose a username different from your current one.',
+ USERNAME_PASSWORD_INVALID: 'The current password is incorrect.',
+ USERNAME_TAKEN: 'That username is already in use.',
+ USERNAME_CONFLICT: 'Your account changed. Refresh before trying again.',
+ USERNAME_CHANGE_UNCERTAIN: 'Refresh Account Settings to confirm your current username before retrying.',
+ USERNAME_CHANGE_UNAVAILABLE: 'Username change is temporarily unavailable. Please try again later.',
 };
 const fallbacks = {
  csv: 'Unable to validate the CSV. Please try again.',
@@ -37,6 +45,7 @@ const fallbacks = {
  create: 'Unable to create the account. Check the highlighted fields or refresh the user list before trying again.',
  profile: 'Unable to update your profile. Check the highlighted fields and try again.',
  password: 'Password change could not be confirmed. Check whether you can sign in before trying again.',
+ username: 'Unable to update your sign-in username. Please try again.',
  avatar: 'Unable to update your profile picture. Refresh before trying again.',
  pdf: 'Unable to generate the PDF report. Please try again.',
  ai: 'AI summary is unavailable. PDF reports remain available.',
@@ -52,6 +61,8 @@ export function deanUiError(error, context) {
  if (error?.status === 401) return 'Your session is unavailable. Please sign in again.';
  if (error?.status === 403) return 'You do not have access to this record or action.';
  if (error?.status === 429 && context === 'csv') return 'Too many CSV uploads. Wait before trying again.';
+ if (error?.status === 429 && context === 'username') return 'Too many username attempts. Wait before trying again.';
+ if (error?.status === 409 && context === 'username') return messages.USERNAME_CONFLICT;
  if (error?.status === 404) return context === 'csv' || context === 'import' ? messages.PREVIEW_UNAVAILABLE : 'This record is no longer available. Refresh the list.';
  if (error?.status === 409) return context === 'ai' ? 'This narrative changed or was already reviewed. Refresh its status before continuing.' : 'This record changed or was already resolved. Refresh before continuing.';
  if ([400, 413].includes(error?.status)) return context === 'resolution' ? 'Choose a valid action and a reason of up to 500 characters.' : ['pdf', 'ai'].includes(context) ? 'Check the date range and filters, then try again.' : context === 'audit' ? 'Check the date range and audit filters, then try again.' : fallbacks[context] || 'Check the highlighted fields and try again.';

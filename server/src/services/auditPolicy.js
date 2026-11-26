@@ -8,6 +8,7 @@ const status = member([...APPOINTMENT_STATUSES, ...LEGACY_APPOINTMENT_STATUSES, 
 const rules = {};
 const add = (actions, fields = {}) => actions.split(" ").forEach(action => rules[action] = fields);
 add("login logout login_failed student_registered faculty_registered registration_approved registration_rejected password_changed", { role });
+add("username_changed");
 add("account_activated account_deactivated", { role, previousStatus: status, newStatus: status, previousRegistrationStatus: member(["Pending", "Rejected", "Approved", "Not recorded"]), newRegistrationStatus: member(["Approved"]) });
 add("dean_password_reset admin_password_reset", { role, context: member(["dean_user_management"]) });
 add("account_created_manually", { role, accountSource: member(["manual"]) });

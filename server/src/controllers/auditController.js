@@ -25,6 +25,7 @@ const ACTION_LABELS = {
   admin_password_reset: "Password reset by administrator",
   dean_password_reset: "Password reset by dean",
   password_changed: "Password changed",
+  username_changed: "Sign-in username changed",
   login: "Successful sign-in",
   profile_updated: "Profile information updated",
   profile_picture_updated: "Profile picture updated",

@@ -81,9 +81,6 @@ MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=replace_with_a_long_random_secret
 CLIENT_URL=http://localhost:5173
 
-DEAN_USERNAME=your_dean_username
-DEAN_PASSWORD=your_strong_dean_password
-
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
 CLOUDINARY_API_SECRET=your_cloudinary_api_secret
@@ -107,6 +104,19 @@ GROQ_API_KEY=
 The frontend connects to `http://localhost:5000/api` by default. If your API uses a different address, set `VITE_API_URL` in `client/.env`.
 
 **Security:** Never commit `.env` files, real credentials, or private student data. Use a separate development database and test accounts.
+
+#### Initialize or recover Dean access
+
+For an institution-authorized **new installation**, verify that `MONGODB_URI` targets a newly provisioned, empty SOCConsult database. Use a MongoDB replica set or Atlas deployment with transaction support. The application database account needs permission to read and write application data, create the installation-state collection, and ensure the sparse unique username index. Initial bootstrap also lists and checks collections for existing data.
+
+1. Set `DEAN_BOOTSTRAP_ENABLED=true` on the server and supply `DEAN_USERNAME` and `DEAN_PASSWORD` through protected environment configuration. Choose a unique initial username and a temporary password that meets the app’s password policy. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are fallback names for this step.
+2. Start the API. This commits the initial Dean and the database’s installation marker together. For Vercel, exercise the API once to trigger and verify runtime initialization.
+3. Deliver the temporary credentials through an institution-approved secure channel. The Dean signs in at `/dean/login`, then opens **Dean Management → Account Settings** to update their profile, choose a sign-in username, change the temporary password, and review account details. The username and password are saved in separate forms.
+4. Remove `DEAN_BOOTSTRAP_ENABLED`, both Dean bootstrap variables, and any legacy Admin credential variables from the applicable environment scopes. Restart or redeploy and verify sign-in with the stored credentials.
+
+An existing Dean or a sole legacy Admin is recognized by stored role on startup. An inactive Dean remains inactive. Bootstrap environment values are used for initial creation only. Manage current sign-in credentials in Account Settings. Include `installationState` in backups and restores alongside application data.
+
+If startup reports a missing Dean in a populated or initialized database, conflicting management accounts, or unusable Dean access, leave bootstrap disabled. Have the authorized institutional database administrator and security owner verify the deployment target, record the incident, and take a restricted, verified backup before remediation. Rehearse restoration on an isolated copy. Recover the original management record from a trusted backup with its original MongoDB user ID and consult the institution’s access records before resolving roles or account status. If restoration is insufficient, use an approved, reviewed offline repair under institutional change control. Confirm exactly one legitimate management account, preserve consultation and audit references, verify sign-in and both workspaces, and record the outcome.
 
 ### 4. Start the application
 

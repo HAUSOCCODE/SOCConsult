@@ -13,7 +13,7 @@ import Appointment from "../src/models/Appointment.js";
 import Availability from "../src/models/Availability.js";
 import Task from "../src/models/Task.js";
 import Notification from "../src/models/Notification.js";
-import { login, ensureDean } from "../src/controllers/authController.js";
+import { login } from "../src/controllers/authController.js";
 import { migrateDeanAccount } from "../src/services/deanAccountMigrationService.js";
 
 const response = () => ({ statusCode: 200, status(value) { this.statusCode = value; return this; }, json(body) { this.body = body; return this; } });
@@ -159,13 +159,12 @@ test("Dean publishes without an optional link, Student books, and management nev
 function migrationHarness(accounts) {
   const writes = [], auditWrites = [];
   const users = {
-    findOne: async query => accounts.find(a => a.username === query.username),
     find: () => ({ toArray: async () => accounts.filter(a => ["admin", "dean"].includes(a.role)) }),
     updateOne: async (query, update) => { writes.push([query, update]); const account = accounts.find(a => a._id === query._id && a.role === query.role); if (account) Object.assign(account, update.$set); return { modifiedCount: account ? 1 : 0 }; },
     updateMany: async (query, update) => { writes.push([query, update]); for (const account of accounts) if (account.approvalMethod === query.approvalMethod) Object.assign(account, update.$set); },
   };
   const auditLogs = { updateMany: async (...args) => auditWrites.push(args) };
-  return { users, auditLogs, writes, auditWrites, username: "legacy" };
+  return { users, auditLogs, writes, auditWrites };
 }
 
 test("migration preserves account identity and password, metadata provenance, and reruns safely", async () => {
@@ -180,19 +179,18 @@ test("migration preserves account identity and password, metadata provenance, an
   assert.equal(harness.writes.filter(([q]) => q._id).length, 1);
 });
 
-test("migration conflicts and wrong identifiers stop before any writes; missing account is not created", async () => {
+test("migration rejects conflicting stored management roles and never creates an account", async () => {
   for (const accounts of [
     [{ _id: "a", username: "legacy", role: "admin" }, { _id: "b", username: "other", role: "dean" }],
     [{ _id: "a", username: "legacy", role: "admin" }, { _id: "b", username: "other", role: "admin" }],
-    [{ _id: "a", username: "legacy", role: "student" }],
-    [{ _id: "a", username: "other", role: "dean" }],
+    [{ _id: "a", username: "legacy", role: "dean" }, { _id: "b", username: "other", role: "dean" }],
   ]) {
     const harness = migrationHarness(accounts);
-    await assert.rejects(migrateDeanAccount(harness), /conflict|another role/);
+    await assert.rejects(migrateDeanAccount(harness), /conflict/);
     assert.equal(harness.writes.length, 0);
     assert.equal(harness.auditWrites.length, 0);
   }
-  const harness = migrationHarness([]);
+  const harness = migrationHarness([{ _id: "a", username: "legacy", role: "student" }]);
   assert.equal((await migrateDeanAccount(harness)).status, "missing");
   assert.equal(harness.writes.length, 0);
 });
@@ -205,29 +203,26 @@ test("migration never touches audit history, including on reruns", async () => {
   assert.equal(harness.auditWrites.length, 0);
 });
 
-test("initialization verifies the existing Dean without creating a duplicate", async () => {
-  const restores = [];
-  const harness = migrationHarness([{ _id: "a", username: env.deanUsername, role: "dean" }]);
-  patch(User.collection, "findOne", harness.users.findOne, restores);
-  patch(User.collection, "find", harness.users.find, restores);
-  patch(User.collection, "updateMany", harness.users.updateMany, restores);
-  patch(AuditLog.collection, "updateMany", harness.auditLogs.updateMany, restores);
-  patch(User, "create", async () => assert.fail("existing Dean must not be duplicated"), restores);
-  try { await ensureDean(); } finally { restores.reverse().forEach(fn => fn()); }
-});
-
 test("preferred Dean environment variables override independent legacy fallbacks", async () => {
-  const keys = ["DEAN_USERNAME", "DEAN_PASSWORD", "ADMIN_USERNAME", "ADMIN_PASSWORD"];
+  const keys = ["DEAN_BOOTSTRAP_ENABLED", "DEAN_USERNAME", "DEAN_PASSWORD", "ADMIN_USERNAME", "ADMIN_PASSWORD"];
   const old = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   try {
     process.env.ADMIN_USERNAME = "Legacy"; process.env.ADMIN_PASSWORD = "legacy-test-value";
-    delete process.env.DEAN_USERNAME; delete process.env.DEAN_PASSWORD;
+    delete process.env.DEAN_USERNAME; delete process.env.DEAN_PASSWORD; delete process.env.DEAN_BOOTSTRAP_ENABLED;
     const legacy = await import("../src/config/env.js?core01-legacy");
-    assert.equal(legacy.env.deanUsername, "legacy");
+    assert.equal(legacy.env.deanUsername, "Legacy");
     assert.equal(legacy.env.deanPassword, "legacy-test-value");
+    assert.equal(legacy.env.deanBootstrapEnabled, false);
     process.env.DEAN_USERNAME = "Preferred"; process.env.DEAN_PASSWORD = "preferred-test-value";
+    process.env.DEAN_BOOTSTRAP_ENABLED = "true";
     const preferred = await import("../src/config/env.js?core01-preferred");
-    assert.equal(preferred.env.deanUsername, "preferred");
+    assert.equal(preferred.env.deanUsername, "Preferred");
     assert.equal(preferred.env.deanPassword, "preferred-test-value");
+    assert.equal(preferred.env.deanBootstrapEnabled, true);
+    for (const key of keys) delete process.env[key];
+    const regular = await import("../src/config/env.js?pei05-regular");
+    assert.equal(regular.env.deanUsername, undefined);
+    assert.equal(regular.env.deanPassword, undefined);
+    assert.doesNotThrow(regular.validateEnv);
   } finally { for (const key of keys) { if (old[key] === undefined) delete process.env[key]; else process.env[key] = old[key]; } }
 });

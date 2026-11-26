@@ -27,6 +27,76 @@ function ReadOnlyDetails({ items }) {
   );
 }
 
+function SignInUsername() {
+  const { user, updateUser } = useAuth();
+  const [username, setUsername] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const submit = async event => {
+    event.preventDefault();
+    if (pending.current) return;
+    pending.current = true;
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      const data = await api("/auth/me/username", {
+        method: "PUT",
+        body: JSON.stringify({ username, currentPassword }),
+      });
+      if (!mounted.current) return;
+      updateUser(data.user);
+      setUsername("");
+      setFeedback({ message: "Sign-in username updated. Use it the next time you sign in." });
+    } catch (error) {
+      if (mounted.current)
+        setFeedback({ error: true, message: deanUiError(error, "username") });
+    } finally {
+      pending.current = false;
+      if (mounted.current) {
+        setCurrentPassword("");
+        setSubmitting(false);
+      }
+    }
+  };
+
+  return (
+    <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="sign-in-username-title">
+      <h2 id="sign-in-username-title" className="text-lg font-bold text-maroon-900">Sign-in Username</h2>
+      <div className="mt-2"><ReadOnlyDetails items={[["Current username", user.username]]} /></div>
+      <p id="username-requirements" className="mt-3 text-sm text-slate-500">
+        Choose 3–100 characters, such as dean.reyes or an institutional email address.
+        Use the Change Password section below to update your password.
+      </p>
+      <form aria-labelledby="sign-in-username-title" aria-busy={submitting} onSubmit={submit} className="mt-4 space-y-4">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <label className="min-w-0 text-sm font-semibold text-slate-700">
+            New username
+            <input className="field mt-1.5" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
+              aria-describedby="username-requirements" required maxLength={100} disabled={submitting}
+              value={username} onChange={event => setUsername(event.target.value)} />
+          </label>
+          <label className="min-w-0 text-sm font-semibold text-slate-700">
+            Current password
+            <input className="field mt-1.5" name="currentPassword" type="password" autoComplete="current-password"
+              required disabled={submitting} value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} />
+          </label>
+        </div>
+        {feedback && <p role={feedback.error ? "alert" : "status"} className={feedback.error ? "text-sm text-red-700" : "text-sm text-green-800"}>{feedback.message}</p>}
+        <div className="flex justify-end">
+          <button type="submit" className="btn-primary w-full text-sm sm:w-auto" disabled={submitting}>
+            {submitting ? "Saving username..." : "Save Username"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 export default function DeanAccountSettings() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
@@ -35,6 +105,7 @@ export default function DeanAccountSettings() {
   const [saving, setSaving] = useState(false);
   const pending = useRef(false);
   const mounted = useRef(true);
+  const { usernamePending, passwordPending } = user.initialCredentials ?? {};
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const save = async event => {
@@ -90,8 +161,19 @@ export default function DeanAccountSettings() {
     <div className="w-full min-w-0 space-y-5">
       <header>
         <h1 className="text-2xl font-bold text-maroon-900">Account Settings</h1>
-        <p className="mt-1 text-sm text-slate-600">Manage your SOCConsult profile and password.</p>
+        <p className="mt-1 text-sm text-slate-600">Manage your SOCConsult profile and sign-in details.</p>
       </header>
+      {(usernamePending || passwordPending) && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="dean-initial-setup-title">
+          <h2 id="dean-initial-setup-title" className="text-lg font-bold text-maroon-900">Set Up Your Dean Account</h2>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+            <li>Update your personal information and contact details.</li>
+            {usernamePending && <li>Choose your sign-in username.</li>}
+            {passwordPending && <li>Change your temporary password.</li>}
+            <li>Review your account information for accuracy.</li>
+          </ol>
+        </section>
+      )}
       <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="dean-profile-title">
         <div className="flex min-w-0 flex-wrap items-center gap-5 border-b border-slate-200 pb-5">
           <ProfilePictureEditor compact />
@@ -123,17 +205,17 @@ export default function DeanAccountSettings() {
           </div>
         </form>
       </section>
+      <SignInUsername />
       <SecuritySettings compact onPasswordChanged={refreshSecurity} />
       <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="account-information-title">
         <h2 id="account-information-title" className="text-lg font-bold text-maroon-900">Account Information</h2>
-        <p className="mb-4 mt-1 text-sm text-slate-500">Sign-in and institutional details are read-only.</p>
-        <ReadOnlyDetails items={[
+        <div className="mt-4"><ReadOnlyDetails items={[
           ["Username", user.username], ["Official email", user.email],
           ["Institutional ID", user.institutionalId], ["Employee ID", user.employeeId],
           ["Position / Designation", user.position], ["Specialization", user.specialization],
           ["Program", user.program], ["Account source", user.accountSource],
           ["Last password change (Asia/Manila)", user.passwordChangedAt ? formatManilaDisplay(new Date(user.passwordChangedAt), undefined, "timestamp") : "No password change recorded"],
-        ]} />
+        ]} /></div>
         <p className="mt-4 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
           Password changes do not sign out existing sessions. Sessions remain valid until their normal eight-hour expiration.
         </p>
