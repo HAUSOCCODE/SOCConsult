@@ -50,6 +50,8 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
   let userFilter;
   let userSelect;
   let discoveryFilter;
+  let scheduleFacultyReads = 0;
+  let appointmentFacultyReads = 0;
   const faculty = provider("faculty-zero", "faculty");
   const deanAvailable = provider("dean-available", "dean", {
     name: "Real Dean Name",
@@ -73,7 +75,10 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
     return chain([
       {
         _id: "dean-slot",
-        faculty: "dean-available",
+        get faculty() {
+          scheduleFacultyReads += 1;
+          return "dean-available";
+        },
         mode: "Online",
         startAt: new Date(Date.now() + 3_600_000),
         endAt: new Date(Date.now() + 7_200_000),
@@ -82,7 +87,15 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
   });
 
   let body;
-  patch(Appointment, "find", () => chain([]));
+  patch(Appointment, "find", filter => chain(filter.faculty ? [{
+    get faculty() {
+      appointmentFacultyReads += 1;
+      return "faculty-zero";
+    },
+    availability: "unrelated-slot",
+    startAt: new Date(Date.now() + 3_600_000),
+    endAt: new Date(Date.now() + 7_200_000),
+  }] : []));
   patch(StudentAvailability, "find", () => chain([]));
   try {
     await getAvailableFaculty({ user: { id: "student" } }, { json: (value) => (body = value) });
@@ -115,4 +128,5 @@ test("Find Faculty returns active approved Faculty plus only an available Dean w
   assert.equal(body.faculty[1].availableScheduleCount, 1);
   assert.deepEqual(body.faculty[1].consultationModes, ["Online"]);
   assert.equal(body.faculty[1].name, "Real Dean Name");
+  assert.deepEqual([scheduleFacultyReads, appointmentFacultyReads], [1, 1]);
 });

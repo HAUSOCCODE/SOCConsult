@@ -31,9 +31,16 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   const recentCalls = [];
   const notificationCalls = [];
   let appointmentCount = 0;
+  let finishNext;
+  const next = new Promise(resolve => { finishNext = resolve; });
+  let summaryStarted = false;
 
-  patch(Appointment, "aggregate", pipeline => pipeline[0].$match.status
-    ? { option: async () => Array.from({ length: 3 }, () => ({ responses: [] })) } : Promise.resolve([]));
+  patch(Appointment, "aggregate", pipeline => {
+    if (pipeline[0].$match.status)
+      return { option: async () => Array.from({ length: 3 }, () => ({ responses: [] })) };
+    summaryStarted = true;
+    return Promise.resolve([]);
+  });
   patch(Appointment, "countDocuments", async (filter) => {
     appointmentFilters.push(filter);
     appointmentCount += 1;
@@ -45,7 +52,7 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
   });
   patch(Appointment, "findOne", (filter) => {
     appointmentFilters.push(filter);
-    return chain({ _id: "next", status: "Confirmed" }, nextCalls);
+    return chain(next, nextCalls);
   });
   patch(Appointment, "find", (filter) => {
     appointmentFilters.push(filter);
@@ -58,10 +65,15 @@ test("Student dashboard uses authenticated ownership, approved statuses, and bou
 
   let body;
   try {
-    await getStudentDashboard(
+    const dashboard = getStudentDashboard(
       { user: { id: "507f1f77bcf86cd799439013" }, query: { studentId: "student-b" } },
       { json: (value) => (body = value) },
     );
+    await new Promise(resolve => setImmediate(resolve));
+    const startedWhileNextWasPending = summaryStarted;
+    finishNext({ _id: "next", status: "Confirmed" });
+    await dashboard;
+    assert.equal(startedWhileNextWasPending, true);
   } finally {
     restores.reverse().forEach((restore) => restore());
   }
