@@ -19,6 +19,7 @@ export default function CsvImport({ onImported } = {}) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [checkRequired, setCheckRequired] = useState(false);
   const [previewRetry, setPreviewRetry] = useState(0);
+  const [mapping, setMapping] = useState(null);
   const currentPreview = useRef(previewId);
   currentPreview.current = previewId;
   const inFlight = useRef(false);
@@ -37,6 +38,7 @@ export default function CsvImport({ onImported } = {}) {
     if (!previewId) { setBusy(false); return; }
     const controller = new AbortController();
     setPreview(null);
+    setMapping(null);
     setBusy(true);
     setError("");
     api(`/dean/account-imports/${encodeURIComponent(previewId)}`, {
@@ -92,6 +94,7 @@ export default function CsvImport({ onImported } = {}) {
     setCheckRequired(false);
     setBusy(false);
     setFile(value);
+    setMapping(null);
     setPreview(null);
     setError("");
     setSearch((current) => {
@@ -99,6 +102,16 @@ export default function CsvImport({ onImported } = {}) {
       next.delete("preview");
       return next;
     }, { replace: true });
+  };
+  const changeMapping = (field, value) => {
+    setError("");
+    setMapping((current) => {
+      if (field === "batchRole") return { ...current, batchRole: value };
+      const columns = { ...current.columns };
+      if (value === "") delete columns[field];
+      else columns[field] = Number(value);
+      return { ...current, columns, batchRole: field === "role" ? "" : current.batchRole };
+    });
   };
   const submit = async (event) => {
     event.preventDefault();
@@ -113,12 +126,24 @@ export default function CsvImport({ onImported } = {}) {
     setError("");
     const body = new FormData();
     body.append("file", file);
+    if (mapping) {
+      body.append("mapping", JSON.stringify({
+        columns: Object.entries(mapping.columns),
+        ...(mapping.batchRole && { batchRole: mapping.batchRole }),
+      }));
+    }
     try {
       const result = await api("/dean/account-imports/validate", {
         method: "POST",
         body,
       });
       if (request !== uploadRequest.current) return;
+      if (result.mappingRequired) {
+        setMapping({ headers: result.headers, columns: result.suggestedColumns, batchRole: "" });
+        return;
+      }
+      setMapping(null);
+      setFile(null);
       setPreview(result);
       setSearch((current) => {
         const next = new URLSearchParams(current);
@@ -181,8 +206,8 @@ export default function CsvImport({ onImported } = {}) {
     ],
     [
       "role",
-      "Required",
-      "student or faculty only; normalized to lowercase. Dean is not allowed.",
+      "Column or batch selection",
+      "student or faculty only. If there is no mapped role column, choose Student or Faculty for the batch.",
     ],
   ];
 
@@ -201,9 +226,9 @@ export default function CsvImport({ onImported } = {}) {
         <summary className="w-fit cursor-pointer font-medium text-maroon-800">CSV format requirements</summary>
       <ResponsiveTable label="CSV column requirements" className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm">
           <caption className="mb-3 text-left text-slate-600">
-            Include the five required columns; middle_name is optional. The
-            template includes all six. Trim surrounding whitespace; required
-            values must not be empty or contain only whitespace.
+            Give each source column a unique header. The template includes all six account fields.
+            For other exports, map the columns with the required information. If the source needs
+            corrections, edit it in Excel or use the template. Format institutional IDs as text to keep leading zeros.
           </caption>
           <thead>
             <tr>
@@ -228,9 +253,11 @@ export default function CsvImport({ onImported } = {}) {
         onSelect={selectFile}
         onSubmit={submit}
         file={file}
+        mapping={mapping}
+        onMappingChange={changeMapping}
       />
-      {busy && <p role="status">Loading or validating CSV preview?</p>}
-      {confirming && <p role="status">Creating accounts?</p>}
+      {busy && <p role="status">Loading or validating CSV preview…</p>}
+      {confirming && <p role="status">Creating accounts…</p>}
       {!file && !preview && !busy && <p role="status" className="mt-3">No CSV file selected.</p>}
       {error && previewId && !confirming && <button type="button" className="btn-secondary mt-4" disabled={busy} onClick={() => { if (!inFlight.current && !validationFlight.current) setPreviewRetry(n => n + 1); }}>Refresh import status</button>}
       {error && (

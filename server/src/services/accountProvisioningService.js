@@ -12,9 +12,10 @@ export function findAccountConflicts(ids, emails, session) {
   if (session) query.session(session);
   return query.lean();
 }
-export const validateProvisioningRows = (rows, session) => validateAccountRows(rows, {
+export const validateProvisioningRows = (rows, session, { describeCsvConflicts } = {}) => validateAccountRows(rows, {
   studentDomain: env.studentDomain, facultyDomain: env.facultyDomain,
   findUsers: (ids, emails) => findAccountConflicts(ids, emails, session),
+  describeCsvConflicts,
 });
 
 // Only validated, normalized rows enter this helper. Never construct a plaintext password field.

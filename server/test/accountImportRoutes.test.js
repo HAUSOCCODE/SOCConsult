@@ -124,8 +124,12 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
   };
   try {
     assert.equal((await call("/validate", form(), false)).status, 401);
-    for (role of ["student", "faculty"])
+    for (role of ["student", "faculty"]) {
       assert.equal((await call("/validate", form())).status, 403);
+      const mapped = form();
+      mapped.append("mapping", JSON.stringify({ columns: [], batchRole: role }));
+      assert.equal((await call("/validate", mapped)).status, 403);
+    }
     assert.equal(protectedReads, 0, "denied uploads must not read accounts or import previews");
     role = "dean";
     const valid = await call("/validate", form());
@@ -175,6 +179,7 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
         (error) => error.code === "INVALID_ROLE",
       ),
     );
+
     const limited = await call("/validate", form());
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("Retry-After")) > 0);
@@ -193,6 +198,52 @@ test("authenticated upload, ownership, expiration, limits and no User writes", a
             fields.purgeAt === 1 && settings.expireAfterSeconds === 0,
         ),
     );
+
+    activeId = other; // Separate Dean and upload quota for the mapping flow.
+    const source = "Surname,Campus ID,Given Name,Email,Notes\nExample,00045,Mira,mira@student.hau.edu.ph,discard this cell";
+    const mapping = { columns: [["institutional_id", 1], ["first_name", 2], ["last_name", 0], ["official_email", 3]], batchRole: "student" };
+    const readsBefore = protectedReads;
+    const discovery = await call("/validate", form(source));
+    assert.equal(discovery.status, 200);
+    assert.equal(discovery.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(discovery.data, {
+      mappingRequired: true, headers: ["Surname", "Campus ID", "Given Name", "Email", "Notes"], suggestedColumns: {},
+    });
+    assert.equal(protectedReads, readsBefore);
+    assert.equal(previews.length, 2);
+    assert.equal(audits.length, 4);
+    const mappedForm = (value) => {
+      const data = form(source);
+      data.append("mapping", typeof value === "string" ? value : JSON.stringify(value));
+      return data;
+    };
+    for (const [value, code] of [
+      ["{broken", "CSV_INVALID_MAPPING"],
+      [{ ...mapping, valid: true }, "CSV_INVALID_MAPPING"],
+      [{ ...mapping, batchRole: "dean" }, "CSV_INVALID_BATCH_ROLE"],
+      ["x".repeat(1025), "CSV_INVALID_MAPPING"],
+    ]) {
+      const rejected = await call("/validate", mappedForm(value));
+      assert.equal(rejected.status, 400);
+      assert.equal(rejected.data.code, code);
+    }
+    const duplicatePart = mappedForm(mapping);
+    duplicatePart.append("mapping", JSON.stringify(mapping));
+    assert.equal((await call("/validate", duplicatePart)).status, 400);
+    const mapped = await call("/validate", mappedForm(mapping));
+    assert.equal(mapped.status, 200);
+    assert.equal(mapped.data.canConfirm, true);
+    assert.equal(previews.length, 3);
+    assert.equal(String(previews[2].owner), String(other));
+    assert.equal(previews[2].schemaVersion, 2);
+    assert.equal(previews[2].rows[0].institutional_id, "00045");
+    assert.equal(previews[2].rows[0].role, "student");
+    assert.doesNotMatch(JSON.stringify(previews[2]), /mapping|discard this cell|Campus ID|Notes/);
+    assert.equal(audits.at(-1).action, "accounts_csv_validated");
+    assert.equal(audits.at(-1).metadata.outcome, "valid");
+    assert.equal((await call(`/${mapped.data.previewId}`)).status, 200);
+    activeId = owner;
+    assert.equal((await call(`/${mapped.data.previewId}`)).status, 404);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     for (const [object, key, value] of originals.reverse()) object[key] = value;
