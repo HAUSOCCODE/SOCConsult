@@ -128,7 +128,7 @@ test("Faculty controls expose labels and field-error semantics", async () => {
 
 test("status and notification read state include text rather than color alone", async () => {
   const [ui, notifications] = await Promise.all([source("components/UI.jsx"), source("components/notifications/NotificationsView.jsx")]);
-  assert.match(ui, /\{status\}/);
+  assert.match(ui, /\{appointment \? getAppointmentStatusLabel\(status\) : status\}/);
   assert.match(notifications, /Unread/);
   assert.match(notifications, /Read/);
   assert.match(notifications, /aria-label/);

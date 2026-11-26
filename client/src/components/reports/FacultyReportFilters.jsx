@@ -1,3 +1,5 @@
+import { getAppointmentStatusLabel } from "../../utils/appointmentStatus";
+
 const STATUSES = ["Completed", "Cancelled", "Rejected", "Expired", "Attendance Review"];
 const OUTCOMES = ["Completed", "Student No-show", "Faculty No-show"];
 const MODES = ["Online", "Face-to-Face"];
@@ -8,7 +10,7 @@ export default function FacultyReportFilters({ filters, onChange, onClear, onSub
       <legend className="mb-2 font-bold text-maroon-900">Report filters</legend>
       <Field label="Start Date"><input required type="date" className="field mt-1" value={filters.startDate} onChange={event => onChange("startDate", event.target.value)} /></Field>
       <Field label="End Date"><input required type="date" className="field mt-1" value={filters.endDate} onChange={event => onChange("endDate", event.target.value)} /></Field>
-      <Field label="Appointment Status"><Select value={filters.status} values={STATUSES} onChange={value => onChange("status", value)} /></Field>
+      <Field label="Appointment Status"><Select value={filters.status} values={STATUSES} onChange={value => onChange("status", value)} formatLabel={getAppointmentStatusLabel} /></Field>
       <Field label="Attendance Outcome"><Select value={filters.attendanceOutcome} values={OUTCOMES} onChange={value => onChange("attendanceOutcome", value)} /></Field>
       <Field label="Consultation Mode"><Select value={filters.mode} values={MODES} onChange={value => onChange("mode", value)} /></Field>
     </fieldset>
@@ -18,4 +20,4 @@ export default function FacultyReportFilters({ filters, onChange, onClear, onSub
   </form>;
 }
 function Field({ label, children }) { return <label className="min-w-0 text-sm font-semibold text-slate-700"><span>{label}</span>{children}</label>; }
-function Select({ value, values, onChange }) { return <select className="field mt-1" value={value} onChange={event => onChange(event.target.value)}><option value="">All</option>{values.map(item => <option key={item}>{item}</option>)}</select>; }
+function Select({ value, values, onChange, formatLabel = String }) { return <select className="field mt-1" value={value} onChange={event => onChange(event.target.value)}><option value="">All</option>{values.map(item => <option key={item} value={item}>{formatLabel(item)}</option>)}</select>; }

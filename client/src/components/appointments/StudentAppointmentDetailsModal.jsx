@@ -8,6 +8,8 @@ import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import {
   canStudentCancelAppointment,
   getAppointmentDisplayStatus,
+  getAppointmentStatusLabel,
+  REQUEST_TIMEOUT_EXPLANATION,
 } from "../../utils/appointmentStatus";
 import { formatPersonName } from "../../utils/formatPersonName";
 import { api } from "../../api/apiClient";
@@ -146,7 +148,7 @@ export default function StudentAppointmentDetailsModal({
               {appointment.subject || "Consultation"}
             </p>
             <div className="mt-2">
-              <StatusBadge appointment status={displayStatus} />
+              <StatusBadge appointment status={displayStatus} allowWrap />
             </div>
           </div>
           <button
@@ -276,7 +278,7 @@ export default function StudentAppointmentDetailsModal({
           )}
           {appointment.status === "Expired" && (
             <Section title="Status Details">
-              <Detail label="Expiration" value={appointment.expirationReason || "This consultation request expired before it could proceed."} wide />
+              <Detail label={displayStatus} value={REQUEST_TIMEOUT_EXPLANATION} wide />
             </Section>
           )}
           {appointment.status === "Completed" && (
@@ -373,7 +375,7 @@ export default function StudentAppointmentDetailsModal({
                 {appointment.statusHistory.map((entry, index) => (
                   <li key={`${entry.changedAt}-${index}`} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="break-words text-sm font-bold text-slate-900">
-                      {entry.previousStatus || "Previous state"} → {entry.newStatus}
+                      {getAppointmentStatusLabel(entry.previousStatus) || "Previous state"} → {getAppointmentStatusLabel(entry.newStatus)}
                     </p>
                     <p className="mt-1 break-words text-xs text-slate-600">
                       {safeDate(entry.changedAt)} · {entry.changedByRole || "System"}

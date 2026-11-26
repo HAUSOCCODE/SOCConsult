@@ -8,6 +8,7 @@ import SupportingDocumentViewer from "./SupportingDocumentViewer";
 import OnlineMeetingDetails from "./OnlineMeetingDetails";
 import { formatPersonName } from "../../utils/formatPersonName";
 import RequestedAvailability from "./RequestedAvailability";
+import { REQUEST_TIMEOUT_EXPLANATION } from "../../utils/appointmentStatus";
 
 const dateTime = (value) =>
   value ? formatManilaDisplay(new Date(value), undefined, "timestamp") : "Not scheduled";
@@ -78,6 +79,7 @@ export default function AppointmentRequestDetailsModal({
         </header>
 
         <div className="space-y-6 px-5 py-5 sm:px-6">
+          {appointment.status === "Expired" && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">{REQUEST_TIMEOUT_EXPLANATION}</p>}
           <div className="grid min-w-0 gap-6 md:grid-cols-2">
             <DetailSection title="Student Information">
               <Detail

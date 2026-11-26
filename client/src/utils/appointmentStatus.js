@@ -33,9 +33,15 @@ export const APPOINTMENT_STATUS_META = Object.freeze({
   "Attendance Review": { label: "Attendance Review", group: "review" },
   Rejected: { label: "Rejected", group: "terminal" },
   Cancelled: { label: "Cancelled", group: "terminal" },
-  Expired: { label: "Expired", group: "terminal" },
+  Expired: { label: "Request Timed Out", group: "terminal" },
   Completed: { label: "Completed", group: "terminal" },
 });
+
+export const getAppointmentStatusLabel = (status) =>
+  APPOINTMENT_STATUS_META[status]?.label ?? status;
+
+export const REQUEST_TIMEOUT_EXPLANATION =
+  "The requested consultation time passed before the request was confirmed. You may submit a new consultation request.";
 
 export const getAppointmentStatusMeta = (status) =>
   APPOINTMENT_STATUS_META[status] || (isLegacyAppointmentStatus(status) ? { label: `${status} (Legacy)`, group: "legacy" } : {

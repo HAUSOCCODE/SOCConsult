@@ -12,11 +12,15 @@ import { api } from "../../api/apiClient";
 import useDialogFocus from "../../hooks/useDialogFocus";
 import { fetchPhilippineHolidays, yearsForCalendarRange } from "../../services/philippineHolidayService";
 import { isRecoverableStudentError, safeStudentError } from "../../utils/studentUiErrors";
+import { getAppointmentStatusLabel } from "../../utils/appointmentStatus";
 import "./consultation-calendar.css";
 
 const TIMEZONE = "Asia/Manila";
 const PLUGINS = [themePlugin, dayGridPlugin, timeGridPlugin, listPlugin];
 const FINAL_STATUSES = new Set(["Completed", "Rejected", "Cancelled", "Expired", "No Show"]);
+const calendarStatusLabel = (event) => event.kind !== "availability" && event.status === "Expired"
+  ? getAppointmentStatusLabel(event.status)
+  : event.displayStatus || event.status;
 
 const dateKey = (value) => String(value || "").slice(0, 10);
 const addDays = (key, amount) => {
@@ -40,7 +44,7 @@ export function mapSocConsultEvent(event) {
   const participant = event.participantName || event.facultyName || event.student?.name || "Consultation participant";
   return {
     id: `soc-${event.id || event.appointmentId || event.availabilityId}`,
-    title: isAvailability ? event.displayStatus || "Consultation availability" : `${event.displayStatus || event.status}: ${event.topic || event.title || "Consultation"} · ${participant}`,
+    title: isAvailability ? event.displayStatus || "Consultation availability" : `${calendarStatusLabel(event)}: ${event.topic || event.title || "Consultation"} · ${participant}`,
     start: event.start, end: event.end, classNames: [className], editable: false,
     extendedProps: { kind: event.kind || "appointment", socconsultEvent: event },
   };
@@ -62,7 +66,7 @@ function renderEventContent(info) {
   const availability = details.kind === "availability";
   const participant = source.participantName || source.facultyName || source.student?.name || "Consultation participant";
   const subject = source.topic || source.title || (availability ? "Consultation availability" : "Consultation");
-  const status = source.displayStatus || source.status || (availability ? "Available" : "Scheduled");
+  const status = calendarStatusLabel(source) || (availability ? "Available" : "Scheduled");
   const compact = view.type === "dayGridMonth";
   return <span className={`soc-calendar-event-card ${compact ? "is-month-card" : "is-time-card"}`}>
     <span className="soc-calendar-event-meta"><span>{timeText}</span><span>{status}</span></span>
@@ -192,7 +196,7 @@ function CalendarError({ message, onRetry, retryable }) { return <div role="aler
 function CalendarEventModal({ event, opener, onClose }) {
   const availability = event.kind === "availability";
   const mode = event.mode || event.consultationMode;
-  return <ModalShell title={availability ? "Availability Details" : "Consultation Details"} labelledBy="calendar-event-details-title" opener={opener} onClose={onClose}><dl className="grid min-h-0 gap-4 overflow-y-auto p-5 sm:grid-cols-2"><ModalDetail label={availability ? "Availability" : "Subject"} value={event.topic || event.title} wide />{!availability && <ModalDetail label="Participant" value={event.participantName || event.facultyName || event.student?.name} />}<ModalDetail label="Status" value={event.displayStatus || event.status} /><ModalDetail label="Date" value={fullDateLabel(event.start)} /><ModalDetail label="Time (Asia/Manila)" value={`${timeLabel(event.start)} – ${timeLabel(event.end)}`} /><ModalDetail label="Mode" value={mode} /><ModalDetail label={mode === "Online" ? "Meeting platform" : "Location"} value={mode === "Online" ? event.meetingPlatform : event.location} />{!availability && event.reason && <ModalDetail label="Reason / notes" value={event.reason} wide />}</dl></ModalShell>;
+  return <ModalShell title={availability ? "Availability Details" : "Consultation Details"} labelledBy="calendar-event-details-title" opener={opener} onClose={onClose}><dl className="grid min-h-0 gap-4 overflow-y-auto p-5 sm:grid-cols-2"><ModalDetail label={availability ? "Availability" : "Subject"} value={event.topic || event.title} wide />{!availability && <ModalDetail label="Participant" value={event.participantName || event.facultyName || event.student?.name} />}<ModalDetail label="Status" value={calendarStatusLabel(event)} /><ModalDetail label="Date" value={fullDateLabel(event.start)} /><ModalDetail label="Time (Asia/Manila)" value={`${timeLabel(event.start)} – ${timeLabel(event.end)}`} /><ModalDetail label="Mode" value={mode} /><ModalDetail label={mode === "Online" ? "Meeting platform" : "Location"} value={mode === "Online" ? event.meetingPlatform : event.location} />{!availability && event.reason && <ModalDetail label="Reason / notes" value={event.reason} wide />}</dl></ModalShell>;
 }
 
 function HolidayModal({ selection, onClose }) {
