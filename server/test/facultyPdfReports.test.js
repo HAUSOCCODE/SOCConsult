@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import { inflateSync } from "node:zlib";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import app from "../src/app.js";
@@ -47,11 +48,81 @@ test("PDFKit output is a readable multi-page PDF with deterministic metadata and
   assert.match(bytes.toString("latin1"), /\/Count\s+[2-9]\d*/);
 });
 
+function renderedPages(bytes) {
+  const source = bytes.toString("latin1");
+  const streams = [...source.matchAll(/\bstream\r?\n([\s\S]*?)\r?\nendstream\b/g)]
+    .map(([, stream]) => inflateSync(Buffer.from(stream, "latin1")).toString());
+  const cmap = streams.find(stream => stream.includes("begincmap"));
+  const glyphs = new Map();
+  for (const [, start, values] of cmap.matchAll(/<(\w+)>\s*<\w+>\s*\[([^\]]+)\]/g)) {
+    let glyph = parseInt(start, 16);
+    for (const [, value] of values.matchAll(/<([\da-f\s]+)>/gi)) {
+      glyphs.set(glyph++, String.fromCharCode(...value.replace(/\s/g, "").match(/.{4}/g).map(hex => parseInt(hex, 16))));
+    }
+  }
+  return streams.filter(stream => stream.startsWith("1 0 0 -1 0 595.28 cm")).map(stream =>
+    [...stream.matchAll(/<([\da-f]+)>/gi)].map(([, run]) =>
+      run.match(/.{4}/g).map(hex => glyphs.get(parseInt(hex, 16))).join("")).join(""));
+}
+
+test("a one-row PDF has its page number on the same page as the table", async () => {
+  const now = new Date("2026-01-03T01:00:00Z");
+  const report = buildFacultyReport([{ status: "Expired", subject: "Synthetic course", startAt: now }],
+    { name: "Professor Example" }, { startDate: "2026-01-01", endDate: "2026-01-31" }, now);
+  const pages = renderedPages(await generateFacultyReportPdf(report));
+  assert.equal(pages.length, 1);
+  assert.match(pages[0], /Synthetic course.*Page 1 of 1$/);
+});
+
+test("PDF keeps long fields and student ID intact and puts each footer on its own data page", async () => {
+  const filters = { startDate: "2026-01-01", endDate: "2026-01-31" };
+  const now = new Date("2026-01-03T01:00:00Z");
+  const faculty = { firstName: "María Alejandra Celestina".repeat(3), lastName: "Dela Cruz" };
+  const row = {
+    student: {
+      firstName: "María Alejandra Celestina Esperanza Valentina Magdalena Catalina de la Cruz",
+      middleName: "Isabel Josefina Rosalinda Francisca Victoria Carolina Antonieta del Rosario",
+      lastName: "Fernández de los Santos Villanueva Montenegro Cristóbal",
+      studentId: "DEMO-FULL-ID",
+    },
+    subject: "Advanced Software Engineering and Human Computer Interaction ".repeat(2) + "Capstone Review",
+    reason: ("W".repeat(12) + " ").repeat(75) + "Final concern sentence.",
+    startAt: now, consultationMode: "Online", status: "Expired",
+  };
+  const report = buildFacultyReport([row], faculty, filters, now);
+  assert.equal(report.records[0].concern, row.reason);
+  const single = renderedPages(await generateFacultyReportPdf(report));
+  assert.equal(single.length, 1);
+  for (const text of ["María", "Cristóbal", "DEMO-FULL-ID", "Capstone Review", "Final concern sentence.", "Expired", "Page 1 of 1"])
+    assert.ok(single[0].includes(text), `Missing rendered text: ${text}`);
+  const ordinary = { ...row, student: { name: "Fictional Learner" }, subject: "Algorithms", reason: "Review examples." };
+  const multiple = renderedPages(await generateFacultyReportPdf(buildFacultyReport(
+    Array.from({ length: 34 }, (_, index) => ({ ...(index === 11 ? row : ordinary), subject: `Synthetic course ${index + 1}` })),
+    faculty, filters, now,
+  )));
+  assert.ok(multiple.length > 1);
+  multiple.forEach((page, index) => {
+    assert.match(page, /Student \/ ID.*Attendance Outcome.*Synthetic course/);
+    assert.ok(page.endsWith(`Page ${index + 1} of ${multiple.length}`));
+  });
+  assert.deepEqual([...multiple.join("").matchAll(/Synthetic course (\d+)/g)].map(match => +match[1]),
+    Array.from({ length: 34 }, (_, index) => index + 1));
+});
+
+test("report keeps a historical appointment whose populated Student account is unavailable", () => {
+  const row = { student: null, status: "Completed" };
+  const report = buildFacultyReport([row], { name: "Professor Example" }, {}, new Date());
+  assert.equal(report.summary.total, 1);
+  assert.equal(report.records[0].student, "Student unavailable");
+  assert.equal(report.records[0].institutionalId, "—");
+  assert.equal(report.records[0].attendanceOutcome, "Not finalized");
+});
+
 function harness({ rows = null, role = "faculty", failMetadata = false } = {}) {
   const actor = id(), student = id(), records = rows || [{ _id: id(), student: { _id: student, name: "Assigned Student", studentId: "S-1" }, subject: "Algorithms", reason: "Review", startAt: new Date("2026-01-10T01:00:00Z"), consultationMode: "Online", status: "Completed", attendance: { finalOutcome: "Completed" } }];
   const restores = [], metadata = [], audits = [], queries = [];
   const patch = (object, key, value) => { const original = object[key]; object[key] = value; restores.push(() => object[key] = original); };
-  patch(Appointment, "find", query => { queries.push(query); const chain = { select: () => chain, populate: () => chain, sort: () => chain, limit: () => chain, lean: async () => records }; return chain; });
+  patch(Appointment, "find", query => { queries.push(query); const chain = { select: () => chain, populate: () => chain, sort: () => chain, limit: () => chain, lean: async () => typeof records === "function" ? records(query, actor) : records }; return chain; });
   patch(User, "findOne", query => { const value = String(query._id) === actor && query.role === role ? { _id: actor, name: "Faculty Owner", role, accountStatus: "Active" } : null; const chain = { select: () => chain, lean: async () => value, session: () => Promise.resolve(value) }; return chain; });
   patch(mongoose, "startSession", async () => ({ withTransaction: async work => work(), endSession: async () => {} }));
   patch(ReportExport, "create", async values => { if (failMetadata) throw new Error("metadata failed"); const model = new ReportExport(values[0]); await model.validate(); metadata.push(model.toObject()); return [model]; });
@@ -72,6 +143,65 @@ test("personal service generates only owned rows and atomically records forged-p
     assert.equal(h.audits[0].action, "report_generated"); assert.equal(h.audits[0].actorRole, "faculty");
     assert.doesNotMatch(JSON.stringify(h.metadata), /records|bytes|Assigned Student|Algorithms/);
     assert.deepEqual(h.records, before);
+  } finally { h.restore(); }
+});
+
+test("Faculty export filters select matching records and totals at Manila day boundaries", async () => {
+  const start = "2026-01-09T16:00:00.000Z";
+  const end = "2026-01-10T15:59:59.999Z";
+  const fixtures = [
+    ["Completed", "Completed", "Online", start],
+    ["Cancelled", null, "Face-to-Face", end],
+    ["Rejected", null, "Online", start],
+    ["Expired", null, "Face-to-Face", start],
+    ["Attendance Review", null, "Online", end],
+    ["Completed", "Student No-show", "Online", end],
+    ["Completed", "Faculty No-show", "Face-to-Face", end],
+    ["Completed", null, "Online", end],
+    ["Completed", "Completed", "Online", "2026-01-09T15:59:59.999Z"],
+    ["Completed", "Completed", "Online", "2026-01-10T16:00:00.000Z"],
+    ["Completed", "Completed", "Online", start, id()],
+  ];
+  const h = harness({ rows(query, owner) {
+    return fixtures.map(([status, finalOutcome, consultationMode, instant, faculty = owner], index) => ({
+      status, attendance: { finalOutcome }, consultationMode, startAt: new Date(instant), faculty, subject: `Fixture ${index + 1}`,
+    })).filter(row =>
+      row.faculty === query.faculty &&
+      (query.status.$in?.includes(row.status) ?? row.status === query.status) &&
+      row.startAt >= query.startAt.$gte && row.startAt < query.startAt.$lt &&
+      (!query.consultationMode || query.consultationMode === row.consultationMode) &&
+      (!query["attendance.finalOutcome"] || query["attendance.finalOutcome"] === row.attendance.finalOutcome));
+  } });
+  const actor = { id: h.actor, role: h.role, accountStatus: "Active" };
+  const period = { startDate: "2026-01-10", endDate: "2026-01-10" };
+  try {
+    for (const [filter, expected] of [
+      [{}, [1, 2, 3, 4, 5, 6, 7, 8]],
+      [{ status: "Completed" }, [1, 6, 7, 8]],
+      [{ status: "Cancelled" }, [2]],
+      [{ status: "Rejected" }, [3]],
+      [{ status: "Expired" }, [4]],
+      [{ status: "Attendance Review" }, [5]],
+      [{ attendanceOutcome: "Completed" }, [1]],
+      [{ attendanceOutcome: "Student No-show" }, [6]],
+      [{ attendanceOutcome: "Faculty No-show" }, [7]],
+      [{ mode: "Online" }, [1, 3, 5, 6, 8]],
+      [{ mode: "Face-to-Face" }, [2, 4, 7]],
+      [{ status: "Expired", mode: "Face-to-Face" }, [4]],
+    ]) {
+      const result = await createFacultyReport({ ...period, ...filter }, actor);
+      assert.equal(result.total, expected.length);
+      const pdf = renderedPages(result.bytes).join("");
+      assert.deepEqual([...pdf.matchAll(/Fixture (\d+)/g)].map(match => +match[1]), expected);
+      assert.ok(pdf.includes(`Total consultation records: ${expected.length}Appointment Status:`));
+      if (!Object.keys(filter).length) {
+        assert.match(pdf, /Jan 10, 2026, 00:00.*Jan 10, 2026, 23:59/);
+        assert.match(pdf, /Completed: 4 \| Cancelled: 1 \| Rejected: 1 \| Expired: 1 \| Attendance Review: 1/);
+        assert.match(pdf, /Completed: 1 \| Student No-show: 1 \| Faculty No-show: 1 \| Not finalized: 5/);
+      }
+    }
+    await assert.rejects(createFacultyReport({ ...period, status: "Expired", attendanceOutcome: "Completed" }, actor), { statusCode: 404 });
+    await assert.rejects(createFacultyReport({ ...period, status: "Request Timed Out" }, actor), { statusCode: 400 });
   } finally { h.restore(); }
 });
 
