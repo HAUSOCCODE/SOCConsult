@@ -47,7 +47,7 @@ test("Manila form input and prefill round-trip midnight/leap boundaries in any h
 });
 
 test("management rejects stale/unmounted refreshes and keeps Dean route bases and reservation guidance", async () => {
-  const h = await management(); h.render(); const cleanup = h.effects[1]();
+  const h = await management(); h.render(); const cleanup = h.effects[0]();
   h.listeners.focus(); h.pending[1].resolve({ availability: [] }); await settle();
   h.pending[0].resolve({ availability: [{ _id: "stale" }] }); await settle();
   let tree = h.render({ routeBase: "/dean/faculty", consultationsPath: "/dean/faculty/consultations" });
@@ -57,12 +57,12 @@ test("management rejects stale/unmounted refreshes and keeps Dean route bases an
   assert.deepEqual(h.state[3], []);
   const slot = { _id: "slot", startAt: "2099-01-01T02:00:00Z", endAt: "2099-01-01T02:30:00Z", mode: "Online", isActive: true, protected: true };
   const html = renderToStaticMarkup(React.createElement(h.ScheduleCard, { item: slot, expanded: true, consultationsPath: "/dean/faculty/consultations" }));
-  assert.match(html, /Use reschedule or cancellation/); assert.match(html, /href="\/dean\/faculty\/consultations"/);
-  assert.doesNotMatch(html, />Edit<|>Deactivate</); assert.match(html, /disabled=""/);
+  assert.match(html, /This schedule has an existing consultation reservation/); assert.match(html, /href="\/dean\/faculty\/consultations"/);
+  assert.doesNotMatch(html, />Edit<|>Deactivate<|>Remove</);
 });
 
 test("management submits an optional link and Manila instants, guards duplicate clicks and hides raw request errors", async () => {
-  const h = await management(); h.render(); h.effects[1](); h.pending[0].resolve({ availability: [] }); await settle();
+  const h = await management(); h.render(); h.effects[0](); h.pending[0].resolve({ availability: [] }); await settle();
   let tree = h.render();
   const field = type => elements(tree).find(node => node.type === "input" && node.props.type === type);
   field("date").props.onChange({ target: { value: "2099-01-01" } }); tree = h.render();
@@ -80,13 +80,14 @@ test("management submits an optional link and Manila instants, guards duplicate 
 });
 
 test("editing an overnight slot prefills both Manila dates and preserves its UTC instants and version", async () => {
-  const h = await management(); h.render(); h.effects[1]();
+  const h = await management(); h.render(); h.effects[0]();
   const slot = { _id: "overnight", startAt: "2098-12-31T15:30:00.000Z", endAt: "2098-12-31T16:30:00.000Z",
     mode: "Online", meetingPlatform: "Teams", isActive: false, __v: 3 };
   h.pending[0].resolve({ availability: [slot] }); await settle();
   let tree = h.render(); elements(tree).find(node => node.props?.onEdit).props.onEdit(slot); tree = h.render();
-  assert.deepEqual(elements(tree).filter(node => node.type === "input" && node.props.type === "date").map(node => node.props.value), ["2098-12-31", "2099-01-01"]);
-  const saving = elements(tree).find(node => node.type === "form").props.onSubmit({ preventDefault() {} });
+  const form = elements(tree).find(node => node.type === "form");
+  assert.deepEqual(elements(form).filter(node => node.type === "input" && node.props.type === "date").map(node => node.props.value), ["2098-12-31", "2099-01-01"]);
+  const saving = form.props.onSubmit({ preventDefault() {} });
   const body = JSON.parse(h.pending[1].options.body);
   assert.equal(body.startAt, slot.startAt); assert.equal(body.endAt, slot.endAt);
   assert.equal(body.expectedVersion, 3); assert.equal(body.isActive, false);
@@ -108,7 +109,7 @@ test("combined FullCalendar keeps explicit event categories, details and Dean li
 
 for (const action of ["activate", "remove"]) test(action + " availability refreshes the integrated calendar after success", async () => {
   const h = await management(); let changed = 0; const props = { onChanged: () => changed++ };
-  h.render(props); h.effects[1]();
+  h.render(props); h.effects[0]();
   const slot = { _id: "slot", isActive: false, startAt: "2099-01-01T02:00:00Z", endAt: "2099-01-01T02:30:00Z", __v: 2 };
   h.pending[0].resolve({ availability: [slot] }); await settle();
   let tree = h.render(props); const card = elements(tree).find(el => el.props?.item?._id === "slot");
@@ -119,4 +120,143 @@ for (const action of ["activate", "remove"]) test(action + " availability refres
   h.pending[1].resolve({ message: "Updated" }); await settle();
   h.pending[2].resolve({ availability: [] }); await settle(); if (work) await work;
   assert.equal(changed, 1);
+});
+
+const semesterSlot = (_id, extra = {}) => ({
+  _id, startAt: "2098-12-31T16:00:00.000Z", endAt: "2098-12-31T16:30:00.000Z",
+  mode: "Online", isActive: true, __v: 4, ...extra,
+});
+const button = (tree, label) => elements(tree).find(node => node.type === "button" &&
+  [node.props.children].flat().filter(child => typeof child === "string").join("").startsWith(label));
+const cards = tree => elements(tree).filter(node => node.props?.item).map(node => node.props.item._id);
+
+test("published schedules group by end time, show empty states, and keep ongoing and historical cards read-only", async () => {
+  const h = await management(); h.render(); h.effects[0]();
+  const now = Date.now();
+  const ongoing = semesterSlot("ongoing", { startAt: new Date(now - 60_000), endAt: new Date(now + 60_000) });
+  const active = semesterSlot("active"), inactive = semesterSlot("inactive", { isActive: false });
+  const past = semesterSlot("past", { startAt: new Date(now - 120_000), endAt: new Date(now) });
+  h.pending[0].resolve({ availability: [active, inactive, ongoing, past] }); await settle();
+  let tree = h.render();
+  assert.deepEqual(cards(tree), ["active", "inactive", "ongoing"]);
+  assert.equal(button(tree, "Current & Upcoming").props["aria-pressed"], true);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, />Active<.*>Inactive</);
+  assert.match(html, /This schedule has already started/);
+  for (const [item, label] of [[ongoing, /already started/], [past, /Expired/],
+    [semesterSlot("starts-now", { startAt: new Date(now), endAt: new Date(now + 1) }), /already started/]]) {
+    const card = renderToStaticMarkup(React.createElement(h.ScheduleCard, { item, expanded: true, now }));
+    assert.match(card, label);
+    assert.doesNotMatch(card, />Edit<|>Activate<|>Deactivate<|>Remove</);
+  }
+  button(tree, "Past Schedules").props.onClick(); tree = h.render();
+  assert.deepEqual(cards(tree), ["past"]);
+  assert.match(renderToStaticMarkup(tree), />Expired</);
+  h.listeners.focus(); h.pending[1].resolve({ availability: [] }); await settle();
+  tree = h.render(); assert.match(renderToStaticMarkup(tree), /No past schedules\./);
+  button(tree, "Current & Upcoming").props.onClick();
+  assert.match(renderToStaticMarkup(h.render()), /No current or upcoming schedules\./);
+});
+
+async function semesterManagement(availability, props = {}) {
+  const h = await management(); h.render(props); h.effects[0]();
+  h.pending[0].resolve({ availability }); await settle();
+  button(h.render(props), "End Semester Availability").props.onClick();
+  const render = () => h.render(props);
+  const date = (label, value) => elements(render()).find(node => node.props?.label === `Semester ${label} Date`)
+    .props.children.props.onChange({ target: { value } });
+  const confirm = () => {
+    button(render(), "Review Deactivation").props.onClick();
+    return elements(render()).find(node => node.props.title === "Confirm End Semester Availability").props;
+  };
+  return { ...h, render, date, confirm };
+}
+
+test("semester preview validates both dates and includes both Manila date boundaries by schedule start", async () => {
+  const first = semesterSlot("first");
+  const last = semesterSlot("last", { startAt: "2099-01-02T15:59:59.999Z", endAt: "2099-01-02T16:30:00Z" });
+  const h = await semesterManagement([first, last,
+    semesterSlot("previous-day", { startAt: "2098-12-31T15:59:59.999Z" }),
+    semesterSlot("next-day", { startAt: "2099-01-02T16:00:00Z", endAt: "2099-01-02T16:30:00Z" }),
+    semesterSlot("inactive", { isActive: false }), semesterSlot("protected", { protected: true }),
+  ], { consultationsPath: "/dean/faculty/consultations" });
+  assert.match(renderToStaticMarkup(h.render()), /Select both dates/);
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
+  h.date("Start", "2099-01-02"); h.date("End", "2099-01-01");
+  assert.match(renderToStaticMarkup(h.render()), /end date on or after the start date/);
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
+  h.date("Start", "2099-02-29"); h.date("End", "2099-03-01");
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
+  h.date("Start", "2099-01-04"); h.date("End", "2099-01-04");
+  assert.match(renderToStaticMarkup(h.render()), /No eligible schedules/);
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
+  h.date("Start", "2099-01-01"); h.date("End", "2099-01-02");
+  const html = renderToStaticMarkup(h.render());
+  assert.match(html, /2 eligible for deactivation/);
+  assert.match(html, /2 to skip \(1 inactive, 0 started or ended, 1 reserved\)/);
+  assert.match(html, /href="\/dean\/faculty\/consultations"/);
+  const confirm = h.confirm();
+  assert.match(confirm.message, /Deactivate 2 schedules from 2099-01-01 through 2099-01-02/);
+  assert.equal(h.pending.length, 1);
+  confirm.onCancel(); assert.equal(h.pending.length, 1);
+});
+
+test("semester confirmation is sequential and versioned, reports partial outcomes, and shows refreshed records", async () => {
+  const available = ["ok", "new-reservation", "stale", "network", "unconfirmed"].map(id => semesterSlot(id));
+  const inactive = semesterSlot("inactive", { isActive: false }), reserved = semesterSlot("reserved", { protected: true });
+  const expired = semesterSlot("expired", { startAt: "2020-01-01T02:00:00Z", endAt: "2020-01-01T02:30:00Z" });
+  const otherDay = semesterSlot("outside", { startAt: "2099-01-02T16:00:00Z", endAt: "2099-01-02T16:30:00Z" });
+  let changes = 0;
+  const h = await semesterManagement([...available, inactive, reserved, expired, otherDay], { onChanged: () => changes++ });
+  h.date("Start", "2020-01-01"); h.date("End", "2099-01-02");
+  assert.match(renderToStaticMarkup(h.render()), /3 to skip \(1 inactive, 1 started or ended, 1 reserved\)/);
+  const confirm = h.confirm();
+  const work = confirm.onConfirm(); await confirm.onConfirm();
+  assert.equal(h.pending.length, 2);
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
+  const outcomes = [
+    request => request.resolve({ availability: semesterSlot("ok", { isActive: false, __v: 5 }) }),
+    request => request.reject(Object.assign(Error("This slot has a reserved consultation. Use the consultation reschedule or cancellation workflow."), { status: 409 })),
+    request => request.reject(Object.assign(Error("This availability changed. Refresh and try again."), { status: 409 })),
+    request => request.reject(Error("PRIVATE network failure")),
+    request => request.resolve({ availability: semesterSlot("unconfirmed") }),
+  ];
+  for (const [index, settleRequest] of outcomes.entries()) {
+    assert.equal(h.pending.length, index + 2);
+    const request = h.pending[index + 1];
+    assert.equal(request.path, `/availability/${available[index]._id}`);
+    assert.equal(request.options.method, "PUT");
+    assert.deepEqual(JSON.parse(request.options.body), { isActive: false, expectedVersion: 4 });
+    settleRequest(request); await settle();
+  }
+  const refresh = h.pending.at(-1);
+  assert.equal(refresh.path, "/availability/mine");
+  assert.equal(refresh.options.cache, "no-store");
+  refresh.resolve({ availability: [semesterSlot("ok", { isActive: false }), inactive, reserved, expired, otherDay] });
+  await work;
+  const tree = h.render();
+  assert.deepEqual(cards(tree), ["ok", "inactive", "reserved", "outside"]);
+  assert.equal(elements(tree).find(node => node.props?.item?._id === "ok").props.item.isActive, false);
+  assert.equal(changes, 1);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /1 deactivated/);
+  assert.match(html, /5 skipped \(1 inactive, 1 started or ended, 2 reserved, 1 changed or removed\)/);
+  assert.match(html, /2 updates could not be confirmed/);
+  assert.doesNotMatch(html, /PRIVATE/);
+});
+
+test("semester authorization failure stops further updates and keeps the result visible if refresh fails", async () => {
+  const h = await semesterManagement([semesterSlot("first"), semesterSlot("second")]);
+  h.date("Start", "2099-01-01"); h.date("End", "2099-01-01");
+  const work = h.confirm().onConfirm();
+  h.pending[1].reject(Object.assign(Error("Forbidden"), { status: 403 })); await settle();
+  assert.equal(h.pending.length, 3);
+  assert.equal(h.pending[2].path, "/availability/mine");
+  h.pending[2].reject(Error("Offline")); await work;
+  const html = renderToStaticMarkup(h.render());
+  assert.match(html, /Unable to load availability/);
+  assert.match(html, /0 deactivated/);
+  assert.match(html, /1 update could not be confirmed/);
+  assert.match(html, /1 schedule left unprocessed/);
+  assert.equal(button(h.render(), "Review Deactivation").props.disabled, true);
 });

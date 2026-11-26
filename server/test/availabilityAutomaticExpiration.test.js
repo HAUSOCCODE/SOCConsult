@@ -39,8 +39,9 @@ test("Student and Faculty availability UIs use end-time expiration and expose an
   assert.match(studentList, /item\.endAt/);
   assert.match(studentList, /\["all", "active", "inactive", "expired"\]/);
   assert.match(studentList, /!expired/);
-  assert.match(facultyPage, /new Date\(item\.endAt\) <= new Date\(\)/);
-  assert.doesNotMatch(facultyPage, /new Date\(item\.startAt\) <= new Date\(\)/);
+  assert.match(facultyPage, /const hasEnded = \(item, now\) => new Date\(item\.endAt\) <= now;/);
+  assert.match(facultyPage, /const expired = hasEnded\(item, now\)/);
+  assert.match(facultyPage, /const statusLabel = expired\s*\? "Expired"/);
   assert.match(studentController, /availabilityWithStatus/);
   assert.match(facultyController, /availabilityStatus\(schedule, now\)/);
 });

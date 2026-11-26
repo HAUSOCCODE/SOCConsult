@@ -48,6 +48,23 @@ const validMeetingLink = (value) => {
 
 const localParts = manilaInputParts;
 const toTimestamp = (date, time) => parseManilaInput(date, time).toISOString();
+const hasEnded = (item, now) => new Date(item.endAt) <= now;
+const canChange = (item, now) =>
+  !hasEnded(item, now) && new Date(item.startAt) > now && !item.protected;
+const reservationGuidance = "This schedule has an existing consultation reservation. Review the consultation before changing its availability.";
+
+function previewDeactivation(availability, first, afterLast, now) {
+  const preview = { eligible: [], started: 0, inactive: 0, protected: 0 };
+  for (const item of availability) {
+    const start = new Date(item.startAt);
+    if (!(start >= first && start < afterLast)) continue;
+    if (hasEnded(item, now) || start <= now) preview.started++;
+    else if (!item.isActive) preview.inactive++;
+    else if (item.protected) preview.protected++;
+    else preview.eligible.push(item);
+  }
+  return preview;
+}
 
 const formatLocation = (value) => {
   const text = String(value || "").trim();
@@ -84,12 +101,12 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
   const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [toggling, setToggling] = useState(false);
   const [expandedScheduleId, setExpandedScheduleId] = useState(null);
-
-  useEffect(() => {
-    if (availability?.length && expandedScheduleId === null) {
-      setExpandedScheduleId(availability[0]._id);
-    }
-  }, [availability, expandedScheduleId]);
+  const [showPast, setShowPast] = useState(false);
+  const [showSemester, setShowSemester] = useState(false);
+  const [period, setPeriod] = useState({ startDate: "", endDate: "" });
+  const [semesterTarget, setSemesterTarget] = useState(null);
+  const [endingSemester, setEndingSemester] = useState(false);
+  const [semesterResult, setSemesterResult] = useState(null);
 
   const load = async () => {
     const sequence = ++requestSequence.current;
@@ -202,6 +219,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
   };
 
   const edit = (item) => {
+    if (mutationBusy.current || !canChange(item, Date.now())) return;
     const start = localParts(item.startAt);
     const end = localParts(item.endAt);
     setEditingId(item._id);
@@ -233,10 +251,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
     mutationBusy.current = true;
     setToggling(true);
     try {
-      const data = await api(`/availability/${item._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ isActive: !item.isActive, expectedVersion: item.__v ?? 0 }),
-      });
+      const data = await setActiveState(item, !item.isActive);
       toast.success(data.message);
       await load();
       onChanged?.();
@@ -250,8 +265,56 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
   };
 
   const toggle = (item) => {
+    if (mutationBusy.current || !canChange(item, Date.now())) return;
     if (item.isActive) setDeactivateTarget(item);
     else void updateActiveState(item);
+  };
+
+  const setActiveState = (item, isActive) => api(`/availability/${item._id}`, {
+    method: "PUT",
+    body: JSON.stringify({ isActive, expectedVersion: item.__v ?? 0 }),
+  });
+
+  const endSemester = async () => {
+    if (!semesterTarget?.eligible.length || mutationBusy.current) return;
+    mutationBusy.current = true;
+    setEndingSemester(true);
+    setSemesterResult(null);
+    const { eligible, ...previewCounts } = semesterTarget;
+    const result = { ...previewCounts, deactivated: 0, changed: 0, failed: 0, notAttempted: 0, stopped: "" };
+    try {
+      for (const [index, item] of eligible.entries()) {
+        if (!canChange(item, Date.now())) {
+          result.started++;
+          continue;
+        }
+        try {
+          const data = await setActiveState(item, false);
+          if (data?.availability?._id === item._id && data.availability.isActive === false) result.deactivated++;
+          else result.failed++;
+        } catch (error) {
+          if (error?.status === 409 && error.message === "This slot has a reserved consultation. Use the consultation reschedule or cancellation workflow.") result.protected++;
+          else if ([404, 409].includes(error?.status)) result.changed++;
+          else {
+            result.failed++;
+            if ([401, 403, 429].includes(error?.status)) {
+              result.notAttempted = eligible.length - index - 1;
+              result.stopped = error.status === 429
+                ? "The server is limiting requests. Wait before trying again."
+                : "Your session or permissions could not be verified. Sign in again if needed.";
+              break;
+            }
+          }
+        }
+      }
+      await load();
+      if (result.deactivated) onChanged?.();
+    } finally {
+      setSemesterResult(result);
+      setSemesterTarget(null);
+      setEndingSemester(false);
+      mutationBusy.current = false;
+    }
   };
 
   const remove = async () => {
@@ -277,8 +340,19 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
     }
   };
 
-  if (loadError) return <ErrorState message={loadError} onRetry={load} />;
-  if (!availability) return <Loading />;
+  if (!availability) return loadError ? <ErrorState message={loadError} onRetry={load} /> : <Loading />;
+
+  const now = Date.now();
+  const past = availability.filter(item => hasEnded(item, now));
+  const current = availability.filter(item => !hasEnded(item, now));
+  const visible = showPast ? past : current;
+  const controlsDisabled = Boolean(loadError) || saving || removing || toggling || endingSemester;
+  const { startDate, endDate } = period;
+  const first = parseManilaInput(startDate, "00:00");
+  const lastMinute = parseManilaInput(endDate, "23:59");
+  const preview = showSemester && first && lastMinute && first <= lastMinute
+    ? previewDeactivation(availability, first, +lastMinute + 60_000, now)
+    : null;
 
   return (
     <div className="grid w-full min-w-0 max-w-full gap-5 pb-20 md:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)] md:items-start min-[1200px]:grid-cols-1 min-[1200px]:gap-5">
@@ -305,6 +379,19 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
         onConfirm={() => updateActiveState(deactivateTarget)}
         onCancel={() => !toggling && setDeactivateTarget(null)}
       />
+      <ConfirmDialog
+        open={Boolean(semesterTarget)}
+        title="Confirm End Semester Availability"
+        message={semesterTarget && `Deactivate ${semesterTarget.eligible.length} ${semesterTarget.eligible.length === 1 ? "schedule" : "schedules"} from ${semesterTarget.startDate} through ${semesterTarget.endDate} (Asia/Manila)?`}
+        supportingText="Students cannot book deactivated schedules. The server checks each schedule again before updating it."
+        confirmLabel="Deactivate Schedules"
+        loadingLabel="Deactivating schedules…"
+        variant="default"
+        loading={endingSemester}
+        onConfirm={endSemester}
+        onCancel={() => !mutationBusy.current && setSemesterTarget(null)}
+      />
+      {loadError && <div className="md:col-span-full"><ErrorState message={loadError} onRetry={load} /></div>}
       <section className="w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm min-[1200px]:p-5">
         <h2 className="text-base font-bold text-maroon-900">
           Add Consultation Availability
@@ -457,7 +544,7 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setForm({ ...form, isActive: event.target.checked })} />Active and available for booking</label>
           <div className="flex min-w-0 flex-col items-stretch gap-2 min-[1200px]:flex-row min-[1200px]:items-center">
             <button
-              disabled={saving}
+              disabled={controlsDisabled}
               className="btn-primary h-10 min-h-0 w-full rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 min-[1200px]:w-[168px]"
             >
               {saving
@@ -480,30 +567,77 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
       </section>
 
       <section className="min-w-0">
-        <h2 className="mb-3 text-lg font-bold text-slate-900">
-          Published Schedules
-        </h2>
-        {availability.length === 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold text-slate-900">Published Schedules</h2>
+          <button type="button" className="btn-secondary" aria-expanded={showSemester}
+            aria-controls="semester-availability" disabled={controlsDisabled} onClick={() => setShowSemester(value => !value)}>
+            End Semester Availability
+          </button>
+        </div>
+        <div id="semester-availability" hidden={!showSemester} className="mb-3 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm text-slate-600">Select a date range in Asia/Manila. Schedules count if their start date falls on or between the two dates.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Semester Start Date">
+              <input className="field mt-1.5" type="date" value={startDate} disabled={endingSemester}
+                onChange={event => setPeriod({ ...period, startDate: event.target.value })} />
+            </Field>
+            <Field label="Semester End Date">
+              <input className="field mt-1.5" type="date" value={endDate} disabled={endingSemester}
+                onChange={event => setPeriod({ ...period, endDate: event.target.value })} />
+            </Field>
+          </div>
+          <div aria-live="polite" className="space-y-1 text-sm text-slate-700">
+            {!preview ? <p>{startDate && endDate ? "Enter valid dates with the end date on or after the start date." : "Select both dates to preview schedules."}</p> : <>
+              <p>{preview.eligible.length ? `${preview.eligible.length} eligible for deactivation` : "No eligible schedules in this range."}</p>
+              <p>{preview.started + preview.inactive + preview.protected} to skip ({preview.inactive} inactive, {preview.started} started or ended, {preview.protected} reserved)</p>
+            </>}
+          </div>
+          {preview?.protected > 0 && <ReservationGuidance consultationsPath={consultationsPath} />}
+          <button type="button" className="btn-primary" disabled={controlsDisabled || !preview?.eligible.length}
+            onClick={() => !mutationBusy.current && setSemesterTarget({ ...preview, ...period })}>
+            Review Deactivation
+          </button>
+          <div role="status" className="space-y-1 text-sm text-slate-700">
+            {semesterResult && <>
+              <p className="font-semibold">Deactivation results for {semesterResult.startDate} through {semesterResult.endDate}</p>
+              <p>{semesterResult.deactivated} deactivated</p>
+              <p>{semesterResult.started + semesterResult.inactive + semesterResult.protected + semesterResult.changed} skipped ({semesterResult.inactive} inactive, {semesterResult.started} started or ended, {semesterResult.protected} reserved, {semesterResult.changed} changed or removed)</p>
+              <p>{semesterResult.failed} {semesterResult.failed === 1 ? "update" : "updates"} could not be confirmed</p>
+              {semesterResult.stopped && <p>{semesterResult.stopped}</p>}
+              {semesterResult.notAttempted > 0 && <p>{semesterResult.notAttempted} {semesterResult.notAttempted === 1 ? "schedule" : "schedules"} left unprocessed</p>}
+            </>}
+          </div>
+          {semesterResult?.protected > 0 && !preview?.protected && <ReservationGuidance consultationsPath={consultationsPath} />}
+        </div>
+        <div role="group" aria-label="Published schedule views" className="mb-3 flex flex-wrap gap-2">
+          <button type="button" className={showPast ? "btn-secondary" : "btn-primary"} aria-pressed={!showPast}
+            onClick={() => { setShowPast(false); setExpandedScheduleId(null); }}>Current &amp; Upcoming ({current.length})</button>
+          <button type="button" className={showPast ? "btn-primary" : "btn-secondary"} aria-pressed={showPast}
+            onClick={() => { setShowPast(true); setExpandedScheduleId(null); }}>Past Schedules ({past.length})</button>
+        </div>
+        {visible.length === 0 ? (
           <EmptyState
-            title="No consultation schedules published yet."
-            text="Create an availability schedule above to make consultation times available to Students."
+            title={showPast ? "No past schedules." : "No current or upcoming schedules."}
+            text={showPast ? "Ended availability appears here." : "Add a consultation availability schedule to publish new times."}
           />
         ) : (
           <div className="grid min-w-0 grid-cols-1 gap-3 min-[1200px]:grid-cols-2">
-            {availability.map((item) => (
+            {visible.map((item, index) => (
               <ScheduleCard
                 key={item._id}
                 consultationsPath={consultationsPath}
                 item={item}
+                now={now}
+                controlsDisabled={controlsDisabled}
                 onEdit={edit}
                 onToggle={toggle}
-                onRemove={(id) =>
-                  setRemoveTarget(availability.find((item) => item._id === id))
-                }
-                expanded={expandedScheduleId === item._id}
+                onRemove={() => {
+                  if (!mutationBusy.current && canChange(item, Date.now())) setRemoveTarget(item);
+                }}
+                expanded={expandedScheduleId === null ? index === 0 : expandedScheduleId === item._id}
                 onExpand={() =>
                   setExpandedScheduleId((current) =>
-                    current === item._id ? "" : item._id,
+                    current === item._id || (current === null && index === 0) ? "" : item._id,
                   )
                 }
               />
@@ -517,6 +651,8 @@ export default function ManageAvailability({ routeBase = "/faculty", consultatio
 
 function ScheduleCard({
   item,
+  now = Date.now(),
+  controlsDisabled = false,
   onEdit,
   onToggle,
   onRemove,
@@ -531,7 +667,7 @@ function ScheduleCard({
     day: "numeric",
   };
   const timeOptions = { hour: "numeric", minute: "2-digit" };
-  const expired = item.status === "expired" || new Date(item.endAt) <= new Date();
+  const expired = hasEnded(item, now);
   const statusLabel = expired
     ? "Expired"
     : item.isActive
@@ -581,11 +717,11 @@ function ScheduleCard({
         </dl>
       </div>
 
-      <div className={`${expanded ? "flex" : "hidden"} min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-2.5 md:flex`}>
-        {!expired && !item.protected && (
-          <>
+      {canChange(item, now) && (
+        <div className={`${expanded ? "flex" : "hidden"} min-w-0 flex-wrap items-center justify-center gap-2 border-t border-slate-200 bg-slate-50/70 p-2.5 md:flex`}>
             <button
               type="button"
+              disabled={controlsDisabled}
               onClick={() => onEdit(item)}
               className="btn-action-sm h-8 w-auto gap-1.5 px-2.5"
             >
@@ -594,27 +730,32 @@ function ScheduleCard({
             </button>
             <button
               type="button"
+              disabled={controlsDisabled}
               onClick={() => onToggle(item)}
               className={`inline-flex h-8 w-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold transition-colors duration-150 focus-visible:ring-2 ${item.isActive ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 focus-visible:ring-amber-200" : "border-maroon-200 bg-white text-maroon-800 hover:bg-maroon-50 focus-visible:ring-maroon-100"}`}
             >
               <Power size={14} aria-hidden="true" />
               {item.isActive ? "Deactivate" : "Activate"}
             </button>
-          </>
-        )}
-        <button
-          type="button"
-          disabled={expired || item.protected}
-          onClick={() => onRemove(item._id)}
-          className="btn-danger-action-sm h-8 w-auto gap-1.5 px-2.5"
-        >
-          <Trash2 size={14} aria-hidden="true" />
-          Remove
-        </button>
-      </div>
-      {item.protected && <p className="p-3 text-sm text-amber-900">Reserved consultation. <Link className="font-semibold underline" to={consultationsPath}>Use reschedule or cancellation</Link> to change it.</p>}
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onClick={onRemove}
+              className="btn-danger-action-sm h-8 w-auto gap-1.5 px-2.5"
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Remove
+            </button>
+        </div>
+      )}
+      {!expired && new Date(item.startAt) <= now && <p className="p-3 text-sm text-slate-600">This schedule has already started.</p>}
+      {item.protected && <div className="p-3"><ReservationGuidance consultationsPath={consultationsPath} /></div>}
     </article>
   );
+}
+
+function ReservationGuidance({ consultationsPath }) {
+  return <p className="text-sm text-amber-900">{reservationGuidance} <Link className="font-semibold underline" to={consultationsPath}>Open Consultations</Link></p>;
 }
 
 function ScheduleDetail({ icon: Icon, label, className = "", children }) {

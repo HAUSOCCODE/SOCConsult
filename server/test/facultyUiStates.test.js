@@ -21,7 +21,8 @@ test("Faculty pages expose intentional loading, empty, and retry states", async 
   assert.match(dashboard, /No upcoming Confirmed consultation/);
   assert.match(requests, /Loading consultation requests/);
   assert.match(requests, /No pending consultation requests/);
-  assert.match(availability, /No consultation schedules published yet/);
+  assert.match(availability, /No current or upcoming schedules/);
+  assert.match(availability, /No past schedules/);
   assert.match(calendar, /Loading consultation calendar/);
   assert.match(consultations, /No upcoming consultations/);
   assert.match(history, /No consultation history yet/);
