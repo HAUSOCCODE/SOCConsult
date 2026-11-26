@@ -14,10 +14,17 @@ const messages = {
  PASSWORD_RESET_CONFLICT: 'This account changed. Refresh the user list before trying again.',
  SERVICE_UNAVAILABLE: 'This service is temporarily unavailable. Please try again later.',
  CSV_MISSING: 'Select one CSV file.',
- CSV_UNSUPPORTED: 'Select one supported CSV file without additional fields.',
+ CSV_UNSUPPORTED: 'Select one supported CSV file.',
  CSV_TOO_LARGE: 'CSV file must be 1 MiB or smaller.',
  CSV_EMPTY: 'CSV must contain at least one data row.',
  CSV_INVALID: 'Check the CSV format, required columns, UTF-8 encoding and row limits, then upload again.',
+ CSV_INVALID_HEADERS: 'Give every column a readable, nonempty header on the first row, then upload the CSV again.',
+ CSV_DUPLICATE_HEADERS: 'Rename repeated headers so every source column has a unique name, then upload the CSV again.',
+ CSV_ROW_LIMIT: 'This file exceeds the account limit. Prepare separate CSV files of up to 200 accounts each.',
+ CSV_INVALID_MAPPING: 'Choose source columns from the uploaded CSV and validate the mapping again.',
+ CSV_DUPLICATE_MAPPING: 'Use each account field and source column only once.',
+ CSV_MISSING_MAPPING: 'Map the institutional ID, first name, last name, and official email before validating.',
+ CSV_INVALID_BATCH_ROLE: 'Map a role column or choose Student or Faculty as the batch account type.',
  PASSWORD_INPUT_INVALID: 'Check your current password and the new password requirements.',
  PASSWORD_SAME: 'Choose a new password different from your current password.',
  PASSWORD_CHANGE_UNCERTAIN: 'Password change could not be confirmed. Check whether you can sign in before trying again.',
@@ -44,6 +51,7 @@ export function deanUiError(error, context) {
  if (Object.hasOwn(messages, error?.code)) return messages[error.code];
  if (error?.status === 401) return 'Your session is unavailable. Please sign in again.';
  if (error?.status === 403) return 'You do not have access to this record or action.';
+ if (error?.status === 429 && context === 'csv') return 'Too many CSV uploads. Wait before trying again.';
  if (error?.status === 404) return context === 'csv' || context === 'import' ? messages.PREVIEW_UNAVAILABLE : 'This record is no longer available. Refresh the list.';
  if (error?.status === 409) return context === 'ai' ? 'This narrative changed or was already reviewed. Refresh its status before continuing.' : 'This record changed or was already resolved. Refresh before continuing.';
  if ([400, 413].includes(error?.status)) return context === 'resolution' ? 'Choose a valid action and a reason of up to 500 characters.' : ['pdf', 'ai'].includes(context) ? 'Check the date range and filters, then try again.' : context === 'audit' ? 'Check the date range and audit filters, then try again.' : fallbacks[context] || 'Check the highlighted fields and try again.';

@@ -76,7 +76,7 @@ test("Dean Import preserves template guidance and includes upload and preview", 
   }
   assert.match(html, /Optional value/);
   assert.match(html, /student or faculty only/);
-  assert.match(html, /Dean is not allowed/);
+  assert.match(html, /choose Student or Faculty for the batch/);
   assert.match(html, /200 accounts/);
   assert.match(html, /type="file"/);
   const page = await source("pages/Dean/CsvImport.jsx");

@@ -141,6 +141,50 @@ test("CSV no-file, invalid, empty, oversized, validation progress and same-tick 
   assert.equal(h.state[1], null);
 });
 
+test("CSV discovery, mapping controls, safe errors and validation do not confirm accounts", async () => {
+  const h = await harness("pages/Dean/CsvImport.jsx", "CsvImport");
+  const panel = await harness("components/accounts/CSVUploadPanel.jsx", "CSVUploadPanel");
+  const upload = () => nodes(h.render()).find(n => n.type === h.imports.CSVUploadPanel).props;
+  const event = { preventDefault() {} };
+  const file = new File(["fixture"], "accounts.csv", { type: "text/csv" });
+  upload().onSelect(file);
+  const discovery = upload().onSubmit(event);
+  assert.deepEqual([...h.requests[0].options.body.keys()], ["file"]);
+  h.requests[0].resolve({
+    mappingRequired: true,
+    headers: ["Official Email", "Reference", "Given", "Surname", "Unused"],
+    suggestedColumns: { official_email: 0 },
+  });
+  await discovery;
+  const form = panel.render(upload());
+  const selects = find(form, "select");
+  assert.equal(selects.length, 7);
+  assert.equal(selects[0].props.required, true);
+  assert.equal(selects[2].props.required, false);
+  assert.equal(find(selects[0], "option")[1].props.disabled, true);
+  assert.deepEqual(find(selects[6], "option").map(({ props }) => props.value), ["", "student", "faculty"]);
+  assert.equal(selects[6].props.required, true);
+  assert.match(text(form), /sm:grid-cols-2/);
+  assert.ok(selects.every(({ props }) => props.tabIndex === undefined));
+  for (const [field, index] of [["institutional_id", "1"], ["first_name", "2"], ["last_name", "3"], ["batchRole", "faculty"]])
+    upload().onMappingChange(field, index);
+  const invalid = upload().onSubmit(event);
+  assert.deepEqual(JSON.parse(h.requests[1].options.body.get("mapping")), {
+    columns: [["official_email", 0], ["institutional_id", 1], ["first_name", 2], ["last_name", 3]], batchRole: "faculty",
+  });
+  h.requests[1].reject({ code: "CSV_DUPLICATE_MAPPING", message: "SECRET" });
+  await invalid;
+  assert.match(text(h.render()), /Use each account field and source column only once/);
+  assert.doesNotMatch(text(h.render()), /SECRET/);
+  const retry = upload().onSubmit(event);
+  const preview = { previewId: "mapped", status: "validated", rows: [{ role: "faculty" }] };
+  h.requests[2].resolve(preview);
+  await retry;
+  assert.equal(nodes(h.render()).find(n => n.type === h.imports.CSVValidationPreview).props.preview, preview);
+  assert.ok(h.requests.every(({ path }) => path === "/dean/account-imports/validate"));
+  assert.equal(nodes(h.render()).find(n => n.type === h.imports.ConfirmDialog).props.open, false);
+});
+
 test("AI conflict requires a read-only refresh and unmounted generation cannot replace state", async () => {
   const h = await harness("components/dean/ReportNarrativePanel.jsx", "ReportNarrativePanel");
   const props = { filters: { start: "2026-10-01", end: "2026-10-18" } };

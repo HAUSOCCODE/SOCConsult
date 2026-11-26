@@ -12,15 +12,25 @@ import {
 } from "../services/csvValidationService.js";
 import { publicAccountImport, validPreviewId, sanitizeFilename, findAccountConflicts, confirmAccountImport } from "../services/accountImportService.js";
 
+function parseMapping(value) {
+  if (value === undefined) return undefined;
+  try {
+    if (typeof value === "string") return JSON.parse(value);
+  } catch { /* Report the same error for invalid JSON and invalid field shapes. */ }
+  throw new CsvValidationError("Provide a valid column mapping.", "CSV_INVALID_MAPPING");
+}
+
 export async function validateAccountImport(req, res) {
   let session;
   const attemptId = new mongoose.Types.ObjectId();
   try {
     const result = await validateCsv(req.file.buffer, {
+      mapping: parseMapping(req.body?.mapping),
       studentDomain: env.studentDomain,
       facultyDomain: env.facultyDomain,
       findUsers: findAccountConflicts,
     });
+    if (result.mappingRequired) return res.json(result);
     session = await mongoose.startSession();
     let preview;
     await session.withTransaction(async () => {

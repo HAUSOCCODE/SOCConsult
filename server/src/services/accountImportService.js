@@ -5,10 +5,12 @@ import User from "../models/User.js";
 import AccountImport from "../models/AccountImport.js";
 import { accountImportConfig as config } from "../config/accountImport.js";
 import { CsvValidationError } from "./csvValidationService.js";
-import { findAccountConflicts, validateProvisioningRows as revalidate, provisionedUser } from "./accountProvisioningService.js";
+import { findAccountConflicts, validateProvisioningRows, provisionedUser } from "./accountProvisioningService.js";
 export { findAccountConflicts };
 import { assertImportPrerequisites } from "./accountImportMigrationService.js";
 import { recordAccountImportAudit } from "./activityService.js";
+
+const revalidate = (rows, session) => validateProvisioningRows(rows, session, { describeCsvConflicts: true });
 
 export const validPreviewId = (id) => typeof id === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);

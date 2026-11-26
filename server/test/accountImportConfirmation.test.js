@@ -13,7 +13,7 @@ import AuditLog from "../src/models/AuditLog.js";
 import { confirmAccountImport, sanitizeFilename } from "../src/services/accountImportService.js";
 import { institutionalIndex } from "../src/services/accountImportMigrationService.js";
 import { accountImportConfig } from "../src/config/accountImport.js";
-import { validateAccountRows } from "../src/services/csvValidationService.js";
+import { validateAccountRows, validateCsv } from "../src/services/csvValidationService.js";
 import { login, changePassword } from "../src/controllers/authController.js";
 
 const owner = new mongoose.Types.ObjectId().toString();
@@ -35,13 +35,15 @@ const chain = (work, onSession = () => {}) => ({
   session(value) { onSession(value); return this; },
   then(yes, no) { return Promise.resolve().then(work).then(yes, no); },
 });
-async function harness(roles = ["student", "faculty"]) {
+async function harness(roles = ["student", "faculty"], mappedPreview) {
   const restored = [];
   const patch = (obj, key, value) => { const old = obj[key]; obj[key] = value; restored.push(() => { obj[key] = old; }); };
   const rows = roles.map((role, i) => ({ institutional_id: `000${i + 1}-ID`, first_name: "Juan", middle_name: "Q.", last_name: "Santos",
     official_email: `person${i}@${role === "student" ? env.studentDomain : env.facultyDomain}`, role,
     rowNumber: i + 2, endLineNumber: i + 2, errors: [] }));
-  const validated = await validateAccountRows(rows, { studentDomain: env.studentDomain, facultyDomain: env.facultyDomain, findUsers: async () => [] });
+  const validated = mappedPreview ?? await validateAccountRows(rows, {
+    studentDomain: env.studentDomain, facultyDomain: env.facultyDomain, findUsers: async () => [],
+  });
   const h = { rows: validated.rows, batch: { _id: new mongoose.Types.ObjectId().toString(), previewId, owner,
     schemaVersion: 2, displayFilename: "accounts.csv", status: "validated", rows: validated.rows,
     summary: validated.summary, expiresAt: new Date(Date.now() + 30 * 60 * 1000), purgeAt: new Date(Date.now() + 86400000) },
@@ -130,6 +132,30 @@ const assertSafe = (value, rows) => {
     assert.ok(!encoded.includes(row.fullName));
   }
 };
+
+test("a mapped CSV preview confirms canonical rows using the existing transaction and provisioning", async () => {
+  const csv = [
+    "Surname,Mail,Local Reference,Given Name,Category,Extra",
+    `Sample,student-fixture@${env.studentDomain},000025,Nora,Student,ignore-me`,
+    `Example,faculty-fixture@${env.facultyDomain},FAC-025,Lina,Faculty,ignore-me`,
+  ].join("\n");
+  const mapped = await validateCsv(Buffer.from(csv), {
+    studentDomain: env.studentDomain, facultyDomain: env.facultyDomain, findUsers: async () => [],
+    mapping: { columns: [["institutional_id", 2], ["first_name", 3], ["last_name", 0], ["official_email", 1], ["role", 4]] },
+  });
+  assert.equal(mapped.canConfirm, true);
+  const h = await harness(undefined, mapped);
+  try {
+    const result = await confirmAccountImport(previewId, owner);
+    assert.equal(result.statusCode, 201);
+    assert.deepEqual([result.body.successfulRows, result.body.failedRows, result.body.studentCount, result.body.facultyCount], [2, 0, 1, 1]);
+    assert.deepEqual(h.users.map(({ institutionalId, role }) => [institutionalId, role]), [["000025", "student"], ["FAC-025", "faculty"]]);
+    assert.equal(h.audits.length, 1);
+    assert.equal((await confirmAccountImport(previewId, owner)).statusCode, 409);
+    assert.equal(h.saves, 2);
+    assertSafe(result.body, mapped.rows);
+  } finally { h.restore(); }
+});
 
 test("Student, Faculty and mixed imports map fields, hash exactly once, audit once and retain safe results", async () => {
   for (const roles of [["student"], ["faculty"], ["student", "faculty"]]) {

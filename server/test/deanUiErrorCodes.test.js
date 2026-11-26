@@ -5,8 +5,16 @@ import { validateCsv } from "../src/services/csvValidationService.js";
 import { csvUpload } from "../src/middleware/csvUpload.js";
 import { getAccountImport } from "../src/controllers/accountImportController.js";
 
-test("CSV structural failures carry stable codes without changing validation messages", async () => {
-  for (const [content, code] of [[Buffer.alloc(0), "CSV_EMPTY"], [Buffer.alloc(1048577), "CSV_TOO_LARGE"], [Buffer.from("unknown\nvalue"), "CSV_INVALID"], [Buffer.from("institutional_id,first_name,last_name,official_email,role\n"), "CSV_EMPTY"]]) {
+test("CSV discovery and structural failures carry stable codes for the import UI", async () => {
+  assert.equal((await validateCsv(Buffer.from("Source name\nExample"), {})).mappingRequired, true);
+  for (const [content, code] of [
+    [Buffer.alloc(0), "CSV_EMPTY"],
+    [Buffer.alloc(1048577), "CSV_TOO_LARGE"],
+    [Buffer.from('Some Header\n"bad'), "CSV_INVALID"],
+    [Buffer.from("Some Header,\nSome value,"), "CSV_INVALID_HEADERS"],
+    [Buffer.from("Some Header,Some-Header\na,b"), "CSV_DUPLICATE_HEADERS"],
+    [Buffer.from("institutional_id,first_name,last_name,official_email,role\n"), "CSV_EMPTY"],
+  ]) {
     await assert.rejects(validateCsv(content, {}), error => error.code === code && Boolean(error.message));
   }
 });
