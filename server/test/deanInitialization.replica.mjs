@@ -96,6 +96,9 @@ try {
 
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = "isolated-replica-fixture";
+  process.env.STUDENT_EMAIL_DOMAIN = "student.example.test";
+  process.env.FACULTY_EMAIL_DOMAIN = "faculty.example.test";
+  for (const key of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "EMAIL_FROM"]) delete process.env[key];
   const { changeDeanUsername, login } = await import("../src/controllers/authController.js");
   const { default: User } = await import("../src/models/User.js");
   const { default: AuditLog } = await import("../src/models/AuditLog.js");

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { verifyConsultationWorkflow } from "./consultationWorkflowReplica.mjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
@@ -21,7 +22,6 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
   const appointments = database.collection("appointments");
   const before = await users.findOne({ _id: deanId });
   const tokenFor = id => jwt.sign({ sub: String(id) }, env.jwtSecret, { expiresIn: "8h" });
-  const originalToken = tokenFor(deanId);
   const studentId = new mongoose.Types.ObjectId();
   await users.insertOne({ _id: studentId, name: "Student Fixture", role: "student", studentId: "FIX-STUDENT", institutionalId: "FIX-STUDENT", accountStatus: "Active" });
   await users.updateOne({ username: "reserved.fixture" }, { $set: { employeeId: "FIX-RESERVED", institutionalId: "FIX-RESERVED" } });
@@ -32,11 +32,14 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   const request = async (path, { token, method = "GET", body } = {}) => {
+    const headers = { ...(token && { Authorization: `Bearer ${token}` }), Connection: "close" };
+    if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
-      method, headers: { ...(token && { Authorization: `Bearer ${token}` }), "Content-Type": "application/json", Connection: "close" },
-      ...(body && { body: JSON.stringify(body) }),
+      method, headers, body: body instanceof FormData ? body : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    const contentType = response.headers.get("content-type");
+    return { status: response.status, contentType, body: contentType?.includes("application/pdf")
+      ? Buffer.from(await response.arrayBuffer()) : await response.json() };
   };
   const signIn = (role, identifier, secret) => request(`/auth/login/${role}`, { method: "POST", body: { identifier, password: secret } });
   const preview = (token, id) => request(`/dean/privilege-transfer/successors/${id}`, { token });
@@ -53,17 +56,26 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
   const now = new Date();
   const end = new Date(+now + 3600000);
   try {
+    const deanLogin = await signIn("dean", before.username, deanPassword);
+    assert.equal(deanLogin.status, 200);
+    const originalToken = deanLogin.body.token;
+    const workflow = await verifyConsultationWorkflow({ database, request, signIn, deanToken: originalToken, env });
     const candidates = [];
     for (const number of [1, 2]) {
-      const created = await provision(number, originalToken);
-      assert.equal(created.status, 201, JSON.stringify(created.body));
-      const { id, email } = created.body.user;
+      let candidate = workflow.faculty;
+      if (number === 2) {
+        const created = await provision(number, originalToken);
+        assert.equal(created.status, 201, JSON.stringify(created.body));
+        candidate = created.body.user;
+      }
+      const { id, email } = candidate;
       assert.equal((await preview(originalToken, id)).body.successorIssue, "SUCCESSOR_PASSWORD_REQUIRED");
       const initialLogin = await signIn("faculty", email, `FIX-${number}`);
       assert.equal(initialLogin.status, 200);
       const changed = await request("/auth/change-password", { token: initialLogin.body.token, method: "PUT",
         body: { currentPassword: `FIX-${number}`, newPassword: password, confirmNewPassword: password } });
       assert.equal(changed.status, 200, JSON.stringify(changed.body));
+      assert.equal((await signIn("faculty", email, `FIX-${number}`)).status, 401);
       const account = await users.findOne({ _id: new mongoose.Types.ObjectId(id) });
       const appointment = await appointments.insertOne({ faculty: account._id, student: studentId, status: "Confirmed",
         startAt: now, endAt: end, attendance: { studentResponded: true },
@@ -82,7 +94,7 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
     const blocked = await request("/dean/privilege-transfer", { token: originalToken, body: inactive, method: "POST" });
     assert.equal(blocked.body.code, "OUTGOING_CONSULTATIONS_OPEN");
     assert.equal((await appointments.findOne({ _id: open.insertedId })).status, "Pending");
-    await appointments.updateOne({ _id: open.insertedId }, { $set: { status: "Completed" } });
+    await appointments.deleteOne({ _id: open.insertedId }); // Retire the synthetic blocker fixture.
 
     const originalUpdate = User.updateOne;
     User.updateOne = function (filter, ...args) {
@@ -136,7 +148,9 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
     assert.ok(archived.deanAccessRelinquishedAt instanceof Date);
     assert.equal((await request("/dean/privilege-transfer", { token: originalToken, body: inactive, method: "POST" })).status, 401);
     assert.equal((await request("/auth/me", { token: winner.token })).status, 401);
+    assert.equal((await preview(winner.token, other.account._id)).status, 401);
     assert.equal((await request("/auth/me", { token: tokenFor(studentId) })).status, 200);
+    assert.equal((await request("/auth/me", { token: workflow.studentToken })).status, 200);
     assert.equal((await request("/auth/me", { token: other.token })).status, 200);
     assert.equal((await signIn("dean", before.username, deanPassword)).status, 401);
     assert.equal((await signIn("faculty", firstDean.email, password)).status, 401);
@@ -147,6 +161,7 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
     const newToken = newLogin.body.token;
     assert.equal(jwt.decode(newToken).authRevision, 1);
     assert.equal(newLogin.body.user.id, String(firstDean._id));
+    if (String(firstDean._id) === workflow.faculty.id) await workflow.verifyReport(newToken);
     assert.equal((await provision(3, newToken)).status, 201);
     const activation = await request(`/dean/users/${deanId}/status`, { token: newToken, method: "PATCH", body: {
       accountStatus: "Active", expectedStatus: "Inactive", version: archived.updatedAt.toISOString(),
@@ -182,9 +197,17 @@ export async function verifyDeanTransfer({ database, uri, serverRoot, coldStart,
       assert.deepEqual((await database.collection("consultationrecords").findOne({ _id: entry.record })).facultyAuthor, entry.account._id);
       const personal = await request("/availability/mine", { token });
       assert.equal(personal.status, 200);
-      assert.deepEqual(personal.body.availability.map(slot => slot._id), [String(entry.slot)]);
+      const workflowOwner = String(entry.account._id) === workflow.faculty.id;
+      const ownedSlots = [String(entry.slot), ...(workflowOwner ? workflow.slotIds : [])];
+      assert.deepEqual(personal.body.availability.map(slot => slot._id).sort(), ownedSlots.sort());
+      const history = await request("/appointments/faculty-history?status=Completed", { token });
+      assert.equal(history.status, 200);
+      assert.deepEqual(history.body.consultations.map(row => row._id), workflowOwner ? [workflow.completedId] : []);
     }
     assert.equal(await appointments.countDocuments({ _id: { $in: candidates.map(entry => entry.appointment) } }), 2);
+    if (String(other.account._id) === workflow.faculty.id) await workflow.verifyReport(fresh.body.token);
+    assert.equal((await marker()).deanTransferRevision, 2);
+    assert.equal((await transferAudits()).length, 2);
     console.log("PASS: real Dean transfer, rollback, competing processes, provisioning, sign-in and JWT revocation, restart, and record ownership.");
   } finally {
     await new Promise(resolve => server.close(resolve));

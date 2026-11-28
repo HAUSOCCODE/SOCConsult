@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import PDFDocument from "pdfkit";
 import app from "../src/app.js";
 import { env } from "../src/config/env.js";
 import Appointment from "../src/models/Appointment.js";
@@ -48,10 +49,43 @@ test("PDFKit output is a readable multi-page PDF with deterministic metadata and
   assert.match(bytes.toString("latin1"), /\/Count\s+[2-9]\d*/);
 });
 
-function renderedPages(bytes) {
+function inflatedStreams(bytes) {
   const source = bytes.toString("latin1");
-  const streams = [...source.matchAll(/\bstream\r?\n([\s\S]*?)\r?\nendstream\b/g)]
-    .map(([, stream]) => inflateSync(Buffer.from(stream, "latin1")).toString());
+  const xref = /startxref\n(\d+)\n%%EOF\s*$/.exec(source);
+  assert.ok(xref, "PDFKit output has a cross-reference table");
+  const table = source.slice(Number(xref[1])).split("\ntrailer\n", 1)[0];
+  assert.match(table, /^xref\n/);
+  return [...table.matchAll(/^(\d{10}) 00000 n $/gm)].flatMap(([, offset]) => {
+    const header = /^\d+ 0 obj\n<<\n([^]*?)\n(?:>>\nstream\n|endobj\n)/.exec(source.slice(Number(offset)));
+    if (!header?.[0].endsWith("\nstream\n")) return [];
+    assert.match(header[1], /(?:^|\n)\/Filter \/FlateDecode(?:\n|$)/);
+    const length = /(?:^|\n)\/Length (\d+)(?:\n|$)/.exec(header[1]);
+    assert.ok(length, "PDFKit stream declares its compressed byte length");
+    const start = Number(offset) + header[0].length;
+    const end = start + Number(length[1]);
+    // The last compressed byte can be CR. Only the LF after /Length bytes is a delimiter.
+    assert.equal(source.slice(end, end + 11), "\nendstream\n");
+    return [inflateSync(bytes.subarray(start, end)).toString()];
+  });
+}
+
+test("PDF stream extraction preserves a compressed payload ending in a carriage return", async () => {
+  const pdf = new PDFDocument({ autoFirstPage: false });
+  const chunks = [];
+  const collected = new Promise((resolve, reject) => {
+    pdf.on("data", chunk => chunks.push(chunk));
+    pdf.once("end", () => resolve(Buffer.concat(chunks)));
+    pdf.once("error", reject);
+  });
+  pdf.ref().end("ZZN");
+  pdf.end();
+  const bytes = await collected;
+  assert.match(bytes.toString("latin1"), /\r\nendstream\n/);
+  assert.deepEqual(inflatedStreams(bytes), ["ZZN\n"]);
+});
+
+function renderedPages(bytes) {
+  const streams = inflatedStreams(bytes);
   const cmap = streams.find(stream => stream.includes("begincmap"));
   const glyphs = new Map();
   for (const [, start, values] of cmap.matchAll(/<(\w+)>\s*<\w+>\s*\[([^\]]+)\]/g)) {

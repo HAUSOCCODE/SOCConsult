@@ -169,6 +169,8 @@ Run these commands from the repository root:
 
 **Operational note:** The backend provides scripts for attendance processing, appointment expiration, and reminders. These need scheduled execution in a deployment environment; the repository does not currently configure a scheduler.
 
+See [Integration Verification](docs/INTEGRATION_VERIFICATION.md) for local test commands and the staging checklist.
+
 ## Development Notes
 
 SOCConsult is being actively improved as a capstone project. The implementation is available for development and review, but a successful local build or automated test run does not by itself establish production readiness.
