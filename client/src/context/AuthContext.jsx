@@ -64,6 +64,12 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     return data.user;
   };
+  const clearSession = () => {
+    sessionStorage.removeItem("consultio_token");
+    sessionStorage.removeItem("consultio_user");
+    clearPasswordRecommendation();
+    setUser(null);
+  };
   const logout = async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -73,18 +79,16 @@ export function AuthProvider({ children }) {
       // Local sign-out must complete even when the audit endpoint is unavailable.
     } finally {
       clearTimeout(timeout);
-      sessionStorage.removeItem("consultio_token");
-      sessionStorage.removeItem("consultio_user");
-      clearPasswordRecommendation();
-      setUser(null);
+      clearSession();
     }
   };
   const updateUser = (nextUser) => {
+    if (!sessionStorage.getItem("consultio_token")) return;
     sessionStorage.setItem("consultio_user", JSON.stringify(nextUser));
     setUser(nextUser);
   };
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, recommendPasswordChange, clearPasswordRecommendation }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, clearSession, updateUser, recommendPasswordChange, clearPasswordRecommendation }}>
       {children}
     </AuthContext.Provider>
   );

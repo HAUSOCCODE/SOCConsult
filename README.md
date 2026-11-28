@@ -118,6 +118,14 @@ An existing Dean or a sole legacy Admin is recognized by stored role on startup.
 
 If startup reports a missing Dean in a populated or initialized database, conflicting management accounts, or unusable Dean access, leave bootstrap disabled. Have the authorized institutional database administrator and security owner verify the deployment target, record the incident, and take a restricted, verified backup before remediation. Rehearse restoration on an isolated copy. Recover the original management record from a trusted backup with its original MongoDB user ID and consult the institution’s access records before resolving roles or account status. If restoration is insufficient, use an approved, reviewed offline repair under institutional change control. Confirm exactly one legitimate management account, preserve consultation and audit references, verify sign-in and both workspaces, and record the outcome.
 
+#### Dean Privilege Transfer and Deployment Safety
+
+The current Dean starts the transfer from **Dean Management → Account Settings**. An eligible Faculty successor must personalize their password before promotion. Both accounts retain their original user IDs and histories. A single transaction changes both roles, records an audit event, and invalidates both accounts’ existing sessions.
+
+- Before authorizing a transfer, update **all running backend API instances** to use revision-aware authentication middleware and remove older instances from service. Do not perform a transfer during a mixed-version backend rollout.
+- After a transfer, rolling back to backend code without session-revision verification requires an explicit security and session-revocation review.
+- If the transfer outcome is uncertain, verify the stored Dean and transfer audit through authorized database and audit checks before retrying.
+
 ### 4. Start the application
 
 ```bash

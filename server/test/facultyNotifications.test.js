@@ -10,6 +10,18 @@ import { processConsultationReminders } from "../src/services/consultationRemind
 import { newId } from "./helpers/appointmentHarness.js";
 import { publicNotification } from "../src/services/notificationService.js";
 
+test("stored personal consultation links follow the provider after a role transfer", () => {
+  const appointment = "000000000000000000000001";
+  for (const [role, previous, current] of [
+    ["faculty", "/dean/faculty/consultations", "/faculty"],
+    ["dean", "/faculty/appointments", "/dean/faculty"],
+  ]) {
+    const item = publicNotification({ type: "faculty_proposal_declined", category: "Consultation",
+      relatedEntityId: appointment, actionUrl: previous }, { role });
+    assert.equal(item.actionUrl, `${current}/requests?appointment=${appointment}`);
+  }
+});
+
 test("Faculty notification catalog contains exactly the approved privacy-safe events", () => {
   assert.deepEqual(Object.keys(FACULTY_CONSULTATION_EVENTS), [
     "faculty_request_submitted", "faculty_proposal_accepted", "faculty_proposal_declined", "faculty_cancelled",

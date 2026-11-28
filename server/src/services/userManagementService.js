@@ -3,6 +3,7 @@ import { createEventNotification } from "./notificationService.js";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import { env } from "../config/env.js";
 import { formatFullName } from "./personNameService.js";
 import { recordUserStatusAudit, recordPasswordResetAudit } from "./activityService.js";
 
@@ -189,7 +190,7 @@ export async function changeManagedUserStatus(id, body, actor) {
           _id: id,
           role: { $in: managedRoles },
         })
-          .select(`${fields} registrationStatus`)
+          .select(`${fields} registrationStatus +deanAccessRelinquishedAt`)
           .session(session)
           .lean();
         if (!current) throw new ManagementError(fail(404, "User not found."));
@@ -218,6 +219,8 @@ export async function changeManagedUserStatus(id, body, actor) {
               "REGISTRATION_CONFLICT",
             ),
           );
+        if (body.accountStatus === "Active" && current.deanAccessRelinquishedAt && !hasFacultyAccessIdentity(current))
+          throw new ManagementError(fail(409, "Institutional Faculty identity must be verified before this account can be reactivated.", "FACULTY_IDENTITY_REQUIRED"));
         const set = {
           accountStatus: body.accountStatus,
           updatedAt: new Date(
@@ -295,6 +298,14 @@ export function resolveResetInstitutionalId(user) {
     ? user.institutionalId : user.role === "student" ? user.studentId : user.employeeId;
   return typeof value === "string" && value.trim().length > 0 && value === value.trim() &&
     !/[\x00-\x1f\x7f-\x9f]/.test(value) && Buffer.byteLength(value, "utf8") <= 72 ? value : null;
+}
+export const hasOfficialFacultyEmail = email => typeof email === "string" && email.length <= 254 &&
+  /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9.-]+$/.test(email) &&
+  email.indexOf("@") <= 64 && email.split("@")[1] === env.facultyDomain;
+
+export function hasFacultyAccessIdentity(user) {
+  const id = resolveResetInstitutionalId(user);
+  return Boolean(id && id === user.institutionalId && id === user.employeeId && hasOfficialFacultyEmail(user.email));
 }
 export async function resetManagedUserPassword(id, body, actor, expectedVersion) {
   if (!validId(id)) return fail(400, "Invalid user reference.");

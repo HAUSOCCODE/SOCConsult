@@ -59,7 +59,7 @@ const publicUser = (user) => ({
       : user.profilePicture?.url,
 });
 const tokenFor = (user) =>
-  jwt.sign({ sub: user.id }, env.jwtSecret, { expiresIn: "8h" });
+  jwt.sign({ sub: user.id, authRevision: user.authRevision ?? 0 }, env.jwtSecret, { expiresIn: "8h" });
 
 export async function login(req, res) {
   const requestedRole = req.params.role;
@@ -130,7 +130,8 @@ export async function logout(req, res) {
 
 export async function me(req, res) {
   const user = await User.findById(req.user.id).select("+profilePicture");
-  if (!user) return res.status(401).json({ message: "Authentication required." });
+  if (!user || (user.authRevision ?? 0) !== (req.user.authRevision ?? 0))
+    return res.status(401).json({ message: "Authentication required." });
   res.json({ user: publicUser(user) });
 }
 

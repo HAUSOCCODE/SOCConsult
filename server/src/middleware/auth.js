@@ -13,6 +13,9 @@ export async function authenticate(req, res, next) {
     const user = await User.findById(payload.sub);
     if (!user)
       return res.status(401).json({ message: "Account no longer exists." });
+    const revision = Object.hasOwn(payload, "authRevision") ? payload.authRevision : 0;
+    if (!Number.isSafeInteger(revision) || revision < 0 || revision !== (user.authRevision ?? 0))
+      return res.status(401).json({ message: "Invalid or expired session." });
     if (user.accountStatus !== "Active")
       return res.status(403).json({ message: "This account is inactive." });
     if (!["student", "faculty", "dean"].includes(user.role) || !eligibleRegistrationState(user))

@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
+import { verifyDeanTransfer } from "./helpers/deanTransferReplica.mjs";
 
 const binary = process.argv[2];
 assert.ok(binary, "Provide a local mongod executable path.");
@@ -140,6 +141,8 @@ try {
   assert.equal(migrated.approvalMethod, "dean");
   assert.equal(migrated.username, current.username);
   assert.equal(migrated.password, dean.password);
+  assert.equal((await database.collection("auditlogs").findOne({ _id: historicalAudit.insertedId })).actorRole, "admin");
+  await verifyDeanTransfer({ database, uri, serverRoot, coldStart, deanId: dean._id, deanPassword: password });
   assert.equal((await database.collection("auditlogs").findOne({ _id: historicalAudit.insertedId })).actorRole, "admin");
   await users.deleteMany({}); // This database belongs exclusively to the disposable replica set.
   await assert.rejects(coldStart("second.bootstrap", password), /institution-authorized recovery/);

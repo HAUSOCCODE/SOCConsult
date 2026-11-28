@@ -23,19 +23,24 @@ export function hasRetentionIndex(indexes) {
 const clean = (value) => typeof value === "string" ? value.trim() : "";
 const asString = (field) => ({ $convert: { input: `$${field}`, to: "string", onError: "", onNull: "" } });
 const trimmed = (field) => ({ $trim: { input: asString(field) } });
+// A former Dean may have been intentionally archived without Faculty identity.
+const archivedFormerDean = { $and: [
+  { $eq: ["$role", "faculty"] }, { $eq: ["$accountStatus", "Inactive"] },
+  { $eq: [{ $type: "$deanAccessRelinquishedAt" }, "date"] },
+] };
 // Indexes alone are insufficient if older users have not been backfilled.
 export const identityAnomalyQuery = {
   $expr: { $or: [
     ...["institutionalId", "studentId", "employeeId"].map((field) => ({
       $not: [{ $in: [{ $type: `$${field}` }, ["string", "missing", "null"]] }],
     })),
-    { $and: [ { $in: ["$role", ["student", "faculty"]] }, { $eq: [trimmed("institutionalId"), ""] } ] },
+    { $and: [ { $in: ["$role", ["student", "faculty"]] }, { $eq: [trimmed("institutionalId"), ""] }, { $not: [archivedFormerDean] } ] },
     { $ne: [asString("institutionalId"), trimmed("institutionalId")] },
     ...["studentId", "employeeId"].map((field) => ({ $and: [
       { $ne: [trimmed(field), ""] }, { $ne: [trimmed(field), asString("institutionalId")] },
     ] })),
     { $and: [ { $eq: ["$role", "student"] }, { $eq: [trimmed("studentId"), ""] } ] },
-    { $and: [ { $eq: ["$role", "faculty"] }, { $eq: [trimmed("employeeId"), ""] } ] },
+    { $and: [ { $eq: ["$role", "faculty"] }, { $eq: [trimmed("employeeId"), ""] }, { $not: [archivedFormerDean] } ] },
   ] },
 };
 export async function assertProvisioningPrerequisites({ users, db }) {
@@ -62,7 +67,7 @@ export async function migrateAccountImport({ users, imports, apply = false, now 
     if (!map.has(value)) map.set(value, new Set());
     map.get(value).add(String(id));
   };
-  const cursor = users.find({}, { projection: { institutionalId: 1, studentId: 1, employeeId: 1, email: 1, username: 1, role: 1 } });
+  const cursor = users.find({}, { projection: { institutionalId: 1, studentId: 1, employeeId: 1, email: 1, username: 1, role: 1, accountStatus: 1, deanAccessRelinquishedAt: 1 } });
   for await (const user of cursor) {
     counts.users++;
     const fields = ["institutionalId", "studentId", "employeeId"];
@@ -71,7 +76,8 @@ export async function migrateAccountImport({ users, imports, apply = false, now 
       if (typeof user[field] === "string" && !clean(user[field])) counts.emptyIdFields++;
     }
     const values = new Set(fields.map((field) => clean(user[field])).filter(Boolean));
-    const roleField = user.role === "student" ? "studentId" : user.role === "faculty" ? "employeeId" : null;
+    const archived = user.accountStatus === "Inactive" && user.deanAccessRelinquishedAt instanceof Date;
+    const roleField = user.role === "student" ? "studentId" : user.role === "faculty" && !archived ? "employeeId" : null;
     if (roleField && !clean(user[roleField])) counts.missingIds++;
     if (values.size > 1) counts.conflictingIdRecords++;
     for (const value of values) add(ids, value, user._id);

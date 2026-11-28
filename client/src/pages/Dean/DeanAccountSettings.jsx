@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/apiClient";
 import { useToast } from "../../context/ToastContext";
+import { useLocation } from "react-router-dom";
+import { deanWorkspace } from "../../utils/deanWorkspace";
+import DeanPrivilegeTransfer from "./DeanPrivilegeTransfer";
 import { SecuritySettings } from "../../components/profile/ProfileForm";
 import ProfilePictureEditor from "../../components/profile/ProfilePictureEditor";
 import {
@@ -99,6 +102,7 @@ function SignInUsername() {
 
 export default function DeanAccountSettings() {
   const { user, updateUser } = useAuth();
+  const { pathname, search } = useLocation();
   const toast = useToast();
   const [form, setForm] = useState(() => profileValues(user));
   const [errors, setErrors] = useState({});
@@ -220,6 +224,7 @@ export default function DeanAccountSettings() {
           Password changes do not sign out existing sessions. Sessions remain valid until their normal eight-hour expiration.
         </p>
       </section>
+      {deanWorkspace(pathname, search) === "management" && <DeanPrivilegeTransfer />}
     </div>
   );
 }

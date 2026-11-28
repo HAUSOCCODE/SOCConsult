@@ -10,8 +10,8 @@ export function facultyNotificationDestination(notification, user) {
   const definition = Object.hasOwn(FACULTY_CONSULTATION_EVENTS, notification.type || "")
     ? FACULTY_CONSULTATION_EVENTS[notification.type] : null;
   const id = String(notification.relatedEntityId || "");
-  const base = user.role === "dean" ? "/dean/faculty" : "/faculty";
-  const allowed = [base + "/consultations", base + "/requests", base + "/history", "/faculty/appointments"];
+  const allowed = ["/faculty", "/dean/faculty"].flatMap(base => ["consultations", "requests", "history"].map(page => `${base}/${page}`));
+  allowed.push("/faculty/appointments");
   const path = notification.actionUrl;
   if (!definition || !/^[a-f\d]{24}$/i.test(id) ||
     !allowed.some(value => path === value || path === value + "?appointment=" + id)) return undefined;

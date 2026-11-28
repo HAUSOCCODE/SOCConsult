@@ -1,10 +1,11 @@
 // Uses raw collections so legacy roles can be converted after schema validation changes.
 export class DeanInitializationError extends Error {}
+export const storedManagementRoles = Object.freeze(["admin", "dean"]);
 
 export async function migrateDeanAccount({ users, session }) {
   const options = { session };
   const [account, conflict] = await users.find(
-    { role: { $in: ["admin", "dean"] } },
+    { role: { $in: storedManagementRoles } },
     { ...options, projection: { role: 1 }, limit: 2 },
   ).toArray();
   if (conflict)

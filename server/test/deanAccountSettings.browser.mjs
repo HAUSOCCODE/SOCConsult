@@ -73,6 +73,20 @@ try {
       const safeBody = body && Object.fromEntries(Object.entries(body).filter(([key]) => !/password/i.test(key)));
       f.requests.push({ path, method, body: options.body instanceof FormData ? { photo: options.body.get('photo')?.name } : safeBody });
       const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+      const candidates = [
+        { _id: '000000000000000000000001', name: 'Robin Fixture', email: 'robin@example.edu', institutionalId: 'FIX-001', accountStatus: 'Active', version: null },
+        { _id: '000000000000000000000002', name: 'Casey Fixture', email: 'casey@example.edu', institutionalId: 'FIX-002', accountStatus: 'Active', version: null },
+      ];
+      if (path === '/api/dean/users') return reply({ users: candidates, pagination: { page: 1, totalPages: 1 } });
+      if (path.includes('/privilege-transfer/successors/')) {
+        const successor = candidates.find(candidate => path.endsWith(candidate._id));
+        return reply({ successor, successorIssue: successor === candidates[1] ? 'SUCCESSOR_PASSWORD_REQUIRED' : null, outgoingVersion: null, canRemainFaculty: true });
+      }
+      if (path.endsWith('/privilege-transfer')) {
+        if (f.transferError) return reply({ code: f.transferError, message: 'Internal transfer detail' }, f.transferError === 'TRANSFER_UNCERTAIN' ? 503 : 400);
+        if (f.holdTransfer) await new Promise(resolve => { f.releaseTransfer = resolve; });
+        return reply({ code: 'TRANSFER_COMPLETED' });
+      }
       if (path.endsWith('/profile-picture')) {
         if (f.failPhoto) return reply({}, 503);
         if (method === 'DELETE') delete f.user.profilePicture;
@@ -116,7 +130,7 @@ try {
   ` });
   await command("Page.navigate", { url: `http://127.0.0.1:${port}/dean/account` });
   await wait(`document.querySelector('#personal-information-title')`);
-  assert.equal(await evaluate(`document.querySelectorAll('main input:not([type=file])').length`), 10);
+  assert.equal(await evaluate(`document.querySelectorAll('main input:not([type=file])').length`), 11);
   assert.equal(await evaluate(`document.querySelector('#dean-initial-setup-title')?.textContent`), "Set Up Your Dean Account");
   assert.equal(await evaluate(`/Student ID|Year level|Not recorded|ConsultIO/.test(document.querySelector('main').innerText)`), false);
   assert.equal(await evaluate(`document.querySelector('#dean-profile-title').textContent`), "Ana Reyes");
@@ -237,8 +251,82 @@ try {
   await switchWorkspace("management");
   await wait(`location.pathname === '/dean/dashboard'`);
   assert.equal(await evaluate(`sessionStorage.getItem('consultio_token')`), "test-only");
+
+  await command("Page.navigate", { url: `http://127.0.0.1:${port}/dean/account?workspace=faculty` });
+  await wait(`document.querySelector('#personal-information-title') && location.search`);
+  assert.equal(await evaluate(`Boolean(document.querySelector('#dean-transfer-title'))`), false);
+  await command("Page.navigate", { url: `http://127.0.0.1:${port}/dean/account` });
+  await wait(`document.querySelector('#dean-transfer-title') && !location.search`);
+
+  const transferSection = 'section[aria-labelledby=dean-transfer-title]';
+  const transferForm = `${transferSection} form[aria-label]`;
+  const transferPassword = `${transferForm} input[type=password]`;
+  const confirmationField = `${transferForm} input[maxlength="8"]`;
+  const fillTransfer = async (password, confirmation = "TRANSFER") => {
+    await evaluate(`setField(${JSON.stringify(transferPassword)}, ${JSON.stringify(password)}); setField(${JSON.stringify(confirmationField)}, ${JSON.stringify(confirmation)})`);
+  };
+  const pick = name => evaluate(`[...document.querySelectorAll('${transferSection} li button')].find(button => button.textContent.includes(${JSON.stringify(name)})).click()`);
+  await evaluate(`clickText('Search Faculty')`);
+  await wait(`document.querySelectorAll('${transferSection} li button').length === 2`);
+  await pick("Casey Fixture");
+  await wait(`document.querySelector('${transferSection}').textContent.includes('personalize their password')`);
+  assert.equal(await evaluate(`Boolean(document.querySelector('${transferForm}'))`), false);
+  await pick("Robin Fixture");
+  await wait(`document.querySelector('${transferForm}')`);
+  assert.equal(await evaluate(`document.querySelector('${transferPassword}').type`), "password");
+  await evaluate(`document.querySelector('${transferForm} input[value=Inactive]').click()`);
+  await wait(`document.querySelector('${transferForm}').textContent.includes('inactive Faculty')`);
+  await evaluate(`document.querySelector('${transferForm} input[value=Active]').click()`);
+  await wait(`document.querySelector('${transferForm}').textContent.includes('active Faculty')`);
+  await evaluate(`document.querySelector('${transferPassword}').focus()`);
+  for (const type of ["keyDown", "keyUp"]) await command("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+  assert.equal(await evaluate(`document.activeElement === document.querySelector(${JSON.stringify(confirmationField)})`), true);
+  await fillTransfer("WrongFixture1", "WRONG");
+  assert.equal(await evaluate(`document.querySelector('${transferForm} button[type=submit]').disabled`), true);
+  await fillTransfer("WrongFixture1");
+  await evaluate(`fixture.transferError = 'TRANSFER_PASSWORD_INVALID'; clickText('Transfer Dean privileges')`);
+  await wait(`document.querySelector('${transferSection} [role=alert]')?.textContent === 'The current password is incorrect.'`);
+  assert.equal(await evaluate(`document.querySelector('${transferPassword}').value`), "");
+  assert.equal(await evaluate(`document.querySelector('${transferSection}').textContent.includes('Internal transfer detail')`), false);
+  for (const width of [375, 768, 1440]) {
+    await command("Emulation.setDeviceMetricsOverride", { width, height: 950, deviceScaleFactor: 1, mobile: false });
+    await wait(`innerWidth === ${width}`);
+    await delay(200);
+    const layout = await evaluate(`({ pageWidth: document.documentElement.scrollWidth, formRight: document.querySelector('${transferForm}').getBoundingClientRect().right })`);
+    assert.ok(layout.pageWidth <= width && layout.formRight <= width, `Transfer layout at ${width}px: ${JSON.stringify(layout)}`);
+  }
+  await fillTransfer("FixturePassword1");
+  await evaluate(`fixture.transferError = 'TRANSFER_UNCERTAIN'; clickText('Transfer Dean privileges')`);
+  await wait(`document.querySelector('${transferSection} [role=alert]')?.textContent.includes('verify the current Dean')`);
+  assert.equal(await evaluate(`document.querySelector('${transferForm} button[type=submit]').disabled && sessionStorage.getItem('consultio_token') === 'test-only'`), true);
+  await command("Page.reload");
+  await wait(`document.querySelector('#dean-transfer-title') && !fixture.transferError`);
+  await evaluate(`clickText('Search Faculty')`);
+  await wait(`document.querySelectorAll('${transferSection} li button').length === 2`);
+  await pick("Robin Fixture");
+  await wait(`document.querySelector('${transferForm}')`);
+  await evaluate(`document.querySelector('${transferForm} input[value=Active]').click(); fixture.holdTransfer = true`);
+  await fillTransfer("FixturePassword1");
+  await evaluate(`{ const form = document.querySelector('${transferForm}'); form.requestSubmit(); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }`);
+  await wait(`fixture.releaseTransfer && document.querySelector('${transferForm} button[type=submit]').disabled`);
+  assert.equal(await evaluate(`fixture.requests.filter(r => r.path.endsWith('/privilege-transfer')).length`), 1);
+  await evaluate(`fixture.releaseTransfer()`);
+  await wait(`location.pathname === '/faculty/login' && document.body.textContent.includes('Dean privileges transferred.')`);
+  assert.equal(await evaluate(`sessionStorage.getItem('consultio_token') || sessionStorage.getItem('consultio_user')`), null);
+
+  await command("Page.navigate", { url: `http://127.0.0.1:${port}/dean/account` });
+  await wait(`document.querySelector('#dean-transfer-title')`);
+  await evaluate(`clickText('Search Faculty')`);
+  await wait(`document.querySelectorAll('${transferSection} li button').length === 2`);
+  await pick("Robin Fixture");
+  await wait(`document.querySelector('${transferForm}')`);
+  await evaluate(`document.querySelector('${transferForm} input[value=Inactive]').click()`);
+  await fillTransfer("FixturePassword1");
+  await evaluate(`clickText('Transfer Dean privileges')`);
+  await wait(`location.pathname === '/dean/login' && document.body.textContent.includes('Dean privileges transferred.')`);
+  assert.equal(await evaluate(`sessionStorage.getItem('consultio_token') || sessionStorage.getItem('consultio_user')`), null);
   assert.deepEqual(exceptions, []);
-  console.log("PASS: Dean setup guidance, username save/error/duplicate prevention/keyboard access, profile and photo edits, password changes, workspace navigation, session and responsive layouts (375/768/1440px).");
+  console.log("PASS: Dean settings regressions and transfer lookup, eligibility, disposition, masking, keyboard confirmation, wrong-password and uncertain-result feedback, duplicate prevention, sign-out, and layouts (375/768/1440px).");
 } finally {
   socket?.close();
   if (chrome) { chrome.kill(); await delay(500); }

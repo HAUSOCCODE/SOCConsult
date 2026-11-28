@@ -104,7 +104,8 @@ test("workspace source contracts preserve one session and wait for hydration", a
   assert.ok(guard.indexOf("if (loading)") < guard.indexOf("if (!user)"));
   assert.match(context, /api\("\/auth\/me"\)/);
   assert.match(context, /sessionStorage.getItem\("consultio_token"\)/);
-  assert.match(context, /finally \{[\s\S]*sessionStorage.removeItem\("consultio_token"\)/);
+  assert.match(context, /const clearSession = \(\) => \{\s*sessionStorage.removeItem\("consultio_token"\)/);
+  assert.match(context, /finally \{\s*clearTimeout\(timeout\);\s*clearSession\(\)/);
   assert.match(context, /setTimeout\(\(\) => controller.abort\(\), 5000\)/);
   assert.match(layout, /await logout\(\);\s*navigate/);
   assert.match(form, /password: e.target.value/);
@@ -116,6 +117,7 @@ test("client logout clears its session after success, server failure, or timeout
   // Exercise the actual non-JSX logout function without adding a client framework.
   const body = context.slice(context.indexOf("  const logout = async () => {") + "  const logout = async () => {".length, context.indexOf("  const updateUser"));
   const functionBody = body.slice(0, body.lastIndexOf("  };"));
+  const clearSession = context.slice(context.indexOf("  const clearSession"), context.indexOf("  const logout"));
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   for (const mode of ["success", "failure", "timeout"]) {
     const storage = new Map([["consultio_token", "session-token"], ["consultio_user", "dean"]]);
@@ -129,7 +131,7 @@ test("client logout clears its session after success, server failure, or timeout
       if (mode === "failure") throw new Error("Server unavailable");
       if (mode === "timeout") await new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("Aborted")), { once: true }));
     };
-    const run = new AsyncFunction("api", "sessionStorage", "setUser", "AbortController", "setTimeout", "clearTimeout", "clearPasswordRecommendation", functionBody);
+    const run = new AsyncFunction("api", "sessionStorage", "setUser", "AbortController", "setTimeout", "clearTimeout", "clearPasswordRecommendation", clearSession + functionBody);
     await run(api, { removeItem: key => storage.delete(key) }, value => { currentUser = value; }, AbortController, (callback, delay) => { assert.equal(delay, 5000); return setTimeout(callback, 5); }, clearTimeout, () => {});
     assert.ok(called);
     assert.equal(storage.size, 0);

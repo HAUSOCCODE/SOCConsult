@@ -37,6 +37,17 @@ const messages = {
  USERNAME_CONFLICT: 'Your account changed. Refresh before trying again.',
  USERNAME_CHANGE_UNCERTAIN: 'Refresh Account Settings to confirm your current username before retrying.',
  USERNAME_CHANGE_UNAVAILABLE: 'Username change is temporarily unavailable. Please try again later.',
+ TRANSFER_INPUT_INVALID: 'Select a Faculty successor and a disposition, enter your current password and type TRANSFER.',
+ TRANSFER_CONFLICT: 'The Dean or Faculty account changed. Review the current details before confirming again.',
+ SUCCESSOR_INELIGIBLE: 'Select an active Faculty account with an eligible registration state.',
+ SUCCESSOR_IDENTITY_REQUIRED: 'The Faculty account needs valid institutional identity and sign-in details. Contact the institutional administrator for assistance.',
+ SUCCESSOR_PASSWORD_REQUIRED: 'Ask the Faculty member to personalize their password in Faculty Account Settings before transfer. If they cannot sign in, resolve access first.',
+ OUTGOING_FACULTY_INELIGIBLE: 'Your account needs a valid official Faculty email and institutional ID to continue as Faculty. Contact the institutional administrator or choose deactivation.',
+ OUTGOING_CONSULTATIONS_OPEN: 'Resolve outstanding consultations, reservations and attendance through the consultation workflows before deactivating your account.',
+ FACULTY_IDENTITY_REQUIRED: 'Institutional Faculty identity must be verified before this account can be reactivated.',
+ TRANSFER_PASSWORD_INVALID: 'The current password is incorrect.',
+ TRANSFER_UNAVAILABLE: 'Dean privilege transfer is temporarily unavailable.',
+ TRANSFER_UNCERTAIN: 'The transfer could not be confirmed. Contact the institutional administrator to verify the current Dean and transfer audit before trying again.',
 };
 const fallbacks = {
  csv: 'Unable to validate the CSV. Please try again.',
@@ -46,6 +57,7 @@ const fallbacks = {
  profile: 'Unable to update your profile. Check the highlighted fields and try again.',
  password: 'Password change could not be confirmed. Check whether you can sign in before trying again.',
  username: 'Unable to update your sign-in username. Please try again.',
+ transfer: 'Unable to load the Faculty account details. Refresh and try again.',
  avatar: 'Unable to update your profile picture. Refresh before trying again.',
  pdf: 'Unable to generate the PDF report. Please try again.',
  ai: 'AI summary is unavailable. PDF reports remain available.',
@@ -62,6 +74,8 @@ export function deanUiError(error, context) {
  if (error?.status === 403) return 'You do not have access to this record or action.';
  if (error?.status === 429 && context === 'csv') return 'Too many CSV uploads. Wait before trying again.';
  if (error?.status === 429 && context === 'username') return 'Too many username attempts. Wait before trying again.';
+ if (error?.status === 429 && context === 'transfer') return 'Too many transfer requests. Wait before trying again.';
+ if (error?.status === 409 && context === 'transfer') return messages.TRANSFER_CONFLICT;
  if (error?.status === 409 && context === 'username') return messages.USERNAME_CONFLICT;
  if (error?.status === 404) return context === 'csv' || context === 'import' ? messages.PREVIEW_UNAVAILABLE : 'This record is no longer available. Refresh the list.';
  if (error?.status === 409) return context === 'ai' ? 'This narrative changed or was already reviewed. Refresh its status before continuing.' : 'This record changed or was already resolved. Refresh before continuing.';

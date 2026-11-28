@@ -44,7 +44,8 @@ test("Student failures share one private contract; legacy successes retain exact
       const success = await attempt(); assert.equal(success.statusCode, 200);
       const payload = jwt.verify(success.body.token, env.jwtSecret);
       assert.equal(payload.sub, id); assert.equal(payload.exp - payload.iat, 8 * 3600);
-      assert.deepEqual(Object.keys(payload).sort(), ["exp", "iat", "sub"]);
+      assert.deepEqual(Object.keys(payload).sort(), ["authRevision", "exp", "iat", "sub"]);
+      assert.equal(payload.authRevision, 0);
       assert.equal(success.body.user.password, undefined); assert.equal(success.body.user.registrationStatus, undefined);
       assert.deepEqual(account, before, "login never normalizes legacy accounts");
     }

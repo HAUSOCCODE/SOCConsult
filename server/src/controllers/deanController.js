@@ -1,4 +1,15 @@
 import { createManualAccount } from "../services/manualAccountService.js";
+import { previewDeanTransfer, transferDeanPrivileges } from "../services/deanTransferService.js";
+
+export async function getTransferPreview(req, res) {
+  const result = await previewDeanTransfer(req.user, req.params.id);
+  return res.status(result.statusCode).json(result.body);
+}
+
+export async function postDeanTransfer(req, res) {
+  const result = await transferDeanPrivileges(req.user, req.body);
+  return res.status(result.statusCode).json(result.body);
+}
 
 import {
   listManagedUsers,
