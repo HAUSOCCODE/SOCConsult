@@ -6,6 +6,8 @@ import Availability from "../models/Availability.js";
 import StudentAvailability from "../models/StudentAvailability.js";
 import OneTimeScheduleHold from "../models/OneTimeScheduleHold.js";
 import AuditLog from "../models/AuditLog.js";
+import User from "../models/User.js";
+import { eligibleProviderFilter } from "./accountEligibility.js";
 import { lockProviderSchedules } from "./providerSchedulingLock.js";
 import { attendanceEnrollment } from "../config/attendance.js";
 import { BLOCKING_STATUSES, TRANSITION_RULES } from "../config/appointmentStatus.js";
@@ -363,6 +365,8 @@ export async function createAppointmentRequest({ data, actor, now = new Date() }
   try {
     await session.withTransaction(async () => {
       await lockProviderSchedules([data.faculty, data.student], session);
+      if (!await User.exists({ _id: data.faculty, ...eligibleProviderFilter() }).session(session))
+        fail("This faculty member is not currently available for booking.");
       const record = { ...data, _id: requestId, status: "Pending", __v: 0,
         initiatedByRole: facultyInitiated ? "faculty" : "student" };
       delete record.reservationToken;

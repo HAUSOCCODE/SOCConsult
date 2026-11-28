@@ -5,7 +5,8 @@ import { DeanInitializationError, migrateDeanAccount } from "./deanAccountMigrat
 import { normalizeUsername, validDeanUsername } from "./deanUsername.js";
 import { passwordValidationError } from "./passwordPolicy.js";
 
-const marker = { _id: "dean-initialized" };
+export const deanInstallationMarker = Object.freeze({ _id: "dean-initialized" });
+const marker = deanInstallationMarker;
 const transactionOptions = {
   readConcern: { level: "snapshot" },
   writeConcern: { w: "majority" },

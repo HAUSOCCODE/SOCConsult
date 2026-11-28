@@ -37,7 +37,7 @@ test("Student request emails only the assigned Faculty from the persisted partic
   const previous = { smtpHost: env.smtpHost, smtpPort: env.smtpPort, smtpSecure: env.smtpSecure,
     smtpUser: env.smtpUser, smtpPass: env.smtpPass, emailFrom: env.emailFrom, clientUrl: env.clientUrl };
   h.state.users.push({ _id: row.student, role: "student", email: "student@example.test", name: "Student User" },
-    { _id: row.faculty, role: "faculty", email: "assigned-faculty@hau.edu.ph", name: "Faculty User" });
+    { _id: row.faculty, role: "faculty", accountStatus: "Active", email: "assigned-faculty@hau.edu.ph", name: "Faculty User" });
   addSlot(h, row); configureMail(messages);
   try {
     const created = await createAppointmentRequest({ data: row, actor: { id: row.student, role: "student" },
@@ -56,7 +56,7 @@ test("Faculty request emails only the selected Student from the persisted partic
   const previous = { smtpHost: env.smtpHost, smtpPort: env.smtpPort, smtpSecure: env.smtpSecure,
     smtpUser: env.smtpUser, smtpPass: env.smtpPass, emailFrom: env.emailFrom, clientUrl: env.clientUrl };
   h.state.users.push({ _id: row.student, role: "student", email: "selected-student@student.hau.edu.ph", name: "Student User" },
-    { _id: row.faculty, role: "faculty", email: "faculty@example.test", name: "Faculty User" });
+    { _id: row.faculty, role: "faculty", accountStatus: "Active", email: "faculty@example.test", name: "Faculty User" });
   configureMail(messages);
   try {
     const created = await createAppointmentRequest({ data: row, actor: { id: row.faculty, role: "faculty" },

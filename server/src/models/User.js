@@ -85,6 +85,8 @@ const userSchema = new mongoose.Schema(
     rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     rejectionReason: { type: String, trim: true, maxlength: 500 },
     schedulingRevision: { type: Number, select: false },
+    authRevision: { type: Number, min: 0, max: Number.MAX_SAFE_INTEGER, validate: Number.isSafeInteger },
+    deanAccessRelinquishedAt: { type: Date, select: false },
     bootstrapCredentialsIssuedAt: Date,
     usernameChangedAt: Date,
     passwordChangedAt: Date,

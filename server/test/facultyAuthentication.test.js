@@ -27,7 +27,8 @@ test('Faculty provisioned credentials, conservative recommendation, equivalent d
       assert.equal(success.statusCode, 200); assert.equal(success.body.recommendPasswordChange, true);
       assert.deepEqual(queries.at(-1), { email: 'faculty@hau.edu.ph' });
       const payload = jwt.verify(success.body.token, env.jwtSecret);
-      assert.equal(payload.exp - payload.iat, 8 * 60 * 60); assert.deepEqual(Object.keys(payload).sort(), ['exp', 'iat', 'sub']);
+      assert.equal(payload.exp - payload.iat, 8 * 60 * 60); assert.deepEqual(Object.keys(payload).sort(), ['authRevision', 'exp', 'iat', 'sub']);
+      assert.equal(payload.authRevision, 0);
       assert.equal(events.at(-1).action, 'login');
       assert.equal(success.body.user.institutionalId, undefined); assert.equal(success.body.user.password, undefined);
     }

@@ -233,6 +233,18 @@ test("overlapping published bookings serialize for one Faculty or one Student ac
   }
 });
 
+test("a request cannot reserve a schedule after its provider has been deactivated", async () => {
+  const h = appointmentHarness();
+  try {
+    const booked = fixture({ reservationToken: undefined });
+    addSlot(h, booked);
+    h.state.users.push({ _id: booked.faculty, role: "faculty", accountStatus: "Inactive" });
+    const before = clone(h.state);
+    await assert.rejects(createAppointmentRequest({ data: booked, actor: actor(booked, "student"), now }), /not currently available/);
+    assert.deepEqual(h.state, before);
+  } finally { h.restore(); }
+});
+
 test("published bookings conflict with custom confirmation and timed alternatives without partial writes", async () => {
   const h = appointmentHarness();
   try {
@@ -242,7 +254,7 @@ test("published bookings conflict with custom confirmation and timed alternative
       reservationToken: undefined, currentScheduleSource: "participant_proposed" });
     const unscheduled = fixture({ student: booked.student, availability: undefined, bookingMethod: "schedule_request",
       startAt: undefined, endAt: undefined, reservationToken: undefined });
-    h.state.users.push({ _id: alternative.faculty });
+    h.state.users.push({ _id: alternative.faculty, role: "faculty", accountStatus: "Active" });
     h.state.appointments.push(unscheduled);
     const pending = await createAppointmentRequest({ data: booked, actor: actor(booked, "student"), now });
     const schedule = { startAt: booked.startAt, endAt: booked.endAt, mode: "Online", meetingPlatform: "Teams" };

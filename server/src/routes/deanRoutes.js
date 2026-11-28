@@ -5,6 +5,7 @@ import { getConsultations, getConsultationOptions, getConsultation, getConsultat
 import accountImportRoutes from "./accountImportRoutes.js";
 import { rateLimit } from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
+import { accountLimit, accountMutation } from "../middleware/accountSecurity.js";
 import { readOutcomeProof } from "../services/attendanceService.js";
 import { documentContent, documentHeaders } from "../services/appointmentDocumentAuthorizationService.js";
 import { postNarrative, getNarrative, postNarrativeReview } from "../controllers/reportNarrativeController.js";
@@ -17,6 +18,8 @@ import {
 } from "../controllers/auditController.js";
 import {
   createUser,
+  getTransferPreview,
+  postDeanTransfer,
   getUser,
   getUsers,
   resetUserPassword,
@@ -37,7 +40,10 @@ router.use("/account-imports", (_req, res, next) => {
 router.use("/attendance-review", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use("/reports/ai-summaries", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(["/audit-users", "/audit-logs"], (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+router.use("/privilege-transfer", (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.use(authenticate, authorize("dean"));
+router.get("/privilege-transfer/successors/:id", accountLimit(30), getTransferPreview);
+router.post("/privilege-transfer", accountLimit(5), accountMutation("dean-transfer"), postDeanTransfer);
 router.use(["/audit-users", "/audit-logs"], auditRequestGuard);
 router.get("/audit-logs", getManagementAuditLogs);
 const narrativeLimit = (limit) => rateLimit({ windowMs: 60000, limit, keyGenerator: req => String(req.user.id), standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Too many narrative requests. Please wait before retrying." } });
