@@ -23,6 +23,12 @@ const records = ["student", "faculty"].map((role, index) => ({
   statusHistory: [{ previousStatus: "Pending", newStatus: "Expired", changedAt: "2026-10-01T01:01:00Z", changedByRole: "system" }],
 }));
 const user = role => ({ id: role, name: `${role} Fixture`, role });
+const semesterSlots = [
+  { _id: "eligible", startAt: "2089-12-31T16:15:00Z", endAt: "2089-12-31T17:00:00Z" },
+  { _id: "changed", startAt: "2090-01-01T02:00:00Z", endAt: "2090-01-01T03:00:00Z" },
+  { _id: "reserved", startAt: "2090-01-01T03:00:00Z", endAt: "2090-01-01T04:00:00Z", protected: true },
+  { _id: "past", startAt: "2000-01-01T02:00:00Z", endAt: "2000-01-01T03:00:00Z", status: "expired" },
+].map(slot => ({ mode: "Face-to-Face", location: "Fixture room", isActive: true, status: "active", __v: 0, ...slot }));
 let vite, chrome, profile, socket, origin;
 
 function fixtureApi(req, res, next) {
@@ -31,9 +37,11 @@ function fixtureApi(req, res, next) {
   const path = url.pathname.slice("/pei01-api".length);
   requests.push({ path, status: url.searchParams.get("status"), method: req.method });
   let data = {};
-  if (path === "/auth/login/dean") {
+  const login = /^\/auth\/login\/(student|faculty|dean)$/.exec(path);
+  if (login) {
     req.resume();
-    data = { user: user("dean"), token: "dean" };
+    const [, role] = login;
+    data = { user: user(role), token: role };
   } else if (path === "/auth/me") {
     data = { user: user(req.headers.authorization?.slice("Bearer ".length)) };
   } else if (path === "/appointments/student-history" || path === "/appointments/faculty-history") {
@@ -41,6 +49,16 @@ function fixtureApi(req, res, next) {
     data = { consultations, pagination: { page: 1, pageSize: 10, totalPages: 1, total: consultations.length } };
   } else if (path.startsWith("/appointments/consultations/")) {
     data = { appointment: records.find(record => path.endsWith(record._id)) };
+  } else if (path === "/availability/mine") {
+    data = { availability: semesterSlots };
+  } else if (path === "/availability/eligible" && req.method === "PUT") {
+    req.resume();
+    Object.assign(semesterSlots[0], { isActive: false, status: "inactive", __v: 1 });
+    data = { availability: semesterSlots[0] };
+  } else if (path === "/availability/changed" && req.method === "PUT") {
+    req.resume();
+    res.statusCode = 409;
+    data = { message: "This availability changed. Refresh and try again." };
   }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(data));
@@ -76,7 +94,7 @@ const clickText = async (selector, text) => {
 };
 const navigate = async path => {
   await command("Page.navigate", { url: origin + path });
-  await waitFor(`location.pathname === ${JSON.stringify(path)} && document.readyState === "complete"`);
+  await waitFor(`location.pathname === ${JSON.stringify(path)} && document.readyState !== "loading"`);
 };
 
 before(async () => {
@@ -84,6 +102,7 @@ before(async () => {
   process.chdir(root);
   vite = await createServer({
     root,
+    envFile: false,
     server: { host: "127.0.0.1", port: 0 },
     define: { "import.meta.env.VITE_API_URL": '"/pei01-api"' },
     plugins: [{ name: "pei01-fixtures", configureServer: server => { server.middlewares.use(fixtureApi); } }],
@@ -129,11 +148,12 @@ after(async () => {
   if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
 });
 
-test("public portal offers Student and Faculty links in one mobile column and two desktop columns", async () => {
-  for (const [width, columns] of [[360, 1], [1280, 2]]) {
+test("public portal offers Student and Faculty links at mobile, tablet and desktop widths", async () => {
+  await navigate("/get-started");
+  await waitFor('document.querySelectorAll("main article").length === 2');
+  for (const [width, columns] of [[375, 1], [768, 2], [1440, 2]]) {
     await command("Emulation.setDeviceMetricsOverride", { width, height: 850, deviceScaleFactor: 1, mobile: false });
-    await navigate("/get-started");
-    await waitFor('document.querySelectorAll("main article").length === 2');
+    await waitFor(`innerWidth === ${width}`);
     assert.deepEqual(await evaluate('[...document.querySelectorAll("main article a")].map(link => [link.textContent.trim(), link.getAttribute("href")])'), [
       ["Continue as Student", "/student/login"], ["Continue as Faculty", "/faculty/login"],
     ]);
@@ -146,17 +166,21 @@ test("public portal offers Student and Faculty links in one mobile column and tw
   assert.equal(await evaluate('Boolean(document.querySelector(\'a[href="/dean/login"]\'))'), false);
 });
 
-test("direct Dean login submits through the existing authentication route", async () => {
-  await navigate("/dean/login");
-  await waitFor('Boolean(document.querySelector(\'input[placeholder="Dean username"]\'))');
-  await evaluate(`for (const [selector, value] of [['input[placeholder="Dean username"]', "fixture-dean"], ['input[type=password]', "test-only-password"]]) {
+for (const role of ["student", "faculty", "dean"]) test(`${role} login opens its dashboard`, async () => {
+  await navigate(`/${role}/login`);
+  const selector = role === "dean" ? 'input[placeholder="Dean username"]' : 'input[type="email"]';
+  await waitFor(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
+  await evaluate("sessionStorage.removeItem('consultio_token')");
+  const fields = [[selector, role === "dean" ? "fixture-dean" : "fixture@example.test"], ["input[type=password]", "test-only-password"]];
+  await evaluate(`for (const [selector, value] of ${JSON.stringify(fields)}) {
     const input = document.querySelector(selector);
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }`);
   await clickText("button", "Log In");
-  await waitFor('location.pathname === "/dean/dashboard"');
-  assert.ok(requests.some(({ path, method }) => path === "/auth/login/dean" && method === "POST"));
+  await waitFor(`location.pathname === "/${role}/dashboard"`);
+  assert.ok(requests.some(({ path, method }) => path === `/auth/login/${role}` && method === "POST"));
+  await evaluate("sessionStorage.removeItem('consultio_token')");
 });
 
 for (const role of ["student", "faculty"]) {
@@ -184,3 +208,30 @@ for (const role of ["student", "faculty"]) {
     }
   });
 }
+
+test("Faculty semester closure confirms the Manila preview and reports partial results", async () => {
+  await command("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+  await evaluate('sessionStorage.setItem("consultio_token", "faculty")');
+  await navigate("/faculty/availability");
+  await clickText("button", "Past Schedules (1)");
+  await clickText("button", "Current & Upcoming (3)");
+  await clickText("button", "End Semester Availability");
+  const setDate = (index, value) => evaluate(`{
+    const input = document.querySelectorAll('#semester-availability input[type=date]')[${index}];
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }`);
+  await setDate(0, "2090-01-02");
+  await setDate(1, "2090-01-01");
+  await waitFor('document.body.innerText.includes("Enter valid dates")');
+  await setDate(0, "2090-01-01");
+  await waitFor('document.body.innerText.includes("2 eligible for deactivation") && document.body.innerText.includes("1 reserved")');
+  await clickText("button", "Review Deactivation");
+  const updates = () => requests.filter(request => request.method === "PUT").map(request => request.path);
+  assert.deepEqual(updates(), []);
+  await clickText('[role="dialog"] button', "Deactivate Schedules");
+  await waitFor('document.querySelector(\'#semester-availability [role="status"]\').innerText.includes("1 changed or removed")');
+  assert.match(await evaluate(`document.querySelector('#semester-availability [role="status"]').innerText`), /1 deactivated/);
+  assert.deepEqual(updates(), ["/availability/eligible", "/availability/changed"]);
+  assert.equal(await evaluate('document.documentElement.scrollWidth === innerWidth'), true);
+});
